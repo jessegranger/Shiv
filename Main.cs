@@ -1,21 +1,19 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using System.Numerics;
 using GTA.Native;
-using static Shiv.Globals;
-using static Shiv.Imports;
 using static GTA.Native.Function;
 using static GTA.Native.Hash;
-using System.Collections.Generic;
-using System.Collections.Concurrent;
+using static Shiv.Globals;
+using static Shiv.Imports;
+using Keys = System.Windows.Forms.Keys;
 
 namespace Shiv {
 
@@ -28,6 +26,8 @@ namespace Shiv {
 
 		/// <summary> Number of milliseconds since the game launched. </summary>
 		public static uint GameTime { get; internal set; } = 0;
+
+		public static float CurrentFPS { get; internal set; } = 0f;
 
 		public static PlayerHandle CurrentPlayer { get; internal set; } = PlayerHandle.Invalid;
 		public static Matrix4x4 PlayerMatrix { get; internal set; }
@@ -183,11 +183,22 @@ namespace Shiv {
 			foreach( var script in dead ) Script.Order.Remove(script);
 
 			KeyBind(Keys.N, () => {
-				new QuickScript(1000, () => {
-					return CreateVehicle(VehicleHash.Ninef, PlayerPosition + (Forward(Self) * 4f), 0f) != VehicleHandle.ModelLoading;
+				new QuickScript(3000, () => {
+					var ret = CreateVehicle(VehicleHash.Ninef, PlayerPosition + (Forward(Self) * 4f), 0f);
+					UI.DrawText($"Creating vehicle: {ret}");
+					return ret != VehicleHandle.ModelLoading;
 				});
 				// Sphere.Add(PlayerPosition, .05f, Color.Yellow, 5000);
 			});
+			KeyBind(Keys.O, () => {
+				var target = AimPosition();
+				Goals.Push(new DirectMove(() => target));
+			});
+			KeyBind(Keys.End, () => {
+				Goals.Clear();
+				TaskClearAll();
+			});
+
 		}
 
 		public static uint LastGameTime = GameTime;
@@ -208,8 +219,6 @@ namespace Shiv {
 			FrameCount += 1;
 			try {
 
-				MatrixCache.Clear();
-
 				GameTime = Call<uint>(GET_GAME_TIMER);
 
 				if( CurrentPlayer == PlayerHandle.Invalid ) {
@@ -229,9 +238,14 @@ namespace Shiv {
 				int dt = (int)GameTime - (int)LastGameTime;
 				LastGameTime = GameTime;
 				if( dt != 0 ) fps.Add(1000 / dt);
+				CurrentFPS = 1000 / dt;
 				UI.DrawText($"Humans: {NearbyHumans.Length} Vehicles: {NearbyVehicles.Length}");
-				float eff = MatrixCacheHits / (MatrixCacheMiss + 1);
-				UI.DrawText($"FPS:{fps.Value:F2} Cache:{eff:F2} Position: {Round(PlayerPosition, 2)}");
+				UI.DrawText($"FPS:{fps.Value:F2} Position: {Round(PlayerPosition, 2)}");
+				var obs = DirectMove.CheckObstruction(PlayerPosition, Forward(PlayerMatrix));
+				UI.DrawText($"Obstruction:{obs}");
+				if( obs > .25f && obs < 1.5f && CurrentVehicle(Self) == 0 ) {
+					PressControl(0, Globals.Control.Jump, 200);
+				}
 
 				// run any actions in response to key strokes
 				while( keyEvents.TryDequeue(out KeyEvent evt) ) {
@@ -256,7 +270,6 @@ namespace Shiv {
 		}
 
 		public static void OnKey(ulong key, ushort repeats, byte scanCode, bool wasDownBefore, bool isUpNow, bool ctrl, bool shift, bool alt) {
-			// Log($"Shiv::OnKey {key} {wasDownBefore} {isUpNow} {shift} {ctrl} {alt}");
 			Keys k = (Keys)(int)key
 				| (shift ? Keys.Shift : 0)
 				| (ctrl ? Keys.Control : 0)
