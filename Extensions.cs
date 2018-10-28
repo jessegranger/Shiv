@@ -23,6 +23,12 @@ namespace Shiv {
 		public static void Clear<T>(this ConcurrentQueue<T> Q) {
 			while( Q.TryDequeue(out T ignore) ) { }
 		}
+		public static T Pop<T>(this LinkedList<T> list) {
+			if( list.Count != 0 )
+				try { return list.First.Value; }
+				finally { list.RemoveFirst(); }
+			return default;
+		}
 
 		public static LinkedListNode<T> RemoveAndContinue<T>(this LinkedList<T> list, LinkedListNode<T> node) {
 			var next = node.Next;
@@ -44,6 +50,7 @@ namespace Shiv {
 			}
 		}
 
+		/// <summary> Add item to the list after the position where pred returns <see langword="true"/>. </summary>
 		public static void AddAfter<T>(this LinkedList<T> list, T item, Func<T,bool> pred) {
 			LinkedListNode<T> cur = list.First;
 			while( cur != null && cur.Value != null ) {
