@@ -32,20 +32,24 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
-    <Compile Include="Enums.cs" />
+    <Compile Include="Game\Controls.cs" />
+    <Compile Include="Game\Enums.cs" />
     <Compile Include="Extensions.cs" />
     <Compile Include="Game\Entities.cs" />
     <Compile Include="Game\World.cs" />
-    <Compile Include="Imports.cs" />
+    <Compile Include="Goals\DirectMove.cs" />
+    <Compile Include="Scripts\Goals.cs" />
+    <Compile Include="Game\Imports.cs" />
     <Compile Include="Main.cs" />
     <Compile Include="Math.cs" />
-    <Compile Include="NativeHashes.cs" />
-    <Compile Include="NativeMemory.cs" />
+    <Compile Include="Game\NativeHashes.cs" />
+    <Compile Include="Game\NativeMemory.cs" />
     <Compile Include="Game\Peds.cs" />
     <Compile Include="Scripts\Compass.cs" />
     <Compile Include="Scripts\Persistent.cs" />
     <Compile Include="Script.cs" />
     <Compile Include="Game\Vehicle.cs" />
+    <Compile Include="Scripts\Senses.cs" />
     <Compile Include="Scripts\UI.cs" />
   </ItemGroup>
   <ItemGroup />
