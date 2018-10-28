@@ -183,20 +183,16 @@ namespace Shiv {
 			foreach( var script in dead ) Script.Order.Remove(script);
 
 			KeyBind(Keys.N, () => {
-				new QuickScript(3000, () => {
-					var ret = CreateVehicle(VehicleHash.Ninef, PlayerPosition + (Forward(Self) * 4f), 0f);
-					UI.DrawText($"Creating vehicle: {ret}");
-					return ret != VehicleHandle.ModelLoading;
-				});
-				// Sphere.Add(PlayerPosition, .05f, Color.Yellow, 5000);
+				LookTarget = AimPosition();
+				Sphere.Add(LookTarget, .1f, Color.Blue, 10000);
 			});
 			KeyBind(Keys.O, () => {
-				var target = AimPosition();
-				Goals.Push(new DirectMove(() => target));
+				Goals.Push(new DirectMove(AimPosition()));
 			});
 			KeyBind(Keys.End, () => {
 				Goals.Clear();
 				TaskClearAll();
+				LookTarget = Vector3.Zero;
 			});
 
 		}
@@ -235,17 +231,13 @@ namespace Shiv {
 				RefreshVehicles();
 				RefreshObjects();
 				RefreshPickups();
+
 				int dt = (int)GameTime - (int)LastGameTime;
 				LastGameTime = GameTime;
 				if( dt != 0 ) fps.Add(1000 / dt);
 				CurrentFPS = 1000 / dt;
 				UI.DrawText($"Humans: {NearbyHumans.Length} Vehicles: {NearbyVehicles.Length}");
 				UI.DrawText($"FPS:{fps.Value:F2} Position: {Round(PlayerPosition, 2)}");
-				var obs = DirectMove.CheckObstruction(PlayerPosition, Forward(PlayerMatrix));
-				UI.DrawText($"Obstruction:{obs}");
-				if( obs > .25f && obs < 1.5f && CurrentVehicle(Self) == 0 ) {
-					PressControl(0, Globals.Control.Jump, 200);
-				}
 
 				// run any actions in response to key strokes
 				while( keyEvents.TryDequeue(out KeyEvent evt) ) {

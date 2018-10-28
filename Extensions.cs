@@ -20,9 +20,18 @@ namespace Shiv {
 			return list;
 		}
 
+		public static IEnumerable<int> Items(params int[] items) {
+			foreach( var item in items ) yield return item;
+		}
+
+		public static IEnumerable<int> Range(int start, int end, int step = 1) {
+			for( int i = start; i < end; i += step ) yield return i;
+		}
+
 		public static void Clear<T>(this ConcurrentQueue<T> Q) {
 			while( Q.TryDequeue(out T ignore) ) { }
 		}
+
 		public static T Pop<T>(this LinkedList<T> list) {
 			if( list.Count != 0 )
 				try { return list.First.Value; }
@@ -35,6 +44,7 @@ namespace Shiv {
 			list.Remove(node);
 			return next;
 		}
+
 		public static void Visit<T>(this LinkedList<T> list, Action<T> func) => list.Visit(s => { func(s); return false; });
 		public static void Visit<T>(this LinkedList<T> list, Func<T, bool> func) {
 			var cur = list.First;
