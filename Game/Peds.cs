@@ -96,6 +96,15 @@ namespace Shiv {
 		public static bool CanSee(PedHandle self, VehicleHandle veh, IntersectOptions opts = IntersectOptions.Map | IntersectOptions.Objects) => CanSee(self, (PedHandle)veh, opts);
 		public static bool CanSee(PedHandle self, PedHandle ped, IntersectOptions opts = IntersectOptions.Map | IntersectOptions.Objects) => self == 0 || ped == PedHandle.Invalid ? false : Call<bool>(HAS_ENTITY_CLEAR_LOS_TO_ENTITY, self, ped, opts);
 
+		public static Vector3 AimPosition() {
+			Vector3 start = Position(CameraMatrix);
+			Vector3 end = start + (Forward(CameraMatrix) * 1000f);
+			var result = Raycast(start, end, IntersectOptions.Everything, Self);
+			return result.DidHit ? result.HitPosition : end;
+		}
+
+		public static void TaskClearAll() => Call(CLEAR_PED_TASKS, Self);
+		public static void TaskClearAll(PedHandle ped) => Call(CLEAR_PED_TASKS, ped);
 	}
 
 }
