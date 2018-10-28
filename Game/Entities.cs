@@ -31,23 +31,13 @@ namespace Shiv {
 			unsafe { Call(SET_ENTITY_AS_NO_LONGER_NEEDED, new IntPtr(&ent)); }
 		}
 
-		// flush this every frame
-		internal static ConcurrentDictionary<EntHandle, Matrix4x4> MatrixCache = new ConcurrentDictionary<EntHandle, Matrix4x4>();
-		internal static int MatrixCacheHits = 0;
-		internal static int MatrixCacheMiss = 0;
 
 		public static IntPtr Address(EntHandle ent) => GetEntityAddress((int)ent);
 		public static Vector3 Position(EntHandle ent) => Position(Matrix(ent)); // Read<Vector3>(Address(ent), 0x90);
-																																						// use inlines to make sure that Position() and friends all route to here
-		public static Matrix4x4 Matrix(EntHandle ent) {
-			if( MatrixCache.TryGetValue(ent, out Matrix4x4 ret) ) {
-				MatrixCacheHits += 1;
-				return ret;
-			} else {
-				MatrixCacheMiss += 1;
-				return MatrixCache[ent] = Read<Matrix4x4>(Address(ent), 0x60);
-			}
-		}
+		
+
+		// TODO: once we are putting some pressure on the engine, see if its worth caching the Matrix for the frame
+		public static Matrix4x4 Matrix(EntHandle ent) => Read<Matrix4x4>(Address(ent), 0x60);
 
 		public static Matrix4x4 Matrix(EntHandle ent, BoneIndex bone) => Read<Matrix4x4>(GetEntityBoneMatrixAddress((int)ent, (uint)bone), 0x0);
 		public static BoneIndex GetBoneIndex(EntHandle ent, string name) => Call<BoneIndex>(GET_ENTITY_BONE_INDEX_BY_NAME, ent, name);
@@ -194,7 +184,7 @@ namespace Shiv {
 		public static BlipColor GetColor(BlipHandle blip) => blip == 0 ? default : Call<BlipColor>(GET_BLIP_COLOUR, blip);
 		public static IEnumerable<BlipHandle> GetAllBlips(BlipSprite type) {
 			BlipHandle h = Call<BlipHandle>(GET_FIRST_BLIP_INFO_ID, type);
-			while( Call<bool>(DOES_BLIP_EXIST, h) ) {
+			while( Exists(h) ) {
 				yield return h;
 				h = Call<BlipHandle>(GET_NEXT_BLIP_INFO_ID, type);
 			}
@@ -211,8 +201,7 @@ namespace Shiv {
 		public static EntHandle CreateObject(ModelHash model, Vector3 pos, bool dynamic) {
 			return RequestModel(model) != AssetStatus.Loaded
 				? EntHandle.Invalid
-				: Call<EntHandle>(CREATE_OBJECT_NO_OFFSET, model,
-				pos.X, pos.Y, pos.Z, 1, 1, dynamic);
+				: Call<EntHandle>(CREATE_OBJECT_NO_OFFSET, model, pos, 1, 1, dynamic);
 		}
 
 		public static WeaponTint Tint(PedHandle ent, WeaponHash weap) => Call<WeaponTint>(GET_PED_WEAPON_TINT_INDEX, ent, weap);
@@ -238,8 +227,10 @@ namespace Shiv {
 			Call(GIVE_WEAPON_TO_PED, ped, w, 0, false, equip);
 			CurrentAmmo(ped, w, ammo);
 		}
+
 		/// <summary>
-		///  Example: GiveWeapons( Self, Pistol, 50, Shotgun, 200 );
+		///  Example: GiveWeapons( Self, Pistol, 50, Shotgun, 200, Unarmed, 0 );
+		///  The last weapon in the list will be equipped.
 		/// </summary>
 		public static void GiveWeapons(PedHandle ped, params uint[] items) {
 			uint weapon = 0;
@@ -252,106 +243,59 @@ namespace Shiv {
 				}
 			}
 		}
+
 		public static void RemoveWeapons(PedHandle ped, params WeaponHash[] weapons) {
-			if( weapons.Length == 0 ) {
-				Call(REMOVE_ALL_PED_WEAPONS, ped);
-			} else {
-				foreach( WeaponHash w in weapons )
-					Call(REMOVE_WEAPON_FROM_PED, ped, w);
-			}
+			if( weapons.Length == 0 ) Call(REMOVE_ALL_PED_WEAPONS, ped);
+			else foreach( WeaponHash w in weapons ) Call(REMOVE_WEAPON_FROM_PED, ped, w);
 		}
 
-		public static string Label(WeaponHash weap) {
-			switch( weap ) {
-				case WeaponHash.Pistol:
-					return "WT_PIST";
-				case WeaponHash.CombatPistol:
-					return "WT_PIST_CBT";
-				case WeaponHash.APPistol:
-					return "WT_PIST_AP";
-				case WeaponHash.SMG:
-					return "WT_SMG";
-				case WeaponHash.MicroSMG:
-					return "WT_SMG_MCR";
-				case WeaponHash.AssaultRifle:
-					return "WT_RIFLE_ASL";
-				case WeaponHash.CarbineRifle:
-					return "WT_RIFLE_CBN";
-				case WeaponHash.AdvancedRifle:
-					return "WT_RIFLE_ADV";
-				case WeaponHash.MG:
-					return "WT_MG";
-				case WeaponHash.CombatMG:
-					return "WT_MG_CBT";
-				case WeaponHash.PumpShotgun:
-					return "WT_SG_PMP";
-				case WeaponHash.SawnOffShotgun:
-					return "WT_SG_SOF";
-				case WeaponHash.AssaultShotgun:
-					return "WT_SG_ASL";
-				case WeaponHash.HeavySniper:
-					return "WT_SNIP_HVY";
-				case WeaponHash.SniperRifle:
-					return "WT_SNIP_RIF";
-				case WeaponHash.GrenadeLauncher:
-					return "WT_GL";
-				case WeaponHash.RPG:
-					return "WT_RPG";
-				case WeaponHash.Minigun:
-					return "WT_MINIGUN";
-				case WeaponHash.AssaultSMG:
-					return "WT_SMG_ASL";
-				case WeaponHash.BullpupShotgun:
-					return "WT_SG_BLP";
-				case WeaponHash.Pistol50:
-					return "WT_PIST_50";
-				case WeaponHash.Bottle:
-					return "WT_BOTTLE";
-				case WeaponHash.Gusenberg:
-					return "WT_GUSENBERG";
-				case WeaponHash.SNSPistol:
-					return "WT_SNSPISTOL";
-				case WeaponHash.VintagePistol:
-					return "TT_VPISTOL";
-				case WeaponHash.Dagger:
-					return "WT_DAGGER";
-				case WeaponHash.FlareGun:
-					return "WT_FLAREGUN";
-				case WeaponHash.Musket:
-					return "WT_MUSKET";
-				case WeaponHash.Firework:
-					return "WT_FWRKLNCHR";
-				case WeaponHash.MarksmanRifle:
-					return "WT_HMKRIFLE";
-				case WeaponHash.HeavyShotgun:
-					return "WT_HVYSHOT";
-				case WeaponHash.ProximityMine:
-					return "WT_PRXMINE";
-				case WeaponHash.HomingLauncher:
-					return "WT_HOMLNCH";
-				case WeaponHash.CombatPDW:
-					return "WT_COMBATPDW";
-				case WeaponHash.KnuckleDuster:
-					return "WT_KNUCKLE";
-				case WeaponHash.MarksmanPistol:
-					return "WT_MKPISTOL";
-				case WeaponHash.Machete:
-					return "WT_MACHETE";
-				case WeaponHash.MachinePistol:
-					return "WT_MCHPIST";
-				case WeaponHash.Flashlight:
-					return "WT_FLASHLIGHT";
-				case WeaponHash.DoubleBarrelShotgun:
-					return "WT_DBSHGN";
-				case WeaponHash.CompactRifle:
-					return "WT_CMPRIFLE";
-				case WeaponHash.SwitchBlade:
-					return "WT_SWBLADE";
-				case WeaponHash.Revolver:
-					return "WT_REVOLVER";
-			}
-			return "";
-		}
+		private static Dictionary<WeaponHash, string> weaponLabels = new Dictionary<WeaponHash, string>() {
+			{ WeaponHash.Pistol, "WT_PIST" },
+			{ WeaponHash.CombatPistol, "WT_PIST_CBT" },
+			{ WeaponHash.APPistol, "WT_PIST_AP" },
+			{ WeaponHash.SMG, "WT_SMG" },
+			{ WeaponHash.MicroSMG, "WT_SMG_MCR" },
+			{ WeaponHash.AssaultRifle, "WT_RIFLE_ASL" },
+			{ WeaponHash.CarbineRifle, "WT_RIFLE_CBN" },
+			{ WeaponHash.AdvancedRifle, "WT_RIFLE_ADV" },
+			{ WeaponHash.MG, "WT_MG" },
+				{ WeaponHash.CombatMG, "WT_MG_CBT" },
+				{ WeaponHash.PumpShotgun, "WT_SG_PMP" },
+				{ WeaponHash.SawnOffShotgun, "WT_SG_SOF" },
+				{ WeaponHash.AssaultShotgun, "WT_SG_ASL" },
+				{ WeaponHash.HeavySniper, "WT_SNIP_HVY" },
+				{ WeaponHash.SniperRifle, "WT_SNIP_RIF" },
+				{ WeaponHash.GrenadeLauncher, "WT_GL" },
+				{ WeaponHash.RPG, "WT_RPG" },
+				{ WeaponHash.Minigun, "WT_MINIGUN" },
+				{ WeaponHash.AssaultSMG, "WT_SMG_ASL" },
+				{ WeaponHash.BullpupShotgun, "WT_SG_BLP" },
+				{ WeaponHash.Pistol50, "WT_PIST_50" },
+				{ WeaponHash.Bottle, "WT_BOTTLE" },
+				{ WeaponHash.Gusenberg, "WT_GUSENBERG" },
+				{ WeaponHash.SNSPistol, "WT_SNSPISTOL" },
+				{ WeaponHash.VintagePistol, "TT_VPISTOL" },
+				{ WeaponHash.Dagger, "WT_DAGGER" },
+				{ WeaponHash.FlareGun, "WT_FLAREGUN" },
+				{ WeaponHash.Musket, "WT_MUSKET" },
+				{ WeaponHash.Firework, "WT_FWRKLNCHR" },
+				{ WeaponHash.MarksmanRifle, "WT_HMKRIFLE" },
+				{ WeaponHash.HeavyShotgun, "WT_HVYSHOT" },
+				{ WeaponHash.ProximityMine, "WT_PRXMINE" },
+				{ WeaponHash.HomingLauncher, "WT_HOMLNCH" },
+				{ WeaponHash.CombatPDW, "WT_COMBATPDW" },
+				{ WeaponHash.KnuckleDuster, "WT_KNUCKLE" },
+				{ WeaponHash.MarksmanPistol, "WT_MKPISTOL" },
+				{ WeaponHash.Machete, "WT_MACHETE" },
+				{ WeaponHash.MachinePistol, "WT_MCHPIST" },
+				{ WeaponHash.Flashlight, "WT_FLASHLIGHT" },
+				{ WeaponHash.DoubleBarrelShotgun, "WT_DBSHGN" },
+				{ WeaponHash.CompactRifle, "WT_CMPRIFLE" },
+				{ WeaponHash.SwitchBlade, "WT_SWBLADE" },
+				{ WeaponHash.Revolver, "WT_REVOLVER" },
+		};
+
+		public static string Label(WeaponHash weap) => weaponLabels.TryGetValue(weap, out string ret) ? ret : "";
 
 		private static IntPtr gpCamAddr = IntPtr.Zero;
 		public static IntPtr Address(GameplayCam cam) => gpCamAddr == IntPtr.Zero ? gpCamAddr = GetGameplayCameraAddress() : gpCamAddr;
