@@ -38,6 +38,7 @@
     <Compile Include="Game\Entities.cs" />
     <Compile Include="Game\Player.cs" />
     <Compile Include="Game\World.cs" />
+    <Compile Include="Goals\DirectDrive.cs" />
     <Compile Include="Goals\DirectMove.cs" />
     <Compile Include="Scripts\Goals.cs" />
     <Compile Include="Game\Imports.cs" />
