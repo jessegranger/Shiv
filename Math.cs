@@ -45,6 +45,10 @@ namespace Shiv {
 			return Rad2Deg(Math.Atan2(f.Y, f.X));
 		}
 
+		public static float Clamp(float x, float min, float max) => Math.Max(min, Math.Min(max, x));
+
+		public static float Sigmoid(float x) => (float)(1 / (1 + Math.Pow(Math.E, -x)));
+
 		public static Vector3 Min(params Vector3[] vectors) {
 			var min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
 			foreach( Vector3 v in vectors ) {
