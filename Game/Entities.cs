@@ -312,62 +312,7 @@ namespace Shiv {
 		public static Color GetIconColor(CheckpointHandle cp) => Color.FromArgb(Read<int>(Address(cp), 0x54));
 		public static IEnumerable<CheckpointHandle> GetCheckpoints() => GetCheckpointHandles().Cast<CheckpointHandle>();
 
-		private static uint CashKey() {
-			switch( GetModel(Self) ) {
-				case PedHash.Michael:
-					return GenerateHash("SP0_TOTAL_CASH");
-				case PedHash.Franklin:
-					return GenerateHash("SP1_TOTAL_CASH");
-				case PedHash.Trevor:
-					return GenerateHash("SP2_TOTAL_CASH");
-			}
-			return 0;
-		}
-		public static int Money() {
-			int money = 0;
-			uint hash = CashKey();
-			if( hash != 0 )
-				unsafe { Call(STAT_GET_INT, hash, new IntPtr(&money), -1); }
-			return money;
-		}
-		public static void Money(int value) {
-			uint hash = CashKey();
-			if( hash != 0 )
-				Call(STAT_SET_INT, hash, value, 1);
-		}
 
-		public static uint WantedLevel() =>
-			CurrentPlayer == PlayerHandle.Invalid ? 0 :
-				Call<uint>(GET_PLAYER_WANTED_LEVEL, CurrentPlayer);
-
-		public static void WantedLevel(uint value) {
-			Call(SET_PLAYER_WANTED_LEVEL, CurrentPlayer, value, false);
-			Call(SET_PLAYER_WANTED_LEVEL_NOW, CurrentPlayer, false);
-		}
-
-		public static bool AmAiming() => Call<bool>(IS_PLAYER_FREE_AIMING, CurrentPlayer);
-		public static void AmClimbing() => Call(IS_PLAYER_CLIMBING, CurrentPlayer);
-
-		public static bool AmInvincible() => Call<bool>(GET_PLAYER_INVINCIBLE, CurrentPlayer);
-		public static void AmInvincible(bool value) => Call(SET_PLAYER_INVINCIBLE, CurrentPlayer, value);
-
-		public static void IgnoredByPolice(bool value) => Call(SET_POLICE_IGNORE_PLAYER, CurrentPlayer, value);
-		public static void IgnoredByEveryone(bool value) => Call(SET_EVERYONE_IGNORE_PLAYER, CurrentPlayer, value);
-		public static void DispatchesCops(bool value) => Call(SET_DISPATCH_COPS_FOR_PLAYER, CurrentPlayer, value);
-
-		public static bool CanControlCharacter() => Call<bool>(IS_PLAYER_CONTROL_ON, CurrentPlayer);
-		public static void CanControlCharacter(bool value) => Call<bool>(SET_PLAYER_CONTROL, CurrentPlayer, value, 0);
-
-		public static Vector3 WantedPosition() =>
-			CurrentPlayer == PlayerHandle.Invalid ? Vector3.Zero :
-				Call<Vector3>(GET_PLAYER_WANTED_CENTRE_POSITION, CurrentPlayer);
-
-		public static EntHandle AimingAtEntity() {
-			EntHandle t = 0;
-			unsafe { Call<bool>(GET_ENTITY_PLAYER_IS_FREE_AIMING_AT, CurrentPlayer, new IntPtr(&t)); }
-			return t;
-		}
-		public static bool IsAimingAtEntity(PedHandle ent) => ent == 0 ? false : Call<bool>(IS_PLAYER_FREE_AIMING_AT_ENTITY, CurrentPlayer, ent);
 
 
 	}
