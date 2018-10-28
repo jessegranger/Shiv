@@ -82,6 +82,8 @@ namespace Shiv {
 			return ret;
 		}
 
+		public static Vector3 Velocity(PedHandle ent) => Velocity((EntHandle)ent);
+		public static void Velocity(PedHandle ent, Vector3 value) => Velocity((EntHandle)ent, value);
 		public static float Speed(PedHandle ent) => ent == 0 ? 0f : Call<float>(GET_ENTITY_SPEED, ent);
 
 		public static bool IsReloading(PedHandle ped) => ped == PedHandle.Invalid ? false : Call<bool>(IS_PED_RELOADING, ped);
@@ -96,15 +98,27 @@ namespace Shiv {
 		public static bool CanSee(PedHandle self, VehicleHandle veh, IntersectOptions opts = IntersectOptions.Map | IntersectOptions.Objects) => CanSee(self, (PedHandle)veh, opts);
 		public static bool CanSee(PedHandle self, PedHandle ped, IntersectOptions opts = IntersectOptions.Map | IntersectOptions.Objects) => self == 0 || ped == PedHandle.Invalid ? false : Call<bool>(HAS_ENTITY_CLEAR_LOS_TO_ENTITY, self, ped, opts);
 
-		public static Vector3 AimPosition() {
-			Vector3 start = Position(CameraMatrix);
-			Vector3 end = start + (Forward(CameraMatrix) * 1000f);
-			var result = Raycast(start, end, IntersectOptions.Everything, Self);
-			return result.DidHit ? result.HitPosition : end;
-		}
-
 		public static void TaskClearAll() => Call(CLEAR_PED_TASKS, Self);
 		public static void TaskClearAll(PedHandle ped) => Call(CLEAR_PED_TASKS, ped);
+
+		public static bool IsSprinting(PedHandle ped) => ped == PedHandle.Invalid ? false : Call<bool>(IS_PED_SPRINTING, ped);
+		public static bool IsRunning(PedHandle ped) => ped == PedHandle.Invalid ? false : Call<bool>(IS_PED_RUNNING, ped);
+
+		public static Action ToggleSprint = Throttle(2000, () => {
+			SetControlValue(0, Control.Sprint, 1.0f);
+		});
+
+		public static bool IsTaskActive(PedHandle p, TaskID taskId) => Call<bool>(GET_IS_TASK_ACTIVE, p, taskId);
+		public static int GetScriptTaskStatus(PedHandle p, TaskStatusHash hash) => Call<int>(GET_SCRIPT_TASK_STATUS, p, hash);
+		public static void DebugAllTasks(PedHandle ent) {
+			var s = ScreenCoords(HeadPosition(ent));
+			Enum.GetValues(typeof(TaskID)).Each<TaskID>(id => {
+				if( IsTaskActive(ent, id) ) {
+					UI.DrawText(s.X, s.Y, $"{id}");
+					s.Y += .019f;
+				}
+			});
+		}
 	}
 
 }
