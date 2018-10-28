@@ -8,51 +8,51 @@ namespace Shiv {
 	public class DirectMove : Goal {
 		public Func<Vector3> Target;
 		public float StoppingRange = 2f;
+		public bool Run = false;
+		public DirectMove(Vector3 pos) {
+			Target = () => pos;
+			if( pos == Vector3.Zero )
+				Status = GoalStatus.Failed;
+		}
 		public DirectMove(Func<Vector3> pos) {
 			Target = pos;
 		}
-		public virtual bool CheckComplete(Vector3 target) {
-			float dist = DistanceToSelf(target);
-			return dist < StoppingRange * StoppingRange;
-		}
-		private float Sigmoid(float x) => (float)(1 / (1 + Pow(E, -x)));
-		private float Activation(float x, float fps) => (Sigmoid(2 * x) * 4f) - 2f;
-		private readonly float aspect_ratio = 2f; // TODO: get the real aspect ratio
+		public virtual bool CheckComplete(Vector3 target) => DistanceToSelf(target) < StoppingRange * StoppingRange;
 		public override GoalStatus OnTick() {
 			var target = Target();
 			if( target != Vector3.Zero ) {
 				DrawSphere(target, .1f, Color.Blue);
 				DrawLine(Position(PlayerMatrix), target, Color.Orange);
-				var delta = target - Position(PlayerMatrix);
-				float dist = delta.Length();
 				if( CheckComplete(target) ) {
 					return Status = GoalStatus.Complete;
 				}
-				var forward = -Vector3.Dot(delta, Forward(CameraMatrix));
-				var right = Vector3.Dot(delta, Right(CameraMatrix));
-				forward = Activation(forward / aspect_ratio, CurrentFPS);
-				right = Activation(right, CurrentFPS);
-				// UI.DrawTextInWorld(PlayerPosition, $"FWD:{forward:F2} RGT:{right:F2}");
-				SetControlValue(1, Control.MoveLeftRight, right);
-				SetControlValue(1, Control.MoveUpDown, forward);
-				var obs = CheckObstruction(PlayerPosition, delta);
-				if( obs > .25f && obs < 1.5f && CurrentVehicle(Self) == 0 ) {
-					PressControl(0, Globals.Control.Jump, 200);
-				}
+				MoveToward(target);
+				var obs = CheckObstruction(PlayerPosition, (target - PlayerPosition));
+				if( obs < 0 ) return Status = GoalStatus.Failed; // Impassable
+				else if( obs > .25f && obs < 2.4f && Speed(Self) < .01f ) {
+					SetControlValue(0, Control.Jump, 1.0f); // Attempt to jump over a positive obstruction
+					if( CurrentVehicle(Self) != 0 ) return Status = GoalStatus.Failed;
+				} else if( Run && ! IsRunning(Self) ) ToggleSprint();
 			}
 			return Status;
 		}
 
-		static IntersectOptions opts = IntersectOptions.Map | IntersectOptions.MissionEntities | IntersectOptions.Objects;
+		const IntersectOptions opts = IntersectOptions.Map | IntersectOptions.MissionEntities | IntersectOptions.Objects
+			| IntersectOptions.Unk1
+			| IntersectOptions.Unk2
+			| IntersectOptions.Unk3
+			| IntersectOptions.Unk4
+			;
 		public static float CheckObstruction(Vector3 pos, Vector3 forward) {
-			forward = Vector3.Normalize(forward) * .5f;
-			pos = pos + forward + Up; // pick a spot in the air
-			var end = new Vector3(pos.X, pos.Y, pos.Z - 1.6f); // try to drop it down
-			var result = Raycast(pos, end, .2f, opts, Self);
-			// if( result.DidHit ) {
-				// DrawLine(pos, result.HitPosition, Color.Yellow);
-				// DrawSphere(result.HitPosition, .1f, Color.Yellow);
-			// }
+			forward = Vector3.Normalize(forward) * .6f;
+			pos = pos + forward + (Up * 2.3f); // pick a spot in the air
+			var end = new Vector3(pos.X, pos.Y, pos.Z - 2.9f); // try to drop it down
+			DrawLine(pos, end, Color.Yellow);
+			DrawLine(HeadPosition(Self), end, Color.Orange);
+			var result = Raycast(pos, end, .3f, opts, Self);
+			if( result.DidHit ) {
+				DrawSphere(result.HitPosition, .2f, Color.Orange);
+			}
 			return result.DidHit ? (result.HitPosition - end).Length() : 0f;
 		}
 	}
