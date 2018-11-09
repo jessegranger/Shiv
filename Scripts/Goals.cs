@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using static Shiv.Globals;
 
@@ -9,11 +10,12 @@ namespace Shiv {
 		Complete,
 		Failed
 	}
-	public abstract class Goal {
+	public abstract class Goal : IDisposable {
 		public GoalStatus Status = GoalStatus.Paused;
 		public abstract GoalStatus OnTick();
 		public virtual void OnPause() { Status = GoalStatus.Paused; }
 		public virtual void OnResume() { Status = GoalStatus.Active; }
+		public virtual void Dispose() { }
 	}
 
 	public class GoalSet {
