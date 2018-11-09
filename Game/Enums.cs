@@ -9,7 +9,13 @@ namespace Shiv {
 		public enum PedHandle : int { Invalid = 0, ModelInvalid = -1, ModelLoading = -2  }
 		public enum VehicleHandle : int { Invalid = 0, ModelInvalid = -1, ModelLoading = -2 }
 		public enum PlayerHandle : int { Invalid = -1 }
-		public enum ModelHash : uint { Invalid = 0 }
+		public enum ModelHash : uint {
+			Invalid = 0,
+			Planter = 0xF415B43E,
+			WoodenDoor = 0x1F03C852,
+			GlassWoodDoubleDoor = 0x698459ED,
+			WoodenBathroomDoor = 0xDBA34D99
+		}
 		public enum AssetStatus {
 			Invalid = 0,
 			Loading = 1,
