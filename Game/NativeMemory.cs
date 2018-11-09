@@ -498,8 +498,6 @@ namespace GTA {
 				return dataArray;
 			}
 
-			// we dont lock this because its only called from the static constructor (before any threads can start)
-			// if that ever changes, it should hold at least a read lock for this whole search
 			public unsafe static byte* FindPattern(string pattern, string mask) {
 				ProcessModule module = Process.GetCurrentProcess().MainModule;
 
