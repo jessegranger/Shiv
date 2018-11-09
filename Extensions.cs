@@ -34,8 +34,7 @@ namespace Shiv {
 
 		public static T Pop<T>(this LinkedList<T> list) {
 			if( list.Count != 0 )
-				try { return list.First.Value; }
-				finally { list.RemoveFirst(); }
+				try { return list.First.Value; } finally { list.RemoveFirst(); }
 			return default;
 		}
 
@@ -61,7 +60,7 @@ namespace Shiv {
 		}
 
 		/// <summary> Add item to the list after the position where pred returns <see langword="true"/>. </summary>
-		public static void AddAfter<T>(this LinkedList<T> list, T item, Func<T,bool> pred) {
+		public static void AddAfter<T>(this LinkedList<T> list, T item, Func<T, bool> pred) {
 			LinkedListNode<T> cur = list.First;
 			while( cur != null && cur.Value != null ) {
 				if( pred(cur.Value) ) {
@@ -73,5 +72,34 @@ namespace Shiv {
 			list.AddLast(item);
 		}
 
+		internal class Pool<T> where T : new() {
+			private ConcurrentStack<T> free = new ConcurrentStack<T>();
+			public T GetItem() => free.TryPop(out T ret) ? ret : new T();
+			public void Release(T item) => free.Push(item);
+		}
+
+		public static bool TryAdd<TK,TV>(this Dictionary<TK,TV> dict, TK k, TV v) {
+			lock( dict ) {
+				try {
+					return dict.ContainsKey(k);
+				} finally { dict[k] = v; }
+			}
+		}
+		public static bool TryRemove<TK, TV>(this Dictionary<TK, TV> dict, TK a, out TV val) {
+			lock( dict ) {
+				if( dict.ContainsKey(a) ) {
+					val = dict[a];
+					dict.Remove(a);
+					return true;
+				}
+				val = default;
+				return false;
+			}
+		}
+		public static void AddOrUpdate<TK, TV>(this Dictionary<TK, TV> dict, TK a, TV b, Func<TK, TV, TV> update) {
+			lock( dict ) {
+				dict[a] = dict.ContainsKey(a) ? update(a, dict[a]) : b;
+			}
+		}
 	}
 }
