@@ -6,6 +6,7 @@ using System.Numerics;
 using static GTA.Native.MemoryAccess;
 using static GTA.Native.Function;
 using static GTA.Native.Hash;
+using System.Collections;
 
 namespace Shiv {
 
@@ -19,7 +20,8 @@ namespace Shiv {
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static float DistanceToSelf(VehicleHandle ent) => DistanceToSelf(Position(ent));
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static float Heading(VehicleHandle ent) => Heading((EntHandle)ent);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static void Heading(VehicleHandle ent, float value) => Heading((EntHandle)ent, value);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static ModelHash GetModel(VehicleHandle ent) => GetModel((EntHandle)ent);
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static VehicleHash GetModel(VehicleHandle ent) => (VehicleHash)GetModel((EntHandle)ent);
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static void GetModelDimensions(VehicleHash model, out Vector3 backLeft, out Vector3 frontRight) => GetModelDimensions((ModelHash)model, out backLeft, out frontRight);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 LeftPosition(VehicleHandle ent) => LeftPosition((EntHandle)ent);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 RightPosition(VehicleHandle ent) => RightPosition((EntHandle)ent);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 FrontPosition(VehicleHandle ent) => FrontPosition((EntHandle)ent);
@@ -53,17 +55,41 @@ namespace Shiv {
 			}
 		}
 
-		public static Vector3 GetClosestVehicleNode(Vector3 pos, RoadType type) {
+		public static bool TryGetClosestVehicleNode(Vector3 pos, RoadType type, out Vector3 node) {
 			var ret = new NativeVector3();
-			unsafe {
-				Call<bool>(GET_CLOSEST_VEHICLE_NODE,
-					PlayerPosition.X, PlayerPosition.Y, PlayerPosition.Z,
-					new IntPtr(&ret),
-					type,
-					3.0f,
-					0);
+			try {
+				unsafe {
+					return Call<bool>(GET_CLOSEST_VEHICLE_NODE, pos, new IntPtr(&ret), type, 3.0f, 0);
+				}
+			} finally {
+				node = ret;
 			}
-			return ret;
+		}
+
+		public static IEnumerable<VehicleNodeData> GetClosestVehicleNodes(Vector3 pos, RoadType type) {
+			uint i = 1;
+			var data = new VehicleNodeData();
+			while( TryGetClosestVehicleNode(pos, type, i, out data.Position, out data.Heading, out data.Kind ) ) {
+				yield return data;
+				i += 1;
+			}
+		}
+
+		public static bool TryGetClosestVehicleNode(Vector3 pos, RoadType type, uint index, out Vector3 node, out float heading, out int id) {
+			var ret = new NativeVector3();
+			float h = 0f;
+			int i = 0;
+			try {
+				unsafe {
+					return Call<bool>(GET_NTH_CLOSEST_VEHICLE_NODE_WITH_HEADING, pos, index,
+						new IntPtr(&ret), new IntPtr(&h), new IntPtr(&i),
+						type, 3.0f, 0);
+				}
+			} finally {
+				node = ret;
+				heading = h;
+				id = i;
+			}
 		}
 
 		public static bool IsInVehicle(PedHandle ent) => ent == PedHandle.Invalid ? false : Call<bool>(IS_PED_IN_ANY_VEHICLE, ent, 0);
@@ -71,6 +97,8 @@ namespace Shiv {
 		public static VehicleHandle CurrentVehicle(PedHandle ped) => ped == PedHandle.Invalid ? VehicleHandle.Invalid :
 			Call<VehicleHandle>(GET_VEHICLE_PED_IS_IN, ped, false);
 
+		public static Vector3 Velocity(VehicleHandle ent) => Velocity((EntHandle)ent);
+		public static void Velocity(VehicleHandle ent, Vector3 value) => Velocity((EntHandle)ent, value);
 		public static float Speed(VehicleHandle ent) => ent == 0 ? 0f : Call<float>(GET_ENTITY_SPEED, ent);
 
 		public static bool IsBigVehicle(VehicleHandle v) => v == 0 ? false : Call<bool>(IS_BIG_VEHICLE, v);
