@@ -54,7 +54,7 @@ namespace Shiv {
 			public Vector3 HitPosition;
 			public Vector3 SurfaceNormal;
 			public Materials Material;
-			public int Entity;
+			public EntHandle Entity;
 			public RaycastResult(int result) {
 		    bool hit;
 		    NativeVector3 hitPos;
@@ -71,7 +71,7 @@ namespace Shiv {
 				HitPosition = hitPos;
 				SurfaceNormal = normal;
 				Material = (Materials)material;
-				Entity = entity;
+				Entity = (EntHandle)entity;
 			}
 		}
 		public static RaycastResult Raycast(Vector3 source, Vector3 target, IntersectOptions options, PedHandle ignoreEntity) => 
@@ -87,5 +87,14 @@ namespace Shiv {
 			m == Materials.car_engine ||
 			m == Materials.car_plastic;
 
+		public static void GetDoorState(ModelHash doorModel, Vector3 pos, out bool locked, out float heading) {
+			bool _lock = true;
+			float h = 0f;
+			unsafe {
+				Call(GET_STATE_OF_CLOSEST_DOOR_OF_TYPE, doorModel, pos, new IntPtr(&_lock), new IntPtr(&h));
+			}
+			locked = _lock;
+			heading = h;
+		}
 	}
 }
