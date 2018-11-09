@@ -17,6 +17,7 @@ namespace Shiv {
 		public static PedHandle Self { get; internal set; } = 0;
 		public static PedHandle[] NearbyHumans { get; internal set; } = new PedHandle[0];
 
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool Exists(PedHandle ent) => Exists((EntHandle)ent);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static IntPtr Address(PedHandle p) => Address((EntHandle)p);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Matrix4x4 Matrix(PedHandle ent) => Matrix((EntHandle)ent);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 Position(PedHandle ent) => Position(Matrix(ent));
@@ -50,7 +51,8 @@ namespace Shiv {
 		public static float Heading(PedHandle ent) => Heading((EntHandle)ent);
 		public static void Heading(PedHandle ent, float value) => Heading((EntHandle)ent, value);
 
-		public static PedHash GetModel(PedHandle ent) => (PedHash)GetModel((EntHandle)ent);
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static void GetModelDimensions(PedHash model, out Vector3 backLeft, out Vector3 frontRight)  => GetModelDimensions((ModelHash)model, out backLeft, out frontRight);
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static PedHash GetModel(PedHandle ent) => (PedHash)GetModel((EntHandle)ent);
 
 		public static bool HasWeapon(PedHandle ent, WeaponHash weap) => ent == 0 ? false : Call<bool>(HAS_PED_GOT_WEAPON, ent, weap);
 
@@ -97,6 +99,12 @@ namespace Shiv {
 		// TODO: proper caching here
 		public static bool CanSee(PedHandle self, VehicleHandle veh, IntersectOptions opts = IntersectOptions.Map | IntersectOptions.Objects) => CanSee(self, (PedHandle)veh, opts);
 		public static bool CanSee(PedHandle self, PedHandle ped, IntersectOptions opts = IntersectOptions.Map | IntersectOptions.Objects) => self == 0 || ped == PedHandle.Invalid ? false : Call<bool>(HAS_ENTITY_CLEAR_LOS_TO_ENTITY, self, ped, opts);
+		public static bool CanSee(PedHandle ped, Vector3 pos, IntersectOptions opts = IntersectOptions.Map | IntersectOptions.Objects ) {
+			Vector3 start = HeadPosition(ped);
+			float len = (start - pos).Length();
+			var result = Raycast(HeadPosition(ped), pos, opts, ped);
+			return result.DidHit ? (start - result.HitPosition).Length() / len > .99f : false;
+		}
 
 		public static void TaskClearAll() => Call(CLEAR_PED_TASKS, Self);
 		public static void TaskClearAll(PedHandle ped) => Call(CLEAR_PED_TASKS, ped);
