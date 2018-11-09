@@ -61,6 +61,12 @@ namespace Shiv {
 			keyBindings[key] = keyBindings.TryGetValue(key, out Action curr) ? (() => { curr(); action(); }) : action;
 		}
 
+		public static void Debug(params string[] args) {
+			Shiv.Log(args);
+		}
+
+		public static Vector3 PathTarget = Vector3.Zero;
+
 	}
 
 	public static class Shiv {
@@ -183,19 +189,45 @@ namespace Shiv {
 			foreach( var script in dead ) Script.Order.Remove(script);
 
 			KeyBind(Keys.N, () => {
-				LookTarget = AimPosition();
-				Sphere.Add(LookTarget, .1f, Color.Blue, 10000);
+				MenuScript.Show(new Menu(.4f, .4f, .2f)
+					.Item("Goals", new Menu(.4f, .4f, .2f)
+						.Item("SmokeAtHome", () => Goals.Push(new SmokeWeedAtHome()))
+					)
+					.Item("Press Key", new Menu(.4f, .4f, .2f)
+						.Item("Context", () => PressControl(2, Control.Context, 200))
+						.Item("ScriptRUp", () => PressControl(2, Control.ScriptRUp, 200))
+						.Item("ScriptRLeft", () => PressControl(2, Control.ScriptRLeft, 200))
+					).Item("Cancel", () => MenuScript.Hide()));
+			});
+			KeyBind(Keys.I, () => {
+				PathTarget = PutOnGround(AimPosition(), 1f);
+				Sphere.Add(PathTarget, .1f, Color.Blue, 10000);
+			});
+			KeyBind(Keys.J, () => {
+				Goals.Push(new WalkTo(PathTarget));
 			});
 			KeyBind(Keys.O, () => {
-				Goals.Push(new DirectMove(AimPosition()));
+				if( CurrentVehicle(Self) != 0 ) {
+					Sphere.Add(AimPosition(), .2f, Color.Blue, 10000);
+					Goals.Push(new DirectDrive(AimPosition()) { StoppingRange = 2f });
+				} else {
+					Goals.Push(new DirectMove(AimPosition()));
+				}
 			});
 			KeyBind(Keys.End, () => {
 				Goals.Clear();
 				TaskClearAll();
 				LookTarget = Vector3.Zero;
+				PathTarget = Vector3.Zero;
+				pathResult = Enumerable.Empty<Vector3>();
+			});
+			KeyBind(Keys.X, () => {
+				Delete(NearbyObjects[0]);
 			});
 
 		}
+
+		private static IEnumerable<Vector3> pathResult = Enumerable.Empty<Vector3>();
 
 		public static uint LastGameTime = GameTime;
 		public static uint FrameCount = 0;
@@ -234,8 +266,9 @@ namespace Shiv {
 
 				int dt = (int)GameTime - (int)LastGameTime;
 				LastGameTime = GameTime;
-				if( dt != 0 ) fps.Add(1000 / dt);
-				CurrentFPS = 1000 / dt;
+				if( dt != 0 ) {
+					fps.Add( CurrentFPS = 1000 / dt);
+				}
 				UI.DrawText($"Humans: {NearbyHumans.Length} Vehicles: {NearbyVehicles.Length}");
 				UI.DrawText($"FPS:{fps.Value:F2} Position: {Round(PlayerPosition, 2)}");
 
@@ -253,6 +286,48 @@ namespace Shiv {
 					}
 				}
 				Script.Order.Visit(s => s.OnTick());
+
+				foreach( var n in NearbyObjects.Take(10) ) {
+					UI.DrawTextInWorld(Position(n), $"{n}");
+				}
+
+				/*
+				if( NearbyObjects.Length > 0 ) {
+					var m = Matrix(NearbyObjects[0]);
+					var model = GetModel(NearbyObjects[0]);
+					UI.DrawTextInWorld(Position(m), $"{model:X}");
+					GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
+					UI.DrawText($"{Round(backLeft, 2)} {Round(frontRight, 2)}");
+					//frontRight.Z /= 2;
+					if( true || Math.Max(
+						Math.Abs(backLeft.X - frontRight.X),
+						Math.Max(
+							Math.Abs(backLeft.Y - frontRight.Y),
+							Math.Abs(backLeft.Z - frontRight.Z)
+						)) > .00f )
+					{
+						backLeft.Z = 0;
+						var unique = new HashSet<NodeHandle>();
+						foreach( var n in NavMesh.GetAllHandlesInBox(m, backLeft, frontRight) ) {
+							if( !unique.Contains(n) ) {
+								unique.Add(n);
+								UI.DrawTextInWorld(NavMesh.Position(n), "X");
+							}
+							// DrawSphere(NavMesh.Position(n), .1f, Color.Red);
+						}
+					}
+				}
+				*/
+
+				if( PathTarget != Vector3.Zero ) {
+					pathResult = Pathfinder.FindPath(PlayerPosition, PathTarget);
+					if( pathResult != null ) {
+						foreach( var v in pathResult ) {
+							DrawSphere(v, .1f, Color.Blue);
+						}
+					}
+				}
+
 			} catch( Exception err ) {
 				Log($"Uncaught error in Main.OnTick: {err.Message} {err.StackTrace}");
 				OnAbort();
