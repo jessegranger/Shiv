@@ -39,10 +39,15 @@ namespace Shiv {
 		public static float Rad2Deg(double rad) { return (float)(rad * 180 / Math.PI); }
 		public static float Deg2Rad(double deg) { return (float)(deg * Math.PI / 180); }
 
-		public static float AbsHeading(float h) => h < 0 ? h + 180f : h;
+		public static float AbsHeading(float h) {
+			return h < 0 ? h + 360 : h;
+		}
 		public static float Heading(Matrix4x4 m) {
-			var f = Forward(m);
-			return Rad2Deg(Math.Atan2(f.Y, f.X));
+			return Rad2Deg(Math.Atan2(m.M21, m.M22));
+		}
+
+		public static bool Between(float min, float max, float value) {
+			return (value >= min) && (value <= max);
 		}
 
 		public static float Clamp(float x, float min, float max) => Math.Max(min, Math.Min(max, x));
