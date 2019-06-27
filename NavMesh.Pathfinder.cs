@@ -55,22 +55,20 @@ namespace Shiv {
 
 		}
 	}
+	public class Path : IEnumerable<NodeHandle> {
+		// Path is a type alias for a lazy list of NodeHandles
+		// iter comes from UnrollPath inside FindPath
+		private IEnumerable<NodeHandle> iter;
+		public Path(IEnumerable<NodeHandle> path) => iter = path;
+		public IEnumerator<NodeHandle> GetEnumerator() => iter.GetEnumerator();
+		IEnumerator IEnumerable.GetEnumerator() => iter.GetEnumerator();
+		public void Draw() => this.Select(Position)
+				.Each(DrawSphere(.06f, Color.Yellow));
+	}
+
 	public static partial class Global {
 
-
-
-		public class Path : IEnumerable<NodeHandle> {
-			// Path is a type alias for a lazy list of NodeHandles
-			// iter comes from UnrollPath inside FindPath
-			private IEnumerable<NodeHandle> iter;
-			public Path(IEnumerable<NodeHandle> path) => iter = path;
-			public IEnumerator<NodeHandle> GetEnumerator() => iter.GetEnumerator();
-			IEnumerator IEnumerable.GetEnumerator() => iter.GetEnumerator();
-
-			public void Draw() => this.Select(Position)
-					.Each(DrawSphere(.06f, Color.Yellow));
-		}
-
+		public static Vector3 Position(Path path) => path == null ? Vector3.Zero : Position(path.FirstOrDefault());
 
 	}
 
