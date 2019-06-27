@@ -32,12 +32,12 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
-    <Compile Include="Controls.cs" />
     <Compile Include="Future.cs" />
     <Compile Include="Goals\TakeCover.cs" />
+    <Compile Include="Util\MovingAverage.cs" />
     <Compile Include="Scripts\Console.cs" />
     <Compile Include="Scripts\Menu.cs" />
-    <Compile Include="TaskWander.cs" />
+    <Compile Include="Goals\TaskWander.cs" />
     <Compile Include="Util\Blacklist.cs" />
     <Compile Include="Game\Controls.cs" />
     <Compile Include="Game\Enums.cs" />
@@ -66,7 +66,7 @@
     <Compile Include="Game\Vehicle.cs" />
     <Compile Include="Scripts\Senses.cs" />
     <Compile Include="Scripts\UI.cs" />
-    <Compile Include="VehicleMesh.cs" />
+    <Compile Include="Scripts\VehicleMesh.cs" />
   </ItemGroup>
   <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
