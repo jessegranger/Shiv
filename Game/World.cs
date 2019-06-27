@@ -7,7 +7,7 @@ using static GTA.Native.Function;
 using static GTA.Native.Hash;
 
 namespace Shiv {
-	public static partial class Globals {
+	public static partial class Global {
 
 		public static PointF ScreenCoords(Vector3 pos) {
 			float x, y;
@@ -17,7 +17,7 @@ namespace Shiv {
 			return new PointF(x, y);
 		} // TODO: measure the speed of this versus using CameraMatrix directly
 
-		public static Vector3 PutOnGround(Vector3 pos, float off = 0) => new Vector3(pos.X, pos.Y, off + GetGroundZ(pos));
+		public static Vector3 PutOnGround(Vector3 pos, float off = 0) => pos == Vector3.Zero ? pos : new Vector3(pos.X, pos.Y, off + GetGroundZ(pos));
 		public static float GetGroundZ(Vector3 pos) {
 			float z = 0;
 			unsafe {
@@ -29,6 +29,7 @@ namespace Shiv {
 		}
 
 		public static void DrawLine(Vector3 start, Vector3 end, Color color) => Call(DRAW_LINE, start, end, color);
+		public static Action<Vector3> DrawSphere(float radius, Color color) => (Vector3 v) => DrawSphere(v, radius, color);
 		public static void DrawSphere(Vector3 pos, float radius, Color color) {
 			Call(DRAW_MARKER, MarkerType.DebugSphere, 
 				pos, Vector3.Zero, Vector3.Zero,

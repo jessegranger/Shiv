@@ -14,7 +14,7 @@ using static GTA.Native.Function;
 
 namespace Shiv {
 
-	public static partial class Globals {
+	public static partial class Global {
 
 		public static EntHandle[] NearbyObjects { get; internal set; } = new EntHandle[0];
 		public static EntHandle[] NearbyPickups { get; internal set; } = new EntHandle[0];
@@ -59,7 +59,7 @@ namespace Shiv {
 		}
 
 		public static ModelHash GetModel(EntHandle ent) => ent == 0 ? 0 : Call<ModelHash>(GET_ENTITY_MODEL, ent);
-		public static bool IsValid(ModelHash model) => model == 0 ? false : Call<bool>(IS_MODEL_VALID, model);
+		public static bool IsValid(ModelHash model) => model == ModelHash.Invalid ? false : Call<bool>(IS_MODEL_VALID, model);
 		public static bool IsLoaded(ModelHash model) => model == 0 ? false : Call<bool>(HAS_MODEL_LOADED, model);
 		public static AssetStatus RequestModel(VehicleHash model) => RequestModel((ModelHash)model);
 		public static AssetStatus RequestModel(PedHash model) => RequestModel((ModelHash)model);
@@ -169,6 +169,8 @@ namespace Shiv {
 
 		public static bool Exists(BlipHandle blip) => Call<bool>(DOES_BLIP_EXIST, blip);
 		public static EntHandle GetEntity(BlipHandle blip) => Call<EntHandle>(GET_BLIP_INFO_ID_ENTITY_INDEX, blip);
+		public static BlipHandle GetBlip(VehicleHandle ent) => Call<BlipHandle>(GET_BLIP_FROM_ENTITY, ent);
+		public static BlipHandle GetBlip(PedHandle ent) => Call<BlipHandle>(GET_BLIP_FROM_ENTITY, ent);
 		public static BlipHandle GetBlip(EntHandle ent) => Call<BlipHandle>(GET_BLIP_FROM_ENTITY, ent);
 		public static void ShowRoute(BlipHandle blip, bool value) => Call(SET_BLIP_ROUTE, blip, value);
 		public static bool IsFlashing(BlipHandle blip) => Call<bool>(IS_BLIP_FLASHING, blip);
@@ -187,7 +189,23 @@ namespace Shiv {
 		public static void Position(BlipHandle blip, Vector3 pos) => Call(SET_BLIP_COORDS, blip, pos);
 		public static void Rotation(BlipHandle blip, int value) => Call(SET_BLIP_ROTATION, blip, value);
 		public static void Scale(BlipHandle blip, float value) => Call(SET_BLIP_SCALE, blip, value);
-		public static BlipColor GetColor(BlipHandle blip) => blip == 0 ? default : Call<BlipColor>(GET_BLIP_COLOUR, blip);
+		public static BlipHUDColor GetBlipHUDColor(BlipHandle blip) => Call<BlipHUDColor>(GET_BLIP_HUD_COLOUR, blip);
+		public static BlipColor GetBlipColor(BlipHandle blip) => Call<BlipColor>(GET_BLIP_COLOUR, blip);
+		public static Color GetColor(BlipHandle blip) {
+			if (blip == BlipHandle.Invalid) return default;
+			return GetColor(GetBlipHUDColor(blip));
+		}
+		public static Color GetColor(BlipHUDColor color) {
+			if( color == BlipHUDColor.Invalid ) return default;
+			switch( color ) {
+				case BlipHUDColor.Blue: return Color.Blue;
+				case BlipHUDColor.Red: return Color.Red;
+				case BlipHUDColor.Yellow: return Color.Yellow;
+				case BlipHUDColor.Green: return Color.Green;
+				default: return Color.White;
+			}
+		}
+		public static IEnumerable<BlipHandle> GetAllBlips() => GetAllBlips(BlipSprite.Standard);
 		public static IEnumerable<BlipHandle> GetAllBlips(BlipSprite type) {
 			BlipHandle h = Call<BlipHandle>(GET_FIRST_BLIP_INFO_ID, type);
 			while( Exists(h) ) {
@@ -197,6 +215,7 @@ namespace Shiv {
 		}
 
 		public static void AttachTo(EntHandle a, EntHandle b, BoneIndex bone = BoneIndex.Invalid, Vector3 offset = default, Vector3 rot = default) => Call(ATTACH_ENTITY_TO_ENTITY, a, b, bone, offset, rot, 0, 0, 0, 0, 2, 1);
+		public static bool IsAttached(PedHandle a) => Call<bool>(IS_ENTITY_ATTACHED, a);
 		public static bool IsAttached(EntHandle a) => Call<bool>(IS_ENTITY_ATTACHED, a);
 		public static bool IsAttachedTo(EntHandle a, EntHandle b) => Call<bool>(IS_ENTITY_ATTACHED_TO_ENTITY, a, b);
 		public static void Detach(EntHandle ent) => Call(DETACH_ENTITY, ent, true, true);

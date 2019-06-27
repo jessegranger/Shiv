@@ -11,7 +11,7 @@ using static GTA.Native.Function;
 
 namespace Shiv {
 
-	public static partial class Globals {
+	public static partial class Global {
 
 
 		public static PedHandle Self { get; internal set; } = 0;
@@ -120,12 +120,22 @@ namespace Shiv {
 		public static int GetScriptTaskStatus(PedHandle p, TaskStatusHash hash) => Call<int>(GET_SCRIPT_TASK_STATUS, p, hash);
 		public static void DebugAllTasks(PedHandle ent) {
 			var s = ScreenCoords(HeadPosition(ent));
+			UI.DrawText(s.X, s.Y, $"Model: {GetModel(ent)}");
+			s.Y += .019f;
 			Enum.GetValues(typeof(TaskID)).Each<TaskID>(id => {
 				if( IsTaskActive(ent, id) ) {
 					UI.DrawText(s.X, s.Y, $"{id}");
 					s.Y += .019f;
 				}
 			});
+		}
+		public static void AsSequence(Action a) {
+			int seq;
+			unsafe { Call(OPEN_SEQUENCE_TASK, new IntPtr(&seq)); }
+			a();
+			Call(CLOSE_SEQUENCE_TASK, seq);
+			Call(TASK_PERFORM_SEQUENCE, Self, seq);
+			unsafe { Call(CLEAR_SEQUENCE_TASK, new IntPtr(&seq)); }
 		}
 	}
 

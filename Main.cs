@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -11,14 +10,19 @@ using System.Runtime.InteropServices;
 using GTA.Native;
 using static GTA.Native.Function;
 using static GTA.Native.Hash;
-using static Shiv.Globals;
+using static Shiv.Global;
 using static Shiv.Imports;
 using Keys = System.Windows.Forms.Keys;
+using Shiv.Missions;
+using System.Threading.Tasks;
+using System.Threading;
 
 namespace Shiv {
 
 
-	public static partial class Globals {
+	public static partial class Global {
+
+		public static Stopwatch TotalTime = new Stopwatch();
 
 		public static uint GenerateHash(string s) => MemoryAccess.GetHashKey(s);
 
@@ -26,6 +30,8 @@ namespace Shiv {
 
 		/// <summary> Number of milliseconds since the game launched. </summary>
 		public static uint GameTime { get; internal set; } = 0;
+		public static bool GamePaused { get; private set; } = false;
+		public static void TogglePause() => Call(SET_GAME_PAUSED, GamePaused = !GamePaused);
 
 		public static float CurrentFPS { get; internal set; } = 0f;
 
@@ -35,6 +41,7 @@ namespace Shiv {
 		public static VehicleHandle PlayerVehicle { get; internal set; } = VehicleHandle.Invalid;
 		public static IntPtr CameraAddress { get; internal set; } = IntPtr.Zero;
 		public static Matrix4x4 CameraMatrix { get; internal set; }
+		public static int SequenceProgress { get; internal set; } = 0;
 
 		public class MovingAverage {
 			public float Value = 0f;
@@ -55,17 +62,6 @@ namespace Shiv {
 				}
 			};
 		}
-
-		internal static Dictionary<Keys, Action> keyBindings = new Dictionary<Keys, Action>();
-		public static void KeyBind(Keys key, Action action) {
-			keyBindings[key] = keyBindings.TryGetValue(key, out Action curr) ? (() => { curr(); action(); }) : action;
-		}
-
-		public static void Debug(params string[] args) {
-			Shiv.Log(args);
-		}
-
-		public static Vector3 PathTarget = Vector3.Zero;
 
 	}
 
@@ -148,12 +144,19 @@ namespace Shiv {
 		});
 
 		private static TextWriter LogFile;
-		private static Stopwatch TotalTime = new Stopwatch();
 		public static void Log(params string[] strings) {
+			string msg = $"{TotalTime.Elapsed} " + string.Join(" ", strings);
 			if( LogFile != null ) {
-				LogFile.WriteLine($"{TotalTime.Elapsed} " + String.Join(" ", strings));
-				LogFile.Flush();
+				try {
+					LogFile.WriteLine(msg);
+					LogFile.Flush();
+				} catch( ObjectDisposedException ) {
+					LogFile = null;
+				} catch( IOException ) {
+					LogFile = null;
+				}
 			}
+			Console.Log(msg);
 		}
 
 		private static void CreateScript(Type t) {
@@ -167,79 +170,226 @@ namespace Shiv {
 			}
 		}
 
+
+		private static Random random = new Random();
 		public static void OnInit(TextWriter logFile) {
 			LogFile = logFile;
 			TotalTime.Start();
-			Log("OnInit()");
 			GameVersion = (VersionNum)GetGameVersion();
-			Log($"OnInit() GameVersion: {GameVersion}");
-			// Create all the scripts first so they can order themselves
+			Log($"Initializing game version {GameVersion}...");
+			// Create all the scripts first so they can order themselves, using DependsOn attribute
 			Assembly.GetExecutingAssembly().GetTypes().Each(CreateScript);
-			// Directory.GetFiles("scripts", "*.script.dll", SearchOption.AllDirectories) .Each(path => Assembly.LoadFile(path).GetTypes().Each(CreateScript));
 			// Then use OnInit() on them in their preferred order.
-			var dead = new List<Script>();
-			foreach( Script script in Script.Order ) {
+			Log("Script Order: " + string.Join(" ", Script.Order.Select(s => s.GetType().Name.Split('.').Last())));
+			var cur = Script.Order.First;
+			while( cur != null && cur.Value != null ) {
+				var script = cur.Value;
 				try {
 					script.OnInit();
+					cur = cur.Next;
 				} catch( Exception err ) {
 					Log($"Failed to init {script.GetType().Name}: {err.Message} {err.StackTrace}");
-					dead.Add(script);
+					cur = Script.Order.RemoveAndContinue(cur);
 				}
 			}
-			foreach( var script in dead ) Script.Order.Remove(script);
 
-			KeyBind(Keys.N, () => {
+			Controls.Bind(Keys.Pause, () => TogglePause());
+			Controls.Bind(Keys.N, () => {
 				MenuScript.Show(new Menu(.4f, .4f, .2f)
 					.Item("Goals", new Menu(.4f, .4f, .2f)
-						.Item("SmokeAtHome", () => Goals.Push(new SmokeWeedAtHome()))
+						.Item("Mission01", new Menu(.4f, .4f, .2f)
+							.Item("Approach", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.Approach }))
+							.Item("Threaten", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.Threaten }))
+							.Item("GotoMoney", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.GotoMoney }))
+							.Item("GetMoney", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.GetMoney }))
+							.Item("WalkOut", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.WalkOut }))
+							.Item("MoveToCover", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.MoveToCover }))
+							.Item("KillAllCops", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.KillAllCops }))
+						)
+						.Item("Wander", () => Goals.Immediate(new TaskWander()) )
+						.Item("Explore", () => Goals.Immediate(new QuickGoal(() => {
+							Goals.Immediate(new WalkTo(Position(NavMesh.LastGrown)));
+							return GoalStatus.Active;
+						})))
 					)
+					.Item("Show Path To", new Menu(.4f, .4f, .2f)
+						.Item("Red Blip", () => Goals.Immediate(new DebugPath(Position(GetAllBlips().FirstOrDefault(b => GetColor(b) == Color.Red)))))
+						.Item("Green Blip", () => Goals.Immediate(new DebugPath(Position(GetAllBlips().FirstOrDefault(b => GetColor(b) == Color.Green)))))
+					)
+					.Item("Drive To", new Menu(.4f, .4f, .2f)
+						.Item("Yellow Blip", () => Goals.Immediate(new TaskDrive(Position(GetAllBlips().FirstOrDefault(b => GetColor(b) == Color.Yellow)))))
+					)
+					.Item("Save NavMesh", () => NavMesh.SaveToFile())
+					.Item("Toggle Blips", () => BlipSense.ShowBlips = !BlipSense.ShowBlips)
 					.Item("Press Key", new Menu(.4f, .4f, .2f)
 						.Item("Context", () => PressControl(2, Control.Context, 200))
 						.Item("ScriptRUp", () => PressControl(2, Control.ScriptRUp, 200))
 						.Item("ScriptRLeft", () => PressControl(2, Control.ScriptRLeft, 200))
 					).Item("Cancel", () => MenuScript.Hide()));
 			});
-			KeyBind(Keys.I, () => {
-				PathTarget = PutOnGround(AimPosition(), 1f);
-				Sphere.Add(PathTarget, .1f, Color.Blue, 10000);
-			});
-			KeyBind(Keys.J, () => {
-				Goals.Push(new WalkTo(PathTarget));
-			});
-			KeyBind(Keys.O, () => {
+			Controls.Bind(Keys.O, () => {
 				if( CurrentVehicle(Self) != 0 ) {
 					Sphere.Add(AimPosition(), .2f, Color.Blue, 10000);
-					Goals.Push(new DirectDrive(AimPosition()) { StoppingRange = 2f });
+					Goals.Immediate(new DirectDrive(AimPosition()) { StoppingRange = 2f });
 				} else {
-					Goals.Push(new DirectMove(AimPosition()));
+					Goals.Immediate(new DirectMove(AimPosition()));
 				}
 			});
-			KeyBind(Keys.End, () => {
+			Controls.Bind(Keys.G, () => {
+
+				var future = new Future<NodeHandle>(() => {
+					return NavMesh.FirstOrDefault(PlayerNode, 10, (n) => !NavMesh.IsGrown(n));
+				});
+				Goals.Immediate(new QuickGoal("Find Growable", () => {
+					if( future.IsFailed() ) {
+						return GoalStatus.Failed;
+					}
+					if( future.IsReady() ) {
+						NavMesh.Grow(future.GetResult(), 10);
+						return GoalStatus.Complete;
+					}
+					return GoalStatus.Active;
+				}));
+
+				/*
+				Goals.Immediate(new QuickGoal(() => {
+					var pos = PutOnGround(AimPosition(), 1f);
+					var head = HeadPosition(Self);
+					// var dir = pos - head;
+					// var dist = dir.Length();
+					// pos = head + Vector3.Normalize(dir) * dist * .95f;
+					var targetNode = GetHandle(pos);
+					var nodePos = Position(targetNode);
+					var money = Position(GetHandle(PutOnGround(Position(GetAllBlips().FirstOrDefault(b => GetBlipColor(b) == BlipColor.MissionGreen)), 1f)));
+					DrawLine(PlayerPosition, money, Color.Purple);
+					DrawSphere(nodePos, .07f, Color.LightGreen);
+					DrawLine(head, nodePos, Color.LightGreen);
+					NavMesh.IsGrown(targetNode, false);
+					NavMesh.Grow(targetNode, 5, debug: true);
+					return GoalStatus.Active;
+				}));
+				*/
+
+				/*
+				Goals.Immediate(new QuickGoal(() => {
+					Goals.Immediate(new WalkTo(Position(NavMesh.LastGrown)));
+					return GoalStatus.Active;
+				}));
+				*/
+
+				/*
+				var pos = PutOnGround(AimPosition(), 1f);
+				var targetNode = GetHandle(pos);
+				var startNode = PlayerNode;
+				var blocked = Pathfinder.GetBlockedNodes(false, true, false);
+				var future = new Future<IEnumerable<NodeHandle>>(() => Pathfinder.FindPath(startNode, targetNode, blocked, 10000, false));
+				Goals.Immediate(new QuickGoal(() => {
+					if( future.IsReady ) {
+						foreach(var step in future.Result) {
+							DrawSphere(Position(step), .06f, Color.Yellow);
+						}
+						foreach(var node in blocked) {
+							var p = Position(node);
+							if( DistanceToSelf(p) < 8f ) {
+								DrawSphere(p, .05f, Color.Red);
+							}
+						}
+					}
+					return GoalStatus.Active;
+				}));
+				*/
+
+				/*
+				var money = PutOnGround(Position(GetAllBlips(BlipSprite.Standard).FirstOrDefault(b => GetBlipColor(b) == BlipColor.MissionGreen)), 1.5f);
+				NavMesh.Grow(GetHandle(money), 5);
+				var future = new Future<IEnumerable<NodeHandle>>();
+				uint started = 0;
+				var blocked = Pathfinder.GetBlockedNodes(false, true, false);
+				Goals.Immediate(new QuickGoal(() => {
+					if( started == 0 ) {
+						started = GameTime;
+						var startNode = PlayerNode;
+						var targetNode = GetHandle(money);
+						Log($"Starting future");
+						ThreadPool.QueueUserWorkItem((object arg) => {
+							Log("Starting work inside thread.");
+							future.Resolve(Pathfinder.FindPath(startNode, targetNode, blocked, 10000, false));
+							Log("Finished work inside thread.");
+						});
+					}
+					if( future.IsFailed ) {
+						return GoalStatus.Failed;
+					}
+					float chance = Clamp(200f / (blocked.Count + 1), 0f, 1f);
+					foreach( var item in blocked ) {
+						var pos = Position(item);
+						if( DistanceToSelf(pos) < 8f ) {
+							DrawSphere(Position(item), .05f, Color.Red);
+						}
+					}
+					DrawLine(HeadPosition(Self), money, Color.Green);
+					DrawLine(HeadPosition(Self), Position(GetHandle(money)), Color.Teal);
+					DrawSphere(Position(GetHandle(money)), .05f, Color.Purple);
+					UI.DrawText($"Money: {money} {GetHandle(money)} {Position(GetHandle(money))}");
+					UI.DrawText(.5f, .6f, $"{blocked.Count} blocked in {GameTime - started}ms");
+					UI.DrawText(.5f, .62f, $"{chance * 100}% chance of showing blocked node"); 
+					if( future.IsReady ) {
+						foreach( var step in future.Result ) {
+							DrawSphere(Position(step), .06f, Color.Yellow);
+						}
+						if( future.Result.Count() == 0 ) {
+							started = 0;
+						}
+						// var path = future.Result.Take(4);
+						// if( FollowPath(path.Select(Position)) == MoveResult.Complete ) {
+							// future.Result = future.Result.Skip(1);
+						// }
+						// return GoalStatus.Complete;
+					}
+					return GoalStatus.Active;
+				}));
+				*/
+
+				// Goals.Immediate(new WalkTo(Position(NearbyHumans.FirstOrDefault())));
+			});
+			Controls.Bind(Keys.End, () => {
 				Goals.Clear();
 				TaskClearAll();
-				LookTarget = Vector3.Zero;
-				PathTarget = Vector3.Zero;
-				pathResult = Enumerable.Empty<Vector3>();
+				AimTarget = Vector3.Zero;
+				AimAtHead = PedHandle.Invalid;
+				KillTarget = PedHandle.Invalid;
+				WalkTarget = Vector3.Zero;
 			});
-			KeyBind(Keys.X, () => {
-				Delete(NearbyObjects[0]);
+			Controls.Bind(Keys.X, () => {
+				NavMesh.Visit(PlayerNode, 2, (node) => NavMesh.Remove(node));
 			});
+			Controls.Bind(Keys.B, () => {
+				NavMesh.ShowEdges = !NavMesh.ShowEdges;
+			});
+			// Controls.Bind(Keys.F, () => {
+			// AimTarget = AimPosition(); // HeadPosition(DangerSense.NearbyDanger[0]);
+			// Goals.Immediate(new TaskWalk(Position(GetAllBlips(BlipSprite.Standard).Where(blip => GetBlipColor(blip) == BlipColor.MissionYellow).FirstOrDefault())));
+			/*
+			AimAtHead = NearbyHumans.FirstOrDefault(p =>
+				Exists(p) &&
+				IsAlive(p) &&
+				CanSee(Self, p) &&
+				GetBlipHUDColor(GetBlip(p)) == BlipHUDColor.Blue
+			);
+			*/
+			// Goals.Immediate(new TakeCover(AimPosition()));
+			// Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.TakeCover });
+
+			// Items(BlipSprite.Standard).Each(s => { Log($"Blip Colors ({s}): ", string.Join(" ", GetAllBlips(s).Select(b => GetBlipHUDColor(b).ToString()))); });
+			// });
 
 		}
-
-		private static IEnumerable<Vector3> pathResult = Enumerable.Empty<Vector3>();
 
 		public static uint LastGameTime = GameTime;
 		public static uint FrameCount = 0;
 
 		public static MovingAverage fps = new MovingAverage(60);
 
-		public struct KeyEvent {
-			public Keys key;
-			public bool downBefore;
-			public bool upNow;
-		}
-		public static ConcurrentQueue<KeyEvent> keyEvents = new ConcurrentQueue<KeyEvent>();
 
 		public static void OnTick() {
 			var w = new Stopwatch();
@@ -257,6 +407,7 @@ namespace Shiv {
 				PlayerMatrix = Matrix(Self);
 				PlayerPosition = Position(PlayerMatrix);
 				PlayerVehicle = CurrentVehicle(Self);
+				SequenceProgress = Self == 0 ? -1 : Call<int>(GET_SEQUENCE_PROGRESS, Self);
 
 				// throttled state refreshers
 				RefreshHumans(); // scripts should use the static NearbyHumans, NearbyVehicles, etc
@@ -267,66 +418,35 @@ namespace Shiv {
 				int dt = (int)GameTime - (int)LastGameTime;
 				LastGameTime = GameTime;
 				if( dt != 0 ) {
-					fps.Add( CurrentFPS = 1000 / dt);
+					fps.Add(1000 / dt);
 				}
-				UI.DrawText($"Humans: {NearbyHumans.Length} Vehicles: {NearbyVehicles.Length}");
-				UI.DrawText($"FPS:{fps.Value:F2} Position: {Round(PlayerPosition, 2)}");
+				CurrentFPS = fps.Value;
 
 				// run any actions in response to key strokes
-				while( keyEvents.TryDequeue(out KeyEvent evt) ) {
-					if( (!evt.downBefore) && keyBindings.TryGetValue(evt.key, out Action action) ) {
-						try {
-							action();
-						} catch( Exception err ) {
-							Log($"OnKey({evt.key}) exception from key-binding: {err.Message} {err.StackTrace}");
-							keyBindings.Remove(evt.key);
-						}
-					} else {
-						Script.Order.Visit(s => s.OnKey(evt.key, evt.downBefore, evt.upNow));
-					}
-				}
+				Controls.OnTick();
+
+				// run all Script instances in order
 				Script.Order.Visit(s => s.OnTick());
 
-				foreach( var n in NearbyObjects.Take(10) ) {
-					UI.DrawTextInWorld(Position(n), $"{n}");
-				}
+
+				// Pathfinder.FindPath(PlayerPosition, Position(GetHandle(PutOnGround(AimPosition(),1f))), debug: true);
+				// NavMesh.DebugVehicle();
+				// NavMesh.FindCoverBehindVehicle(Position(DangerSense.NearbyDanger.FirstOrDefault())).ToArray();
 
 				/*
-				if( NearbyObjects.Length > 0 ) {
-					var m = Matrix(NearbyObjects[0]);
-					var model = GetModel(NearbyObjects[0]);
-					UI.DrawTextInWorld(Position(m), $"{model:X}");
-					GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
-					UI.DrawText($"{Round(backLeft, 2)} {Round(frontRight, 2)}");
-					//frontRight.Z /= 2;
-					if( true || Math.Max(
-						Math.Abs(backLeft.X - frontRight.X),
-						Math.Max(
-							Math.Abs(backLeft.Y - frontRight.Y),
-							Math.Abs(backLeft.Z - frontRight.Z)
-						)) > .00f )
-					{
-						backLeft.Z = 0;
-						var unique = new HashSet<NodeHandle>();
-						foreach( var n in NavMesh.GetAllHandlesInBox(m, backLeft, frontRight) ) {
-							if( !unique.Contains(n) ) {
-								unique.Add(n);
-								UI.DrawTextInWorld(NavMesh.Position(n), "X");
-							}
-							// DrawSphere(NavMesh.Position(n), .1f, Color.Red);
-						}
+				int visitCount = 0;
+				Vector3 prevPos = Vector3.Zero;
+				NavMesh.Visit(PlayerNode, 2, (n) => {
+					DrawSphere(Position(n), .1f, Color.Orange);
+					var pos = Position(n) + (Up * visitCount / 50);
+					UI.DrawTextInWorld(pos, $"{visitCount}");
+					if( prevPos != Vector3.Zero ) {
+						DrawLine(prevPos, pos, Color.Yellow);
 					}
-				}
+					prevPos = pos;
+					visitCount++;
+				});
 				*/
-
-				if( PathTarget != Vector3.Zero ) {
-					pathResult = Pathfinder.FindPath(PlayerPosition, PathTarget);
-					if( pathResult != null ) {
-						foreach( var v in pathResult ) {
-							DrawSphere(v, .1f, Color.Blue);
-						}
-					}
-				}
 
 			} catch( Exception err ) {
 				Log($"Uncaught error in Main.OnTick: {err.Message} {err.StackTrace}");
@@ -341,15 +461,15 @@ namespace Shiv {
 				| (shift ? Keys.Shift : 0)
 				| (ctrl ? Keys.Control : 0)
 				| (alt ? Keys.Alt : 0);
-			keyEvents.Enqueue(new KeyEvent() { key = k, downBefore = wasDownBefore, upNow = isUpNow });
+			Controls.Enqueue(k, wasDownBefore, isUpNow);
 		}
 
 		public static void OnAbort() {
 			Log("Main: OnAbort()");
 			// signal all scripts to shutdown cleanly
 			Script.Order.Visit(s => {
-				s.OnAbort(); 
-				return true; // tell Visit to remove this from .Order
+				s.OnAbort();
+				return true; // tell Visit to remove this from Script.Order
 			});
 			Log("OnAbort Finished.");
 		}

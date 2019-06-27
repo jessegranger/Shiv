@@ -7,6 +7,7 @@ using System.Windows.Forms;
 namespace Shiv {
 	public abstract class Script : IDisposable {
 		internal static LinkedList<Script> Order = new LinkedList<Script>();
+		internal static List<String> Failures = new List<string>();
 		internal bool disposed = false;
 		internal Script() {
 			foreach( DependOn a in GetType().GetCustomAttributes<DependOn>(true) ) {
@@ -19,7 +20,7 @@ namespace Shiv {
 
 		public virtual void Dispose() => disposed = true;
 
-		public virtual void OnKey(Keys key, bool wasDownBefore, bool isUpNow) { }
+		public virtual bool OnKey(Keys key, bool wasDownBefore, bool isUpNow) { return false; }
 		public virtual void OnInit() { }
 		public virtual void OnTick() { }
 		public virtual void OnAbort() { }

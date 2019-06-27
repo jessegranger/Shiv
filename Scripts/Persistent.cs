@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Drawing;
 using GTA.Native;
-using static Shiv.Globals;
+using static Shiv.Global;
 using System.Numerics;
 using System.Collections.Concurrent;
 using System.Linq;

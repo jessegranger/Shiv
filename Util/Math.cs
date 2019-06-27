@@ -2,6 +2,8 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Collections.Generic;
 
 namespace Shiv {
 
@@ -14,7 +16,7 @@ namespace Shiv {
 		public static implicit operator NativeVector3(Vector3 value) => new NativeVector3() { X = value.X, Y = value.Y, Z = value.Z };
 	}
 
-	public static partial class Globals {
+	public static partial class Global {
 		public static readonly Vector3 North = new Vector3(0, 1, 0);
 		public static readonly Vector3 South = new Vector3(0, -1, 0);
 		public static readonly Vector3 East = new Vector3(1, 0, 0);
@@ -22,10 +24,10 @@ namespace Shiv {
 		public static readonly Vector3 Down = new Vector3(0, 0, -1);
 		public static readonly Vector3 Up = new Vector3(0, 0, 1);
 
-		public static Vector3 Right(Matrix4x4 m) => new Vector3(m.M11, m.M12, m.M13);
-		public static Vector3 Forward(Matrix4x4 m) => new Vector3(m.M21, m.M22, m.M23);
-		public static Vector3 UpVector(Matrix4x4 m) => new Vector3(m.M31, m.M32, m.M33);
-		public static Vector3 Position(Matrix4x4 m) => new Vector3(m.M41, m.M42, m.M43);
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 Right(Matrix4x4 m) => new Vector3(m.M11, m.M12, m.M13);
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 Forward(Matrix4x4 m) => new Vector3(m.M21, m.M22, m.M23);
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 UpVector(Matrix4x4 m) => new Vector3(m.M31, m.M32, m.M33);
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 Position(Matrix4x4 m) => new Vector3(m.M41, m.M42, m.M43);
 
 		public static float Round(float z, int digits) => (float)Math.Round(z, digits);
 		public static Vector3 Round(Vector3 v, int digits) {
@@ -44,6 +46,9 @@ namespace Shiv {
 		}
 		public static float Heading(Matrix4x4 m) {
 			return Rad2Deg(Math.Atan2(m.M21, m.M22));
+		}
+		public static float RadHeading(Matrix4x4 m) {
+			return (float)Math.Atan2(m.M21, m.M22);
 		}
 
 		public static bool Between(float min, float max, float value) {
@@ -74,12 +79,32 @@ namespace Shiv {
 			return max;
 		}
 
-		public static float DistanceToSelf(Vector3 pos) => (pos - PlayerPosition).LengthSquared();
+
+		public static Func<Vector3, bool> Within(float range) => (Vector3 v) => DistanceToSelf(v) <= range;
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static float DistanceToSelf(Vector3 pos) => (pos - PlayerPosition).LengthSquared();
 
 		public static Vector3 GetOffsetPosition(Matrix4x4 m, Vector3 offset) => Vector3.Transform(offset, m); // m.TransformPoint(offset);
 
 		/// <summary>  Expensive. </summary>
 		public static Vector3 GetPositionOffset(Matrix4x4 m, Vector3 pos) => Matrix4x4.Invert(m, out Matrix4x4 inv) ? Vector3.Transform(pos, inv) : Vector3.Zero;
 
+		private static Vector3[] BezierOnce(float f, Vector3[] points) {
+			var n = points.Length;
+			var s = 1.0f - f;
+			var Q = new Vector3[n]; // TODO: can I re-use the points array, is it for sure on the heap as a params?
+			for( int i = 0; i < n - 1; i++ ) {
+				Q[i] = (points[i] * s) + (points[i + 1] * f);
+			}
+			return Q;
+		}
+		public static Vector3 Bezier(float percent, params Vector3[] points) {
+			if( points.Length < 1 )
+				return Vector3.Zero;
+			for( int i = 0; i < points.Length - 1; i++ ) {
+				points = BezierOnce(percent, points);
+			}
+			return points[0];
+		}
 	}
 }

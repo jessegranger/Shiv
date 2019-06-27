@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
-using static Shiv.Globals;
+using static Shiv.Global;
 using static GTA.Native.Function;
 using static GTA.Native.Hash;
 using GTA.Native;

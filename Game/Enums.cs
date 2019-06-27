@@ -3,7 +3,7 @@ using System;
 
 namespace Shiv {
 
-	public static partial class Globals {
+	public static partial class Global {
 
 		public enum EntHandle : int { Invalid = 0, ModelInvalid = -1, ModelLoading = -2  }
 		public enum PedHandle : int { Invalid = 0, ModelInvalid = -1, ModelLoading = -2  }
@@ -26,6 +26,17 @@ namespace Shiv {
 		public enum CamHandle : int { Invalid = -1 }
 		public enum GameplayCam : uint { Handle = 0 }
 		public enum CheckpointHandle : int { Invalid = -1 }
+
+		public static bool IsValid(EntHandle ent) => ent != EntHandle.Invalid;
+		public static bool IsValid(PedHandle ent) => ent != PedHandle.Invalid;
+		public static bool IsValid(VehicleHandle ent) => ent != VehicleHandle.Invalid;
+		public static bool IsValid(PlayerHandle ent) => ent != PlayerHandle.Invalid;
+		// see Entities.cs: public static bool IsValid(ModelHash ent) => ent != ModelHash.Invalid;
+		public static bool IsValid(AssetStatus ent) => ent != AssetStatus.Invalid;
+		public static bool IsValid(BlipHandle ent) => ent != BlipHandle.Invalid;
+		public static bool IsValid(BoneIndex ent) => ent != BoneIndex.Invalid;
+		public static bool IsValid(CamHandle ent) => ent != CamHandle.Invalid;
+		public static bool IsValid(CheckpointHandle ent) => ent != CheckpointHandle.Invalid;
 
 		public enum Button {
 			PadLB = 49,
@@ -2978,6 +2989,14 @@ namespace Shiv {
 			Invalid = uint.MaxValue
 		}
 
+		public enum BlipHUDColor {
+			Invalid = 0,
+			Blue = 9,
+			Red = 6,
+			Yellow = 12,
+			Green = 18
+		}
+
 		public enum BlipColor {
 			White,
 			Red,
@@ -2986,7 +3005,9 @@ namespace Shiv {
 			MichaelBlue = 42,
 			FranklinGreen,
 			TrevorOrange,
-			Yellow = 66
+			MissionBlue = 49,
+			MissionYellow = 66,
+			MissionGreen = 69
 		}
 
 		public enum BlipSprite {

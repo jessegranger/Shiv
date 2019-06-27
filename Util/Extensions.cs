@@ -2,9 +2,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace Shiv {
-	public static partial class Globals {
+	public static partial class Global {
 
 		public static IEnumerable<T> Select<S, T>(this Array array, Func<S, T> func) {
 			foreach( S x in array ) yield return func(x);
@@ -20,7 +21,20 @@ namespace Shiv {
 			return list;
 		}
 
-		public static IEnumerable<int> Items(params int[] items) {
+		private static Random random = new Random();
+		public static IEnumerable<T> Random<T>(this IEnumerable<T> list, float chance) {
+			foreach( T x in list ) {
+				if( random.NextDouble() <= chance ) {
+					yield return x;
+				}
+			}
+		}
+		public static T Random<T>(this Array list) {
+			if( list.Length == 0 ) return default;
+			return (T)list.GetValue(random.Next(0, list.Length));
+		}
+
+		public static IEnumerable<T> Items<T>(params T[] items) {
 			foreach( var item in items ) yield return item;
 		}
 
@@ -53,7 +67,8 @@ namespace Shiv {
 				} catch( ScriptComplete ) {
 					cur = list.RemoveAndContinue(cur);
 				} catch( Exception e ) {
-					Shiv.Log($"Uncaught exception in Visit<T>: {e.Message} {e.StackTrace}");
+					Shiv.Log($"Uncaught exception in Visit<T>: {e.Message}");
+					Shiv.Log(e.StackTrace);
 					cur = list.RemoveAndContinue(cur);
 				}
 			}
@@ -99,6 +114,29 @@ namespace Shiv {
 		public static void AddOrUpdate<TK, TV>(this Dictionary<TK, TV> dict, TK a, TV b, Func<TK, TV, TV> update) {
 			lock( dict ) {
 				dict[a] = dict.ContainsKey(a) ? update(a, dict[a]) : b;
+			}
+		}
+
+
+		public static IEnumerable<NodeHandle> InRange(this IEnumerable<NodeHandle> list, float range, uint limit = uint.MaxValue) {
+			foreach( NodeHandle n in list ) {
+				if( DistanceToSelf(n) <= range ) {
+					yield return n;
+					if( --limit <= 0 ) {
+						yield break;
+					}
+				}
+			}
+		}
+
+		public static IEnumerable<Vector3> InRange(this IEnumerable<Vector3> list, float range, uint limit = uint.MaxValue) {
+			foreach( Vector3 n in list ) {
+				if( DistanceToSelf(n) <= range ) {
+					yield return n;
+					if( --limit <= 0 ) {
+						yield break;
+					}
+				}
 			}
 		}
 	}

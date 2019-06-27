@@ -10,7 +10,7 @@ using System.Collections;
 
 namespace Shiv {
 
-	public static partial class Globals {
+	public static partial class Global {
 		public static VehicleHandle[] NearbyVehicles { get; internal set; } = new VehicleHandle[0];
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool Exists(VehicleHandle ent) => Exists((EntHandle)ent);
@@ -52,6 +52,27 @@ namespace Shiv {
 				case AssetStatus.Invalid: return VehicleHandle.Invalid;
 				case AssetStatus.Loading: return VehicleHandle.ModelLoading;
 				default: return Call<VehicleHandle>(CREATE_VEHICLE, model, pos.X, pos.Y, pos.Z, heading, true, true);
+			}
+		}
+
+		public enum VehicleNode : ulong { Invalid = 0 };
+
+		public struct VehicleNodeData {
+			public Vector3 Position;
+			public float Heading;
+			public int Kind;
+			public int Flags;
+			public int Density;
+			public override int GetHashCode() => Position.GetHashCode();
+		}
+
+		public static bool TryGetVehicleNodeProperties(Vector3 node, out int density, out int flags) {
+			int d = 0, f = 0;
+			unsafe {
+				bool ret = Call<bool>(GET_VEHICLE_NODE_PROPERTIES, node, new IntPtr(&d), new IntPtr(&f));
+				density = d;
+				flags = f;
+				return ret;
 			}
 		}
 
@@ -106,10 +127,13 @@ namespace Shiv {
 			if( v != 0 ) { Call(SET_VEHICLE_ENGINE_ON, v, value, true); }
 		}
 
+		public static PedHandle GetPedInSeat(VehicleHandle v, VehicleSeat seat) {
+			return Call<PedHandle>(GET_PED_IN_VEHICLE_SEAT, v, seat);
+		}
 		public static Dictionary<VehicleSeat, PedHandle> GetSeatMap(VehicleHandle veh) {
 			var ret = new Dictionary<VehicleSeat, PedHandle>();
 			Enum.GetValues(typeof(VehicleSeat)).Each<VehicleSeat>( seat => {
-				PedHandle ped = Call<PedHandle>(GET_PED_IN_VEHICLE_SEAT, veh, seat);
+				PedHandle ped = GetPedInSeat(veh, seat);
 				ret[seat] = IsAlive(ped) ? ped : 0;
 			});
 			return ret;

@@ -6,7 +6,7 @@ using static GTA.Native.Function;
 using static GTA.Native.Hash;
 
 namespace Shiv {
-	public static partial class Globals {
+	public static partial class Global {
 
 		public static void ChangePlayerPed(PlayerHandle p, PedHandle ped, bool unk1, bool unk2) => Call(CHANGE_PLAYER_PED, p, unk1, unk2);
 
@@ -64,6 +64,7 @@ namespace Shiv {
 		}
 
 		public static bool IsFreeAiming(PlayerHandle p) => Call<bool>(IS_PLAYER_FREE_AIMING, p);
+		public static bool IsFreeAimingAt(PlayerHandle p, PedHandle e) => Call<bool>(IS_PLAYER_FREE_AIMING_AT_ENTITY, p, e);
 		public static bool IsFreeAimingAt(PlayerHandle p, EntHandle e) => Call<bool>(IS_PLAYER_FREE_AIMING_AT_ENTITY, p, e);
 		public static bool TryGetFreeAimEntity(PlayerHandle p, out EntHandle ent) {
 			EntHandle ret = 0;

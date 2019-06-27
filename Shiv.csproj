@@ -32,27 +32,41 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
+    <Compile Include="Controls.cs" />
+    <Compile Include="Future.cs" />
+    <Compile Include="Goals\TakeCover.cs" />
+    <Compile Include="Scripts\Console.cs" />
+    <Compile Include="Scripts\Menu.cs" />
+    <Compile Include="TaskWander.cs" />
+    <Compile Include="Util\Blacklist.cs" />
     <Compile Include="Game\Controls.cs" />
     <Compile Include="Game\Enums.cs" />
-    <Compile Include="Extensions.cs" />
+    <Compile Include="Util\Extensions.cs" />
     <Compile Include="Game\Entities.cs" />
     <Compile Include="Game\Player.cs" />
     <Compile Include="Game\World.cs" />
-    <Compile Include="Goals\DirectDrive.cs" />
+    <Compile Include="Goals\Driving.cs" />
     <Compile Include="Goals\DirectMove.cs" />
+    <Compile Include="Goals\WalkTo.cs" />
+    <Compile Include="Missions\Mission01.cs" />
+    <Compile Include="NavMesh.cs" />
+    <Compile Include="NavMesh.Pathfinder.cs" />
+    <Compile Include="Util\Codec.cs" />
     <Compile Include="Scripts\Goals.cs" />
     <Compile Include="Game\Imports.cs" />
     <Compile Include="Main.cs" />
-    <Compile Include="Math.cs" />
+    <Compile Include="Util\Math.cs" />
     <Compile Include="Game\NativeHashes.cs" />
     <Compile Include="Game\NativeMemory.cs" />
     <Compile Include="Game\Peds.cs" />
     <Compile Include="Scripts\Compass.cs" />
+    <Compile Include="Scripts\Hud.cs" />
     <Compile Include="Scripts\Persistent.cs" />
     <Compile Include="Script.cs" />
     <Compile Include="Game\Vehicle.cs" />
     <Compile Include="Scripts\Senses.cs" />
     <Compile Include="Scripts\UI.cs" />
+    <Compile Include="VehicleMesh.cs" />
   </ItemGroup>
   <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using static Shiv.Globals;
+﻿using static Shiv.Global;
 
 namespace Shiv.Scripts {
 	class Compass : Script {

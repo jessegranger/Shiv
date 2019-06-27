@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
-using static Shiv.Globals;
+using static Shiv.Global;
 
 namespace Shiv {
 	public enum GoalStatus {
@@ -16,19 +17,53 @@ namespace Shiv {
 		public virtual void OnPause() { Status = GoalStatus.Paused; }
 		public virtual void OnResume() { Status = GoalStatus.Active; }
 		public virtual void Dispose() { }
+		public Goal() { }
+		public override string ToString() => GetType().Name.Split('.').Last();
+	}
+
+	public class QuickGoal : Goal {
+		private Func<GoalStatus> tick;
+		private uint duration = uint.MaxValue;
+		private uint started = 0;
+		public string Name = "QuickGoal";
+		public QuickGoal(string name, Func<GoalStatus> func) {
+			Name = name;
+			tick = func;
+		}
+		public QuickGoal(Func<GoalStatus> func) => tick = func;
+		public QuickGoal(uint timeout, Action func) {
+			duration = timeout;
+			tick = () => { func(); return Status; };
+		}
+		public override GoalStatus OnTick() {
+			if( started == 0 ) started = GameTime;
+			if( GameTime - started > duration )
+				return Status = GoalStatus.Complete;
+			return Status = tick();
+		}
+		public override string ToString() {
+			return Name;
+		}
 	}
 
 	public class GoalSet {
-		private LinkedList<Goal> goals = new LinkedList<Goal>();
-		public void Push(Goal g) => goals.AddFirst(g);
+		protected LinkedList<Goal> goals = new LinkedList<Goal>();
+		protected LinkedListNode<Goal> cursor;
+		public GoalSet() {
+			goals = new LinkedList<Goal>();
+			cursor = null;
+		}
+		public GoalSet Immediate(Goal g) { goals.AddFirst(g); return this; }
+		public GoalSet Next(Goal g) { goals.AddAfter( goals.First, g); return this; }
+		public GoalSet Enqueue(Goal g) { goals.AddLast(g); return this; }
 		public Goal Pop() => goals.Pop();
 		public Goal Peek() => goals.First?.Value;
-		public void Clear() => goals.Clear();
+		public GoalSet Clear() { goals.Clear(); return this; }
 		public int Count => goals.Count;
-		public override string ToString() => $"Goals({Count}): " + string.Join(", ", goals.Select(g => g.ToString()));
+		public override string ToString() => string.Join(", ", goals.Select(g => g.ToString().Split('.').Last()));
 	}
 
-	public static partial class Globals {
+	public static partial class Global {
 		public static GoalSet Goals = new GoalSet();
 	}
 
@@ -49,7 +84,11 @@ namespace Shiv {
 				}
 				curFirst.OnTick();
 			}
-			UI.DrawText(Goals.ToString());
+			var head = HeadPosition(Self);
+			var s = ScreenCoords(head);
+			var str = Goals.ToString();
+			UI.DrawRect(s.X, s.Y, .006f * str.Length, .022f, Color.SlateGray);
+			UI.DrawText(s.X, s.Y - .001f, str);
 		}
 	}
 }

@@ -67,7 +67,9 @@ namespace GTA {
 				}
 				Type type = o.GetType();
 
-				type = type.IsEnum ? Enum.GetUnderlyingType(type) : type;
+				if( type.IsEnum ) {
+					type = Enum.GetUnderlyingType(type);
+				}
 
 				try {
 					// Log($"PushArgument {type.Name} {o}");
