@@ -43,15 +43,6 @@ namespace Shiv {
 		public static Matrix4x4 CameraMatrix { get; internal set; }
 		public static int SequenceProgress { get; internal set; } = 0;
 
-		public class MovingAverage {
-			public float Value = 0f;
-			public int Period;
-			public MovingAverage(int period) { Period = period; }
-			public void Add(float sample) {
-				Value = ((Value * (Period - 1)) + sample) / Period;
-			}
-		}
-
 		public static Action Throttle(int ms, Action func) {
 			var s = new Stopwatch();
 			s.Start();
@@ -171,7 +162,7 @@ namespace Shiv {
 		}
 
 
-		private static Random random = new Random();
+		private static readonly Random random = new Random();
 		public static void OnInit(TextWriter logFile) {
 			LogFile = logFile;
 			TotalTime.Start();
@@ -237,15 +228,24 @@ namespace Shiv {
 			});
 			Controls.Bind(Keys.G, () => {
 
+				Shiv.Log("Starting scan for something ungrown.");
 				var future = new Future<NodeHandle>(() => {
-					return NavMesh.FirstOrDefault(PlayerNode, 10, (n) => !NavMesh.IsGrown(n));
+					Shiv.Log("Starting work inside thread.");
+					try {
+						return NavMesh.FirstOrDefault(PlayerNode, 100, (n) => !NavMesh.IsGrown(n));
+					} finally {
+						Shiv.Log("Finished work inside thread.");
+					}
 				});
 				Goals.Immediate(new QuickGoal("Find Growable", () => {
 					if( future.IsFailed() ) {
+						Shiv.Log("Scan failed.");
 						return GoalStatus.Failed;
 					}
 					if( future.IsReady() ) {
-						NavMesh.Grow(future.GetResult(), 10);
+						var node = future.GetResult();
+						Shiv.Log($"Scan found: {node} at range {DistanceToSelf(node)}");
+						NavMesh.Grow(node, 10);
 						return GoalStatus.Complete;
 					}
 					return GoalStatus.Active;
