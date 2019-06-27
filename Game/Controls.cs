@@ -1,5 +1,6 @@
 ﻿
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -89,20 +90,6 @@ namespace Shiv {
 			UI.DrawText(.5f, .5f, $"Aim delta: {delta.LengthSquared():F5}");
 			return delta.LengthSquared() < .0001f;
 		}
-		/*
-		protected static bool SetControlsToLookAt(Vector3 pos, uint dt) {
-			float dX = 0, dY = 0;
-			Vector3 toTarget = (pos - GameplayCamera.Position).Normalized;
-			Vector3 delta = (toTarget - GameplayCamera.ForwardVector);
-			dX = (Vector3.Dot(delta, GameplayCamera.RightVector));
-			dY = (-Vector3.Dot(delta, GameplayCamera.UpVector));
-			float fps = 1000f / dt;
-			dX = Clamp(activation(dX, fps), -2f, 2f);
-			dY = Clamp(activation(dY, fps), -2f, 2f);
-			SetControlValue(1, Control.LookLeftRight, dX);
-			SetControlValue(1, Control.LookUpDown, dY);
-			return delta.LengthSquared() < 6f;
-		}*/
 
 		public static Vector3 AimTarget = Vector3.Zero;
 		public static PedHandle AimAtHead = PedHandle.Invalid;
@@ -122,6 +109,19 @@ namespace Shiv {
 				}
 				WalkPath = new PathRequest(PlayerNode, targetNode, 100, false, true, true);
 			}
+		}
+
+		public static float CheckObstruction(Vector3 pos, Vector3 forward) {
+			var opts = IntersectOptions.Map | IntersectOptions.MissionEntities | IntersectOptions.Objects
+				| IntersectOptions.Unk1 | IntersectOptions.Unk2 | IntersectOptions.Unk3 | IntersectOptions.Unk4;
+			forward = Vector3.Normalize(forward) * .6f;
+			pos = pos + forward + (Up * 1.2f); // pick a spot in the air
+			var end = new Vector3(pos.X, pos.Y, pos.Z - 1.9f); // try to drop it down
+			// DrawLine(pos, end, Color.Yellow);
+			// DrawLine(HeadPosition(Self), end, Color.Orange);
+			var result = Raycast(pos, end, .3f, opts, Self);
+			// if( result.DidHit ) DrawSphere(result.HitPosition, .2f, Color.Orange);
+			return result.DidHit ? (result.HitPosition - end).Length() : 0f;
 		}
 
 	}
@@ -248,4 +248,43 @@ namespace Shiv {
 			return Status;
 		}
 	}
+
+	public static partial class Global {
+		public static class Controls {
+			private struct Event {
+				public System.Windows.Forms.Keys key;
+				public bool downBefore;
+				public bool upNow;
+			}
+			private static ConcurrentQueue<Event> keyEvents = new ConcurrentQueue<Event>();
+			private static Dictionary<System.Windows.Forms.Keys, Action> keyBindings = new Dictionary<System.Windows.Forms.Keys, Action>();
+			public static void Bind(System.Windows.Forms.Keys key, Action action) => keyBindings[key] = keyBindings.TryGetValue(key, out Action curr) ? (() => { curr(); action(); }) : action;
+			public static void Enqueue(System.Windows.Forms.Keys key, bool downBefore, bool upNow) => keyEvents.Enqueue(new Event() { key = key, downBefore = downBefore, upNow = upNow });
+			public static void DisableAllThisFrame(Type except = null) { Disabled = true; DisabledExcept = except; }
+			public static Type DisabledExcept = null;
+			public static bool Disabled = false;
+			public static void OnTick() {
+				while( keyEvents.TryDequeue(out Event evt) ) {
+					if( (!evt.downBefore) && keyBindings.TryGetValue(evt.key, out Action action) ) {
+						try {
+							// when disabled, still consume the key strokes, just ignore actions
+							if( !Disabled ) action();
+						} catch( Exception err ) {
+							Shiv.Log($"OnKey({evt.key}) exception from key-binding: {err.Message} {err.StackTrace}");
+							keyBindings.Remove(evt.key);
+						}
+					} else if( DisabledExcept != null ) {
+						Script.Order.Where(s => s.GetType() == DisabledExcept).FirstOrDefault(s => s.OnKey(evt.key, evt.downBefore, evt.upNow));
+					} else if( ! Disabled ) {
+						Script.Order.FirstOrDefault(s => s.OnKey(evt.key, evt.downBefore, evt.upNow));
+					}
+				}
+				if( Disabled ) Call(DISABLE_ALL_CONTROL_ACTIONS, 1);
+				Disabled = false;
+				DisabledExcept = null;
+			}
+		}
+	}
+
+
 }
