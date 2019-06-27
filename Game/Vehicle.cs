@@ -139,5 +139,27 @@ namespace Shiv {
 			return ret;
 		}
 
+		public static class VehicleOffsets {
+			// these are coordinates relative to the bounding box of the model,
+			// origin is at the center
+			// so (-.5f, 0f, 0f) is the left side of the model, (.5f, 0f, 0f) is the right side 
+			// scales based on the model's actual size later
+			public static readonly Vector3 DriverDoor = new Vector3(-.6f, 0.05f, 0f);
+			public static readonly Vector3 FrontGrill = new Vector3(0f, .5f, 0f);
+			public static readonly Vector3 FrontLeftWheel = new Vector3(-.66f, .3f, 0f);
+			public static readonly Vector3 FrontRightWheel = new Vector3(.66f, .3f, 0f);
+			public static readonly Vector3 BackLeftWheel = new Vector3(-.66f, -.3f, 0f);
+			public static readonly Vector3 BackRightWheel = new Vector3(.66f, -.3f, 0f);
+			public static readonly Vector3 BackBumper = new Vector3(0f, -.66f, 0f);
+		}
+		public static Vector3 GetVehicleOffset(VehicleHandle v, Vector3 offset) => GetVehicleOffset(v, offset, Matrix(v));
+		public static Vector3 GetVehicleOffset(VehicleHandle v, Vector3 offset, Matrix4x4 m) => GetVehicleOffset(v, offset, m, GetModel(v));
+		public static Vector3 GetVehicleOffset(VehicleHandle v, Vector3 offset, Matrix4x4 m, VehicleHash model) {
+			GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
+			return GetVehicleOffset(v, offset, m, frontRight, backLeft);
+		}
+		public static Vector3 GetVehicleOffset(VehicleHandle v, Vector3 offset, Matrix4x4 m, Vector3 frontRight, Vector3 backLeft) {
+			return Vector3.Transform(offset * (frontRight - backLeft), m);
+		}
 	}
 }
