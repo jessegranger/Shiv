@@ -10,8 +10,10 @@ namespace Shiv {
 		public interface IFuture<T> {
 			T GetResult();
 			Exception GetError();
+			bool IsDone();
 			bool IsReady();
 			bool IsFailed();
+			bool IsCanceled();
 			IFuture<T> Resolve(T item);
 			void Reject(Exception err);
 		}
@@ -46,6 +48,7 @@ namespace Shiv {
 			private CountdownEvent ready;
 
 			public Exception GetError() => error;
+			public bool IsDone() => IsFailed() || IsCanceled() || IsReady();
 			public bool IsFailed() => error != null;
 			public bool IsReady() => ready.IsSet;
 			public IFuture<T> Resolve(T item) {
@@ -65,16 +68,19 @@ namespace Shiv {
 			public void Wait() => ready.Wait(cancel.Token);
 			public void Wait(int timeout) => ready.Wait(timeout, cancel.Token);
 			public void Cancel() { try { cancel.Cancel(); } catch( Exception ) { } }
+			public bool IsCanceled() => cancel.IsCancellationRequested;
 		}
 		public class Immediate<T> : IFuture<T> { // a dummy future with no locks
 			private readonly T result;
-			public Immediate(T item) { result = item; }
+			public Immediate(T item) => result = item;
 			public Exception GetError() => null;
 			public T GetResult() => result;
+			public bool IsDone() => true;
 			public bool IsFailed() => false;
 			public bool IsReady() => true;
+			public bool IsCanceled() => false;
 			public void Reject(Exception err) { }
-			public IFuture<T> Resolve(T item) { return this; }
+			public IFuture<T> Resolve(T item) => this;
 		}
 		public class ConcurrentSet<T> : IEnumerable<T> {
 			private ConcurrentDictionary<T, T> data = new ConcurrentDictionary<T, T>();
@@ -85,7 +91,7 @@ namespace Shiv {
 			public IEnumerator<T> GetEnumerator() => data.Keys.GetEnumerator();
 			IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-			public uint Count { get => (uint)data.Count; }
+			public uint Count => (uint)data.Count;
 		}
 	}
 }
