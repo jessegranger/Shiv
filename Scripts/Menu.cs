@@ -1,9 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Windows.Forms;
+using System.Linq;
+using System.Numerics;
+using Keys = System.Windows.Forms.Keys;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
+using static Shiv.Global;
 
 namespace Shiv {
 
@@ -11,8 +14,11 @@ namespace Shiv {
 		public string Label;
 		public Action OnClick = null;
 		public Menu SubMenu = null;
-		public MenuItem(string label) { Label = label; }
-		public MenuItem(string label, Action func) { Label = label; OnClick = func; }
+		public MenuItem(string label) => Label = label;
+		public MenuItem(string label, Action func) {
+			Label = label;
+			OnClick = func ?? throw new ArgumentNullException(nameof(func));
+		}
 	}
 
 	public class Menu : HudElement {
@@ -26,9 +32,7 @@ namespace Shiv {
 		public List<MenuItem> Items = new List<MenuItem>();
 		public Menu Parent = null;
 		public Menu SubMenu = null;
-		public Menu(float x, float y, float w) : base(x, y, w, 0) {
-			MenuWidth = w;
-		}
+		public Menu(float x, float y, float w) : base(x, y, w, 0) => MenuWidth = w;
 		public Menu Item(string label, Action click) {
 			Items.Add(new MenuItem(label, click));
 			H += ItemHeight;
@@ -48,14 +52,11 @@ namespace Shiv {
 		}
 		private int Wrap(int i, int d) {
 			i += d;
-			if( i < 0 )
-				i = Items.Count - 1;
-			if( i >= Items.Count )
-				i = 0;
-			return i;
+			return i < 0 ? Items.Count - 1 :
+				i >= Items.Count ? 0 : i;
 		}
-		public void Up() { HighlightIndex = Wrap(HighlightIndex, -1); }
-		public void Down() { HighlightIndex = Wrap(HighlightIndex, +1); }
+		public void Up() => HighlightIndex = Wrap(HighlightIndex, -1);
+		public void Down() => HighlightIndex = Wrap(HighlightIndex, +1);
 		public void Activate() {
 			if( HighlightIndex >= 0 ) {
 				MenuItem item = Items[HighlightIndex];
@@ -74,15 +75,12 @@ namespace Shiv {
 				return;
 			}
 
-			if( SubMenu.Parent == this )
-				SubMenu = null;
-			else
-				SubMenu = SubMenu.Parent;
+			SubMenu = SubMenu.Parent == this ? null : SubMenu.Parent;
 		}
 		public void Draw() {
-			if( SubMenu != null )
+			if( SubMenu != null ) {
 				SubMenu.Draw();
-			else {
+			} else {
 				float totalHeight = (2 * BorderWidth) + ((ItemHeight + (2 * BorderWidth)) * Items.Count);
 				float totalWidth = (2 * BorderWidth) + MenuWidth;
 				float x = X, y = Y;
@@ -97,9 +95,7 @@ namespace Shiv {
 				}
 			}
 		}
-		public void Close() {
-			Closed?.Invoke(null, null);
-		}
+		public void Close() => Closed?.Invoke(null, null);
 	}
 
 	[DependOn(typeof(ControlsScript))]
@@ -108,7 +104,7 @@ namespace Shiv {
 
 		public override bool OnKey(Keys key, bool downBefore, bool upNow) {
 			if( rootMenu != null ) {
-				var menu = rootMenu;
+				Menu menu = rootMenu;
 				while( menu.SubMenu != null ) {
 					menu = menu.SubMenu;
 				}
@@ -126,9 +122,7 @@ namespace Shiv {
 			return false;
 		}
 
-		public override void OnAbort() {
-			rootMenu = null;
-		}
+		public override void OnAbort() => rootMenu = null;
 
 		private static Menu rootMenu = null;
 
@@ -159,6 +153,91 @@ namespace Shiv {
 				rootMenu.Closed -= Detach;
 				rootMenu = null;
 			}
+		}
+
+		public override void OnInit() {
+			Controls.Bind(Keys.Pause, () => TogglePause());
+			Controls.Bind(Keys.N, () => {
+				MenuScript.Show(new Menu(.4f, .4f, .2f)
+					.Item("Goals", new Menu(.4f, .4f, .2f)
+						.Item("Mission01", new Menu(.4f, .4f, .2f)
+							.Item("Approach", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.Approach }))
+							.Item("Threaten", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.Threaten }))
+							.Item("GotoMoney", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.GotoMoney }))
+							.Item("GetMoney", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.GetMoney }))
+							.Item("WalkOut", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.WalkOut }))
+							.Item("MoveToCover", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.MoveToCover }))
+							.Item("KillAllCops", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.KillAllCops }))
+						)
+						.Item("Wander", () => Goals.Immediate(new TaskWander()) )
+						.Item("Explore", () => Goals.Immediate(new QuickGoal(() => {
+							Goals.Immediate(new WalkTo(Position(NavMesh.LastGrown)));
+							return GoalStatus.Active;
+						})))
+					)
+					.Item("Show Path To", new Menu(.4f, .4f, .2f)
+						.Item("Red Blip", () => Goals.Immediate(new DebugPath(Position(GetAllBlips().FirstOrDefault(b => GetColor(b) == Color.Red)))))
+						.Item("Green Blip", () => Goals.Immediate(new DebugPath(Position(GetAllBlips().FirstOrDefault(b => GetColor(b) == Color.Green)))))
+					)
+					.Item("Drive To", new Menu(.4f, .4f, .2f)
+						.Item("Yellow Blip", () => Goals.Immediate(new TaskDrive(Position(GetAllBlips().FirstOrDefault(b => GetColor(b) == Color.Yellow)))))
+					)
+					.Item("Save NavMesh", () => NavMesh.SaveToFile())
+					.Item("Toggle Blips", () => BlipSense.ShowBlips = !BlipSense.ShowBlips)
+					.Item("Press Key", new Menu(.4f, .4f, .2f)
+						.Item("Context", () => PressControl(2, Control.Context, 200))
+						.Item("ScriptRUp", () => PressControl(2, Control.ScriptRUp, 200))
+						.Item("ScriptRLeft", () => PressControl(2, Control.ScriptRLeft, 200))
+					).Item("Cancel", () => MenuScript.Hide()));
+			});
+			Controls.Bind(Keys.O, () => {
+				if( CurrentVehicle(Self) != 0 ) {
+					Sphere.Add(AimPosition(), .2f, Color.Blue, 10000);
+					Goals.Immediate(new DirectDrive(AimPosition()) { StoppingRange = 2f });
+				} else {
+					Goals.Immediate(new DirectMove(AimPosition()));
+				}
+			});
+			Controls.Bind(Keys.G, () => {
+
+				Log("Starting scan for something ungrown.");
+				var future = new Future<NodeHandle>(() => {
+					Log("Starting work inside thread.");
+					try {
+						return NavMesh.FirstOrDefault(PlayerNode, 100, (n) => !NavMesh.IsGrown(n));
+					} finally {
+						Log("Finished work inside thread.");
+					}
+				});
+				Goals.Immediate(new QuickGoal("Find Growable", () => {
+					if( future.IsFailed() ) {
+						Log("Scan failed.");
+						return GoalStatus.Failed;
+					}
+					if( future.IsReady() ) {
+						var node = future.GetResult();
+						Log($"Scan found: {node} at range {DistanceToSelf(node)}");
+						NavMesh.Grow(node, 10);
+						return GoalStatus.Complete;
+					}
+					return GoalStatus.Active;
+				}));
+
+			});
+			Controls.Bind(Keys.End, () => {
+				Goals.Clear();
+				TaskClearAll();
+				AimTarget = Vector3.Zero;
+				AimAtHead = PedHandle.Invalid;
+				KillTarget = PedHandle.Invalid;
+				WalkTarget = Vector3.Zero;
+			});
+			Controls.Bind(Keys.X, () => {
+				NavMesh.Visit(PlayerNode, 2, (node) => NavMesh.Remove(node));
+			});
+			Controls.Bind(Keys.B, () => {
+				NavMesh.ShowEdges = !NavMesh.ShowEdges;
+			});
 		}
 	}
 

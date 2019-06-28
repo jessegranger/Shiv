@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -11,7 +12,6 @@ using static GTA.Native.Hash;
 using static Shiv.Global;
 using static Shiv.Imports;
 using Keys = System.Windows.Forms.Keys;
-using Shiv.Missions;
 
 namespace Shiv {
 
@@ -25,7 +25,7 @@ namespace Shiv {
 	/// - dinput8.dll (bootstraps the hook dll)
 	/// - ScriptHookV.dll (does the real hooking of the engine)
 	/// - Shiv.asi (sets up a CLR environ)
-	/// - Main.shiv (contents the Shiv project here)
+	/// - Main.shiv (this project, class Shiv)
 	/// </remarks>
 	public static class Shiv {
 		private static int[] GetAllObjects(int max = 512) {
@@ -148,7 +148,7 @@ namespace Shiv {
 			Log("Script Order: " + string.Join(" ", Script.Order.Select(s => s.GetType().Name.Split('.').Last())));
 			// Then use OnInit() on each of them in their preferred order.
 			// Loop using manual LinkedList methods so we can use RemoveAndContinue
-			var cur = Script.Order.First;
+			LinkedListNode<Script> cur = Script.Order.First;
 			while( cur != null && cur.Value != null ) {
 				try {
 					cur.Value.OnInit();
@@ -160,96 +160,9 @@ namespace Shiv {
 				}
 			}
 
-			Controls.Bind(Keys.Pause, () => TogglePause());
-			Controls.Bind(Keys.N, () => {
-				MenuScript.Show(new Menu(.4f, .4f, .2f)
-					.Item("Goals", new Menu(.4f, .4f, .2f)
-						.Item("Mission01", new Menu(.4f, .4f, .2f)
-							.Item("Approach", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.Approach }))
-							.Item("Threaten", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.Threaten }))
-							.Item("GotoMoney", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.GotoMoney }))
-							.Item("GetMoney", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.GetMoney }))
-							.Item("WalkOut", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.WalkOut }))
-							.Item("MoveToCover", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.MoveToCover }))
-							.Item("KillAllCops", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.KillAllCops }))
-						)
-						.Item("Wander", () => Goals.Immediate(new TaskWander()) )
-						.Item("Explore", () => Goals.Immediate(new QuickGoal(() => {
-							Goals.Immediate(new WalkTo(Position(NavMesh.LastGrown)));
-							return GoalStatus.Active;
-						})))
-					)
-					.Item("Show Path To", new Menu(.4f, .4f, .2f)
-						.Item("Red Blip", () => Goals.Immediate(new DebugPath(Position(GetAllBlips().FirstOrDefault(b => GetColor(b) == Color.Red)))))
-						.Item("Green Blip", () => Goals.Immediate(new DebugPath(Position(GetAllBlips().FirstOrDefault(b => GetColor(b) == Color.Green)))))
-					)
-					.Item("Drive To", new Menu(.4f, .4f, .2f)
-						.Item("Yellow Blip", () => Goals.Immediate(new TaskDrive(Position(GetAllBlips().FirstOrDefault(b => GetColor(b) == Color.Yellow)))))
-					)
-					.Item("Save NavMesh", () => NavMesh.SaveToFile())
-					.Item("Toggle Blips", () => BlipSense.ShowBlips = !BlipSense.ShowBlips)
-					.Item("Press Key", new Menu(.4f, .4f, .2f)
-						.Item("Context", () => PressControl(2, Control.Context, 200))
-						.Item("ScriptRUp", () => PressControl(2, Control.ScriptRUp, 200))
-						.Item("ScriptRLeft", () => PressControl(2, Control.ScriptRLeft, 200))
-					).Item("Cancel", () => MenuScript.Hide()));
-			});
-			Controls.Bind(Keys.O, () => {
-				if( CurrentVehicle(Self) != 0 ) {
-					Sphere.Add(AimPosition(), .2f, Color.Blue, 10000);
-					Goals.Immediate(new DirectDrive(AimPosition()) { StoppingRange = 2f });
-				} else {
-					Goals.Immediate(new DirectMove(AimPosition()));
-				}
-			});
-			Controls.Bind(Keys.G, () => {
-
-				Log("Starting scan for something ungrown.");
-				var future = new Future<NodeHandle>(() => {
-					Log("Starting work inside thread.");
-					try {
-						return NavMesh.FirstOrDefault(PlayerNode, 100, (n) => !NavMesh.IsGrown(n));
-					} finally {
-						Log("Finished work inside thread.");
-					}
-				});
-				Goals.Immediate(new QuickGoal("Find Growable", () => {
-					if( future.IsFailed() ) {
-						Log("Scan failed.");
-						return GoalStatus.Failed;
-					}
-					if( future.IsReady() ) {
-						var node = future.GetResult();
-						Log($"Scan found: {node} at range {DistanceToSelf(node)}");
-						NavMesh.Grow(node, 10);
-						return GoalStatus.Complete;
-					}
-					return GoalStatus.Active;
-				}));
-
-			});
-			Controls.Bind(Keys.End, () => {
-				Goals.Clear();
-				TaskClearAll();
-				AimTarget = Vector3.Zero;
-				AimAtHead = PedHandle.Invalid;
-				KillTarget = PedHandle.Invalid;
-				WalkTarget = Vector3.Zero;
-			});
-			Controls.Bind(Keys.X, () => {
-				NavMesh.Visit(PlayerNode, 2, (node) => NavMesh.Remove(node));
-			});
-			Controls.Bind(Keys.B, () => {
-				NavMesh.ShowEdges = !NavMesh.ShowEdges;
-			});
-
 		}
 
-		public static uint LastGameTime = GameTime;
-		public static uint FrameCount = 0;
-
-		public static MovingAverage fps = new MovingAverage(60);
-
+		private static MovingAverage fps = new MovingAverage(60);
 
 		public static void OnTick() {
 			var w = new Stopwatch();
