@@ -9,58 +9,86 @@ using static Shiv.Global;
 
 namespace Shiv {
 
+	/// <summary>
+	/// Keeps the Blacklist instances up to date each frame.
+	/// </summary>
 	public class BlacklistScript : Script {
-		internal static List<Blacklist> instances = new List<Blacklist>();
-		public BlacklistScript() {
-		}
-		public override void OnTick() {
-			foreach( Blacklist b in instances ) {
-				b.RemoveExpired();
-			}
-		}
+		public BlacklistScript() { }
+		public override void OnTick() => Blacklist.RemoveAllExpired();
 	}
 	public class Blacklist : IDisposable {
-		private Dictionary<int, uint> data = new Dictionary<int, uint>();
+
+		private static List<Blacklist> instances = new List<Blacklist>();
+
+		private Dictionary<ulong, uint> data = new Dictionary<ulong, uint>();
 		public int Count => data.Count;
 		public string Name;
 		public Blacklist(string name) {
 			Name = name;
-			BlacklistScript.instances.Add(this);
+			instances.Add(this);
 		}
-		~Blacklist() {
-			Dispose();
-		}
+		~Blacklist() { Dispose(); }
 		public void Dispose() {
-			if( BlacklistScript.instances != null ) BlacklistScript.instances.Remove(this);
+			if( instances != null ) instances.Remove(this);
 			if( data != null ) data.Clear();
 		}
-		internal void RemoveExpired() {
+
+		internal static void RemoveAllExpired() => instances.Each(b => b.RemoveExpired());
+
+		/// <summary>
+		/// Remove any items past their duration.
+		/// </summary>
+		private void RemoveExpired() { // TODO: could optimize this so there is an array sorted by expiration time, but keep the dict to answer Contains()
 			var done = data.Where(p => p.Value < GameTime).ToArray();
 			foreach( var p in done ) data.Remove(p.Key);
 			UI.DrawText($"Blacklist({Name}): {data.Count}");
 		}
+
+		/// <summary>
+		/// Remove all banned items.
+		/// </summary>
 		public void Clear() => data.Clear();
 
-		public bool Add(int p, uint dur, string reason = "none") {
-			if( p != 0 ) data[p] = GameTime + dur;
-			return false; // always false, blacklists are bad
-		}
-		public bool Add(PedHandle p, uint dur, string reason = "none") => Add((int)p, dur, reason);
-		public bool Add(EntHandle p, uint dur, string reason = "none") => Add((int)p, dur, reason);
-		public bool Add(NodeHandle p, uint dur, string reason = "none") => Add((int)p, dur, reason);
-		public bool Add(VehicleHandle p, uint dur, string reason = "none") => Add((int)p, dur, reason);
+		/// <summary>
+		/// Ban an ID for a duration in milliseconds.
+		/// </summary>
+		public void Add(ulong id, uint duration) { if(id != 0 ) data[id] = GameTime + duration; }
+		public void Add(int id, uint duration) { if(id != 0 ) data[(ulong)id] = GameTime + duration; }
+		
+		/// <summary>
+		/// Blacklist a Ped.
+		/// </summary>
+		public void Add(PedHandle ped, uint duration) => Add((ulong)ped, duration);
+		
+		/// <summary>
+		/// Blacklist an Entity.
+		/// </summary>
+		public void Add(EntHandle ent, uint duration) => Add((ulong)ent, duration);
 
-		public void Remove(int handle) => data.Remove(handle);
-		public void Remove(PedHandle handle) => data.Remove((int)handle);
-		public void Remove(EntHandle handle) => data.Remove((int)handle);
-		public void Remove(NodeHandle handle) => data.Remove((int)handle);
-		public void Remove(VehicleHandle handle) => data.Remove((int)handle);
+		/// <summary>
+		/// Blacklist a NavMesh node.
+		/// </summary>
+		public void Add(NodeHandle node, uint duration) => Add((ulong)node, duration);
 
-		public bool Contains(int p) => p != 0 && data.ContainsKey(p) && data[p] > GameTime;
-		public bool Contains(PedHandle ent) => Contains((int)ent);
-		public bool Contains(EntHandle ent) => Contains((int)ent);
-		public bool Contains(NodeHandle ent) => Contains((int)ent);
-		public bool Contains(VehicleHandle ent) => Contains((int)ent);
+		/// <summary>
+		/// Blacklist a Vehicle.
+		/// </summary>
+		public void Add(VehicleHandle veh, uint duration) => Add((ulong)veh, duration);
+
+		public void Remove(ulong id) => data.Remove(id);
+		public void Remove(int id) => data.Remove((ulong)id);
+		public void Remove(PedHandle handle) => data.Remove((ulong)handle);
+		public void Remove(EntHandle handle) => data.Remove((ulong)handle);
+		public void Remove(NodeHandle handle) => data.Remove((ulong)handle);
+		public void Remove(VehicleHandle handle) => data.Remove((ulong)handle);
+
+		public bool Contains(ulong id) => id != 0 && data.ContainsKey(id) && data[id] > GameTime;
+		public bool Contains(int id) => Contains((ulong)id);
+		public bool Contains(PedHandle ent) => Contains((ulong)ent);
+		public bool Contains(EntHandle ent) => Contains((ulong)ent);
+		public bool Contains(NodeHandle ent) => Contains((ulong)ent);
+		public bool Contains(VehicleHandle ent) => Contains((ulong)ent);
+
 	}
 
 }
