@@ -21,6 +21,8 @@ namespace Shiv {
 		public bool AvoidObjects = true;
 		public bool AvoidPeds = false;
 		public bool AvoidCars = true;
+		public DateTime Started { get; private set; } = default;
+		public DateTime Ended { get; private set; } = default;
 		public ConcurrentSet<NodeHandle> Blocked;
 		public PathRequest(NodeHandle start, NodeHandle target, uint timeout, bool avoidPeds, bool avoidCars, bool avoidObjects):base() {
 			Start = start;
@@ -37,10 +39,22 @@ namespace Shiv {
 					Reject(err);
 					return;
 				}
+				PathStatus.Queue.Enqueue(this);
+				Started = new DateTime();
 				try { Resolve(Pathfinder.FindPath(Start, Target, Blocked, Timeout, cancel.Token)); }
 				catch( Exception err ) { Reject(err); }
-				finally { PathStatus.Guard.Release(); }
+				finally {
+					PathStatus.Guard.Release();
+					Ended = new DateTime();
+				}
 			});
+		}
+		public override string ToString() {
+			var elapsed = (Ended - Started).TotalMilliseconds;
+			return $"[{Target}] ({Blocked.Count} in {elapsed}ms)"
+				+ (IsReady() ? GetResult().ToString() : "")
+				+ (IsFailed() ? GetError().ToString() : "")
+				+ (IsCanceled() ? "Canceled" : "");
 		}
 	}
 	public static class PathStatus {
@@ -48,11 +62,29 @@ namespace Shiv {
 		public static SemaphoreSlim Guard = new SemaphoreSlim(1, 1); // only one at a time, available now
 		public static void Clear() {
 			while( Queue.TryDequeue(out PathRequest req) ) {
-				req.Cancel();
+				if( ! req.IsDone() ) {
+					req.Cancel();
+				}
 			}
 		}
+		static readonly float lineHeight = .02f;
+		static readonly float padding = .005f;
+		static readonly float top = .5f;
+		static readonly float left = 0f;
+		static readonly float width = .1f;
 		public static void Draw() {
-
+			int numLines = Queue.Count + 1;
+			UI.DrawRect(left, top, width, padding + (lineHeight * numLines) + padding, Color.SlateBlue);
+			UI.DrawText(left, top, "Pathfinder:");
+			int lineNum = 0;
+			while( Queue.TryPeek(out PathRequest req) 
+				&& req.IsDone() && (DateTime.Now - req.Ended).TotalMilliseconds > 3000 ) {
+				// let path requests sit around for a few seconds so they can be seen 
+				Queue.TryDequeue(out PathRequest done);
+			}
+			foreach( var req in Queue ) {
+				UI.DrawText(padding + left, padding + top + (lineNum++ * lineHeight), req.ToString());
+			}
 		}
 	}
 	public class Path : IEnumerable<NodeHandle> {
@@ -74,8 +106,7 @@ namespace Shiv {
 
 	public class Pathfinder : Script {
 
-		public override void OnTick() {
-		}
+		public override void OnTick() => PathStatus.Draw();
 
 		private static float Estimate(NodeHandle a, NodeHandle b) => (Position(a) - Position(b)).Length();
 
@@ -86,7 +117,9 @@ namespace Shiv {
 				while( cameFrom.ContainsKey(cur) ) {
 					ret.Push(cur = cameFrom[cur]);
 				}
-				while( ret.Count > 0 ) yield return ret.Pop();
+				while( ret.Count > 0 ) {
+					yield return ret.Pop();
+				}
 			}
 		}
 
@@ -102,7 +135,7 @@ namespace Shiv {
 			return new Path(Enumerable.Empty<NodeHandle>());
 		}
 		internal static Path FindPath(NodeHandle startNode, NodeHandle targetNode, ConcurrentSet<NodeHandle> closedSet, uint maxMs, CancellationToken cancelToken, bool debug=false) {
-			Stopwatch s = new Stopwatch();
+			var s = new Stopwatch();
 			Vector3 targetNodePos = Position(targetNode);
 			// Shiv.Log($"[{targetNode}] FindPath Starting...");
 
@@ -154,8 +187,13 @@ namespace Shiv {
 				}
 
 				foreach( NodeHandle e in Edges(cur) ) {
-					if( closedSet.Contains(e) ) continue;
-					if( !openSet.Contains(e) ) openSet.Add(e);
+					if( closedSet.Contains(e) ) {
+						continue;
+					}
+
+					if( !openSet.Contains(e) ) {
+						openSet.Add(e);
+					}
 
 					var ePos = Position(e);
 					float score = GScore(cur) + (curPos - ePos).Length();
@@ -184,69 +222,74 @@ namespace Shiv {
 			var blocked = new ConcurrentSet<NodeHandle>();
 			int count = 0;
 			Matrix4x4 m;
-			if( ents ) foreach(EntHandle v in NearbyObjects.Take(40) ) {
-				if( !Exists(v)
-					|| !IsVisible(v) 
-					|| IsAttached(v))
-				continue; // dont block on items held or carried by peds
-
-				m = Matrix(v);
-				var model = GetModel(v);
-				if( ignoreModels.Contains((long)model) )
-					continue;
-				/*
-				if( model == ModelHash.WoodenDoor
-					|| model == ModelHash.WoodenBathroomDoor
-					|| model == ModelHash.GlassWoodDoubleDoor ) {
-					GetDoorState(model, Position(m), out bool locked, out float heading);
-					if( ! locked )
-						continue; // dont block with unlocked doors
-				}
-				*/
-				GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
-				// if( Math.Max(
-					// Math.Abs(backLeft.X - frontRight.X),
-					// Math.Max(
-						// Math.Abs(backLeft.Y - frontRight.Y),
-						// Math.Abs(backLeft.Z - frontRight.Z)
-					// )) < .05f )
-					// continue;
-				// backLeft.Z = 0;
-				var pos = Position(v);
-				var blockedCount = 0;
-				foreach(NodeHandle n in NavMesh.GetAllHandlesInBox(m, backLeft, frontRight)) {
-					if( debug && random.NextDouble() < .1f ) {
-						var npos = Position(n);
-						DrawLine(pos, npos, Color.Yellow);
-						DrawSphere(npos, .05f, Color.Red);
+			if( ents ) {
+				foreach( EntHandle v in NearbyObjects.Take(40) ) {
+					if( !Exists(v)
+						|| !IsVisible(v)
+						|| IsAttached(v) ) {
+						continue; // dont block on items held or carried by peds
 					}
-					blocked.Add(n);
-					blockedCount += 1;
+
+					m = Matrix(v);
+					var model = GetModel(v);
+					if( ignoreModels.Contains((long)model) ) {
+						continue;
+					}
+					GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
+					var pos = Position(v);
+					var blockedCount = 0;
+					foreach( NodeHandle n in NavMesh.GetAllHandlesInBox(m, backLeft, frontRight) ) {
+						if( debug && random.NextDouble() < .1f ) {
+							var npos = Position(n);
+							DrawLine(pos, npos, Color.Yellow);
+							DrawSphere(npos, .05f, Color.Red);
+						}
+						blocked.Add(n);
+						blockedCount += 1;
+					}
+					if( blockedCount > 10000 ) {
+						ignoreModels.Add((long)model);
+					}
+
+					if( debug ) {
+						UI.DrawTextInWorldWithOffset(pos, 0f, .01f, $"{model} ({blockedCount})");
+					}
+
+					count += 1;
 				}
-				if( blockedCount > 10000 )
-					ignoreModels.Add((long)model);
-				if( debug ) UI.DrawTextInWorldWithOffset(pos, 0f, .01f, $"{model} ({blockedCount})");
-				count += 1;
 			}
-			if( vehicles ) foreach( VehicleHandle v in NearbyVehicles.Take(20) ) {
-				if( v == CurrentVehicle(Self) || !Exists(v) ) continue;
-				m = Matrix(v);
-				GetModelDimensions(GetModel(v), out Vector3 backLeft, out Vector3 frontRight);
-				backLeft.Z = 0;
-				foreach(NodeHandle n in NavMesh.GetAllHandlesInBox(m, backLeft, frontRight)) {
-					blocked.Add(n);
+
+			if( vehicles ) {
+				foreach( VehicleHandle v in NearbyVehicles.Take(20) ) {
+					if( v == CurrentVehicle(Self) || !Exists(v) ) {
+						continue;
+					}
+
+					m = Matrix(v);
+					GetModelDimensions(GetModel(v), out Vector3 backLeft, out Vector3 frontRight);
+					backLeft.Z = 0;
+					foreach( NodeHandle n in NavMesh.GetAllHandlesInBox(m, backLeft, frontRight) ) {
+						blocked.Add(n);
+					}
+					count += 1;
 				}
-				count += 1;
 			}
-			if( peds ) foreach(PedHandle p in NearbyHumans.Take(20) ) {
-				if( p == Self || !Exists(p) ) continue;
-				m = Matrix(p);
-				GetModelDimensions(GetModel(p), out Vector3 backLeft, out Vector3 frontRight);
-				foreach( NodeHandle n in NavMesh.GetAllHandlesInBox(m, backLeft, frontRight) ) {
-					blocked.Add(n);
+
+			if( peds ) {
+				foreach( PedHandle p in NearbyHumans.Take(20) ) {
+					if( p == Self || !Exists(p) ) {
+						continue;
+					}
+
+					m = Matrix(p);
+					GetModelDimensions(GetModel(p), out Vector3 backLeft, out Vector3 frontRight);
+					foreach( NodeHandle n in NavMesh.GetAllHandlesInBox(m, backLeft, frontRight) ) {
+						blocked.Add(n);
+					}
+					count += 1;
 				}
-				count += 1;
 			}
+
 			s.Stop();
 			UI.DrawText(.3f, .32f, $"Blocked: {blocked.Count} nodes from {count} entities in {s.ElapsedMilliseconds}ms.");
 			return blocked;
@@ -266,8 +309,10 @@ namespace Shiv {
 		public DebugPath(Vector3 v) : this(GetHandle(PutOnGround(v, 1f))) { }
 		public DebugPath(NodeHandle targetNode) {
 			TargetNode = targetNode;
-			if( !NavMesh.IsGrown(TargetNode) )
+			if( !NavMesh.IsGrown(TargetNode) ) {
 				NavMesh.Grow(TargetNode, 5);
+			}
+
 			future = new PathRequest(PlayerNode, TargetNode, 1000, AvoidPeds, AvoidCars, AvoidObjects);
 		}
 		public override GoalStatus OnTick() {

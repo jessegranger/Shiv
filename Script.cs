@@ -3,26 +3,59 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
 using System.Windows.Forms;
+using System.Linq;
 
 namespace Shiv {
-	public abstract class Script : IDisposable {
-		internal static LinkedList<Script> Order = new LinkedList<Script>();
-		internal static List<String> Failures = new List<string>();
-		internal bool disposed = false;
-		internal Script() {
-			foreach( DependOn a in GetType().GetCustomAttributes<DependOn>(true) ) {
-				Order.AddAfter(this, (s) => s.GetType() == a.T);
-				return;
-			}
-			Order.AddFirst(this);
-		}
-		~Script() { if( !disposed ) Dispose(); }
 
+	/// <summary>
+	/// The base Script, uses the DependOn attribute to put all instances of subclasses of Script in order.
+	/// </summary>
+	public abstract class Script : IDisposable {
+		/// <summary>
+		/// The global ordering of all Script instances.
+		/// </summary>
+		internal static LinkedList<Script> Order = new LinkedList<Script>();
+
+		/// <summary>
+		/// The base constructor applies the DependOn attribute.
+		/// Each script has a single instance created by the Main loop.
+		/// </summary>
+		internal Script() {
+			DependOn a = GetType().GetCustomAttributes<DependOn>(true).FirstOrDefault();
+			if( a != null ) {
+				Order.AddAfter(this, (s) => s.GetType() == a.T);
+			} else {
+				Order.AddFirst(this);
+			}
+		}
+
+		internal bool disposed = false;
+		~Script() {
+			if( !disposed ) {
+				Dispose();
+			}
+		}
 		public virtual void Dispose() => disposed = true;
 
-		public virtual bool OnKey(Keys key, bool wasDownBefore, bool isUpNow) { return false; }
+		/// <summary>
+		/// Called for every Key event. Return true to prevent later Scripts from being called.
+		/// </summary>
+		/// <returns>true if the key was consumed</returns>
+		public virtual bool OnKey(Keys key, bool wasDownBefore, bool isUpNow) => false;
+
+		/// <summary>
+		/// Called once when the Main loop creates the single instance.
+		/// </summary>
 		public virtual void OnInit() { }
+
+		/// <summary>
+		/// Called every frame, even if the game is paused.
+		/// </summary>
 		public virtual void OnTick() { }
+
+		/// <summary>
+		/// Called when this script should cleanup and exit.
+		/// </summary>
 		public virtual void OnAbort() { }
 
 	}
@@ -48,10 +81,15 @@ namespace Shiv {
 			s.Start();
 		}
 		public override void OnTick() {
-			if( s.ElapsedMilliseconds > Duration || Tick() ) Dispose();
+			if( s.ElapsedMilliseconds > Duration || Tick() ) {
+				Dispose();
+			}
 		}
 		public override void Dispose() {
-			if( !disposed ) s.Stop();
+			if( !disposed ) {
+				s.Stop();
+			}
+
 			base.Dispose();
 		}
 	}

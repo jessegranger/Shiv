@@ -54,10 +54,7 @@ namespace Shiv {
 			// UI.DrawTextInWorld(pos, $"dX:{dX:F2} dY:{dY:F2} dist:{DistanceToSelf(pos):F2}");
 			return dist < .5f ? MoveResult.Complete : MoveResult.Continue;
 		}
-		public static MoveResult FollowPath(IEnumerable<Vector3> path) {
-			if( path == null ) return MoveResult.Complete;
-			return MoveToward(Bezier(.5f, path.Take(4).ToArray()));
-		}
+		public static MoveResult FollowPath(IEnumerable<Vector3> path) => path == null ? MoveResult.Complete : MoveToward(Bezier(.5f, path.Take(4).ToArray()));
 
 		private static float LookActivation(float x, float factor) =>
 			// (float)Pow(Tanh(x * Abs(x)), .6) * CurrentFPS;
@@ -133,9 +130,7 @@ namespace Shiv {
 			public uint expires;
 		}
 		private static List<ControlEvent> active = new List<ControlEvent>();
-		public static void PressControl(int g, Global.Control c, uint dur) {
-			active.Add(new ControlEvent() { group = g, control = c, expires = GameTime + dur });
-		}
+		public static void PressControl(int g, Global.Control c, uint dur) => active.Add(new ControlEvent() { group = g, control = c, expires = GameTime + dur });
 		public override void OnTick() {
 			active.RemoveAll(e => e.expires < GameTime);
 			foreach( var e in active ) {
@@ -207,10 +202,10 @@ namespace Shiv {
 	}
 	public class KeyGoal : Goal {
 		private uint started = 0;
-		private int group;
-		private Control control;
-		private float value;
-		private uint duration;
+		private readonly int group;
+		private readonly Control control;
+		private readonly float value;
+		private readonly uint duration;
 		public KeyGoal(int group, Control control, float value, uint duration) {
 			this.group = group;
 			this.control = control;
@@ -239,12 +234,16 @@ namespace Shiv {
 			return this;
 		}
 		public override GoalStatus OnTick() {
-			if( Sequence.Count < 1 )
+			if( Sequence.Count < 1 ) {
 				return Status = GoalStatus.Complete;
-			var v = Sequence.Pop();
+			}
+
+			KeyPress v = Sequence.Pop();
 			Goals.Immediate(new KeyGoal(v.group, v.key, v.value, v.ms));
-			if( Sequence.Count > 0 )
+			if( Sequence.Count > 0 ) {
 				Goals.Next(new Wait(Spacing));
+			}
+
 			return Status;
 		}
 	}
@@ -268,7 +267,9 @@ namespace Shiv {
 					if( (!evt.downBefore) && keyBindings.TryGetValue(evt.key, out Action action) ) {
 						try {
 							// when disabled, still consume the key strokes, just ignore actions
-							if( !Disabled ) action();
+							if( !Disabled ) {
+								action();
+							}
 						} catch( Exception err ) {
 							Shiv.Log($"OnKey({evt.key}) exception from key-binding: {err.Message} {err.StackTrace}");
 							keyBindings.Remove(evt.key);
@@ -279,7 +280,10 @@ namespace Shiv {
 						Script.Order.FirstOrDefault(s => s.OnKey(evt.key, evt.downBefore, evt.upNow));
 					}
 				}
-				if( Disabled ) Call(DISABLE_ALL_CONTROL_ACTIONS, 1);
+				if( Disabled ) {
+					Call(DISABLE_ALL_CONTROL_ACTIONS, 1);
+				}
+
 				Disabled = false;
 				DisabledExcept = null;
 			}

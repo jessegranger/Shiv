@@ -19,14 +19,18 @@ namespace Shiv {
 		public float StoppingRange = 2f;
 		private uint Started = 0;
 		private IFuture<Path> future = null;
-		public WalkTo(NodeHandle target) { TargetNode = target; }
-		public WalkTo(Vector3 target) { TargetNode = GetHandle(PutOnGround(target, 1f)); }
+		public WalkTo(NodeHandle target) => TargetNode = target;
+		public WalkTo(Vector3 target) => TargetNode = GetHandle(PutOnGround(target, 1f));
 		public override GoalStatus OnTick() {
-			if( !CanControlCharacter() )
+			if( !CanControlCharacter() ) {
 				return Status = GoalStatus.Complete;
+			}
+
 			var dist = DistanceToSelf(TargetNode);
-			if( dist < StoppingRange )
+			if( dist < StoppingRange ) {
 				return Status = GoalStatus.Complete;
+			}
+
 			if( future == null ) {
 				Shiv.Log("WalkTo: Requesting path...");
 				future = new PathRequest(PlayerNode, TargetNode, (uint)Max(30, 4 * dist), false, true, true);
@@ -91,12 +95,8 @@ namespace Shiv {
 		public bool PersistFollowing = false;
 		private uint Started = 0;
 		private float DistanceRemaining;
-		public TaskWalk(Vector3 target) {
-			Target = target;
-		}
-		public override string ToString() {
-			return Speed < 2f ? "Walk" : "Run";
-		}
+		public TaskWalk(Vector3 target) => Target = target;
+		public override string ToString() => Speed < 2f ? "Walk" : "Run";
 		private GoalStatus Done() {
 			TaskClearAll();
 			Call(REMOVE_NAVMESH_REQUIRED_REGIONS);
@@ -136,14 +136,20 @@ namespace Shiv {
 			return Done();
 		}
 		public override GoalStatus OnTick() {
-			if( Target == Vector3.Zero )
+			if( Target == Vector3.Zero ) {
 				return Done();
+			}
+
 			DistanceRemaining = DistanceToSelf(Target);
-			if( DistanceRemaining < StoppingRange )
+			if( DistanceRemaining < StoppingRange ) {
 				return Done();
-			if( Started == 0 )
+			}
+
+			if( Started == 0 ) {
 				return Start();
-			if( (GameTime - Started) > 500 && Velocity(Self).Length() == 0) {
+			}
+
+			if( (GameTime - Started) > 500 && Velocity(Self).Length() == 0 ) {
 				Goals.Immediate(new WalkTo(Target));
 				return Done();
 			}
@@ -155,9 +161,13 @@ namespace Shiv {
 			int status = GetScriptTaskStatus(Self, TaskStatusHash.TASK_FOLLOW_NAVMESH_TO_COORD);
 			UI.DrawText($"TaskWalk: (started {Started}) (dist {DistanceRemaining}) (status {status}) (blocked {blockHandle})");
 			switch( status ) {
-				case 1: break;
-				case 2: AddBlockingBox(); return Restart();
-				case 7: return Done();
+				case 1:
+					break;
+				case 2:
+					AddBlockingBox();
+					return Restart();
+				case 7:
+					return Done();
 			}
 			return Status;
 		}

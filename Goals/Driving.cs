@@ -74,19 +74,24 @@ namespace Shiv {
 		public FollowCar(Func<VehicleHandle> target, Func<bool> until) { Target = target; Until = until; }
 		public FollowCar(VehicleHandle target) : this(() => target, () => false) { }
 		public override GoalStatus OnTick() {
-			if( !CanControlCharacter() )
-				return Status;
-			var target = Target();
-			if( target == VehicleHandle.Invalid )
-				return Status = GoalStatus.Complete;
-			var targetPos = Position(target);
-			if( targetPos == Vector3.Zero )
-				return Status = GoalStatus.Complete;
-			var pos = Position(PlayerVehicle);
-			if( pos == Vector3.Zero )
-				return Status = GoalStatus.Complete;
-			var dist = (targetPos - pos).Length();
-			DriveToward(targetPos, maxSpeed: Speed(target) * (dist/Distance));
+			if( CanControlCharacter() ) {
+				VehicleHandle target = Target();
+				if( target == VehicleHandle.Invalid ) {
+					return Status = GoalStatus.Complete;
+				}
+
+				Vector3 targetPos = Position(target);
+				if( targetPos == Vector3.Zero ) {
+					return Status = GoalStatus.Complete;
+				}
+
+				Vector3 pos = Position(PlayerVehicle);
+				if( pos == Vector3.Zero ) {
+					return Status = GoalStatus.Complete;
+				}
+
+				DriveToward(targetPos, maxSpeed: Speed(target) * ((targetPos - pos).Length() / Distance));
+			}
 			return Status;
 		}
 	}
@@ -97,7 +102,7 @@ namespace Shiv {
 		public float StoppingRange = 4f;
 		public float Speed = 1f;
 		private uint Started = 0;
-		public TaskDrive(Func<Vector3> target) { Target = target; }
+		public TaskDrive(Func<Vector3> target) => Target = target;
 		public TaskDrive(Vector3 target) : this(() => target) { }
 
 		private GoalStatus Start() {
@@ -116,9 +121,7 @@ namespace Shiv {
 			}
 			return Status;
 		}
-		public GoalStatus Done() {
-			return Status = GoalStatus.Complete;
-		}
+		public GoalStatus Done() => Status = GoalStatus.Complete;
 		public override GoalStatus OnTick() {
 			int status = GetScriptTaskStatus(Self, TaskStatusHash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE);
 			UI.DrawText($"TaskDrive: (started {Started}) (status {status})");
@@ -138,12 +141,11 @@ namespace Shiv {
 		public bool StopAtDestination = true;
 		public DirectDrive(Vector3 target) {
 			Target = () => target;
-			if( target == Vector3.Zero )
+			if( target == Vector3.Zero ) {
 				Status = GoalStatus.Failed;
+			}
 		}
-		public DirectDrive(Func<Vector3> func) {
-			Target = func;
-		}
+		public DirectDrive(Func<Vector3> func) => Target = func;
 		private Vector3 lastTarget;
 		private float Activation(float x) => (Sigmoid(x) * 2f) - 1f;
 		public override GoalStatus OnTick() {
@@ -167,7 +169,7 @@ namespace Shiv {
 	public class DriveWander : Goal {
 		public DriveWander() { }
 
-		public override void Dispose() { blacklist.Dispose(); }
+		public override void Dispose() => blacklist.Dispose();
 
 		private readonly Blacklist blacklist = new Blacklist("DriveWander");
 		public override GoalStatus OnTick() {

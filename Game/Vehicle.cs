@@ -127,9 +127,7 @@ namespace Shiv {
 			if( v != 0 ) { Call(SET_VEHICLE_ENGINE_ON, v, value, true); }
 		}
 
-		public static PedHandle GetPedInSeat(VehicleHandle v, VehicleSeat seat) {
-			return Call<PedHandle>(GET_PED_IN_VEHICLE_SEAT, v, seat);
-		}
+		public static PedHandle GetPedInSeat(VehicleHandle v, VehicleSeat seat) => Call<PedHandle>(GET_PED_IN_VEHICLE_SEAT, v, seat);
 		public static Dictionary<VehicleSeat, PedHandle> GetSeatMap(VehicleHandle veh) {
 			var ret = new Dictionary<VehicleSeat, PedHandle>();
 			Enum.GetValues(typeof(VehicleSeat)).Each<VehicleSeat>( seat => {
@@ -158,8 +156,6 @@ namespace Shiv {
 			GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
 			return GetVehicleOffset(v, offset, m, frontRight, backLeft);
 		}
-		public static Vector3 GetVehicleOffset(VehicleHandle v, Vector3 offset, Matrix4x4 m, Vector3 frontRight, Vector3 backLeft) {
-			return Vector3.Transform(offset * (frontRight - backLeft), m);
-		}
+		public static Vector3 GetVehicleOffset(VehicleHandle v, Vector3 offset, Matrix4x4 m, Vector3 frontRight, Vector3 backLeft) => Vector3.Transform(offset * (frontRight - backLeft), m);
 	}
 }

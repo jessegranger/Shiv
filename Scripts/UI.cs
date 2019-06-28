@@ -15,7 +15,7 @@ namespace Shiv {
 		private static readonly float originY = .01f;
 		private static float lastX = originX;
 		private static float lastY = originY;
-		internal struct DrawTextCommand {
+		private struct DrawTextCommand {
 			internal float x;
 			internal float y;
 			internal float scale;
@@ -23,14 +23,14 @@ namespace Shiv {
 			internal string text;
 			internal Color color;
 		}
-		internal struct DrawRectCommand {
+		private struct DrawRectCommand {
 			internal float x;
 			internal float y;
 			internal float w;
 			internal float h;
 			internal Color color;
 		}
-		internal struct DrawSubtitleCommand {
+		private struct DrawSubtitleCommand {
 			internal string text;
 			internal int dur;
 			internal bool urgent;
@@ -43,9 +43,9 @@ namespace Shiv {
 		}
 		private static Pool<DrawTextCommand> textPool = new Pool<DrawTextCommand>();
 
-		internal static ConcurrentQueue<DrawTextCommand> textQueue = new ConcurrentQueue<DrawTextCommand>();
-		internal static ConcurrentQueue<DrawRectCommand> rectQueue = new ConcurrentQueue<DrawRectCommand>();
-		internal static ConcurrentQueue<DrawSubtitleCommand> subtitleQueue = new ConcurrentQueue<DrawSubtitleCommand>();
+		private static ConcurrentQueue<DrawTextCommand> textQueue = new ConcurrentQueue<DrawTextCommand>();
+		private static ConcurrentQueue<DrawRectCommand> rectQueue = new ConcurrentQueue<DrawRectCommand>();
+		private static ConcurrentQueue<DrawSubtitleCommand> subtitleQueue = new ConcurrentQueue<DrawSubtitleCommand>();
 		internal static void OnTick() {
 			while( rectQueue.TryDequeue(out DrawRectCommand cmd) ) {
 				DrawRect(cmd);
@@ -69,8 +69,10 @@ namespace Shiv {
 			DrawText(sPos.X + dx, sPos.Y + dy, text, scale, font, color);
 		}
 		public static void DrawText(float x, float y, string text, float scale, int font, Color color) {
-			if( color == default )
+			if( color == default ) {
 				color = Color.White;
+			}
+
 			var cmd = textPool.GetItem();
 			cmd.x = x;
 			cmd.y = y;
@@ -90,9 +92,7 @@ namespace Shiv {
 				Call(END_TEXT_COMMAND_DISPLAY_TEXT, cmd.x, cmd.y);
 			}
 		}
-		public static void ShowSubtitle(string text, int duration, bool urgent = false) {
-			subtitleQueue.Enqueue(new DrawSubtitleCommand() { text = text, dur = duration, urgent = urgent });
-		}
+		public static void ShowSubtitle(string text, int duration, bool urgent = false) => subtitleQueue.Enqueue(new DrawSubtitleCommand() { text = text, dur = duration, urgent = urgent });
 		private static void ShowSubtitle(DrawSubtitleCommand cmd) {
 			using( var text = new PinnedString(cmd.text) ) {
 				Call(BEGIN_TEXT_COMMAND_PRINT, PinnedString.STRING);
