@@ -30,6 +30,9 @@ namespace Shiv {
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static NodeHandle GetHandle(Vector3 v) => NavMesh.GetHandle(v);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 Position(NodeHandle handle) => NavMesh.Position(handle);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static IEnumerable<NodeHandle> Edges(NodeHandle a) => NavMesh.Edges(a);
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool HasEdges(NodeHandle a) => NavMesh.HasEdges(a);
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool IsGrown(NodeHandle a) => NavMesh.IsGrown(a);
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool IsCover(NodeHandle a) => NavMesh.IsCover(a);
 
 	}
 
@@ -230,8 +233,8 @@ namespace Shiv {
 							Grow(first, msPerGrow);
 						}
 					} else {
-						var pos = PutOnGround(AimPosition(), 1f);
-						var handle = GetHandle(pos);
+						Vector3 pos = PutOnGround(AimPosition(), 1f);
+						NodeHandle handle = GetHandle(pos);
 						pos = Position(handle);
 						if( !IsGrown(handle) ) {
 							Sphere.Add(pos, .1f, Color.Red, 3000);
@@ -266,8 +269,8 @@ namespace Shiv {
 					DrawSphere(nodePos, .05f, Color.Blue);
 				}
 				//UI.DrawTextInWorldWithOffset(nodePos, 0f, -.005f * count, $"{count}");
-				foreach( var e in Edges(node) ) {
-					var ePos = Position(e);
+				foreach( NodeHandle e in Edges(node) ) {
+					Vector3 ePos = Position(e);
 					count += 1;
 					DrawLine(nodePos, ePos, Color.Yellow);
 					DrawEdges(e, ePos, depth - 1, stack, seen, count);
@@ -283,7 +286,7 @@ namespace Shiv {
 
 			var sw = new Stopwatch();
 			sw.Start();
-			var result = Grow(node, ms, sw, Ungrown, debug);
+			GrowResult result = Grow(node, ms, sw, Ungrown, debug);
 			while( result == GrowResult.IsGrowing && sw.ElapsedMilliseconds < ms ) {
 				node = Ungrown.OrderBy(DistanceToSelf).FirstOrDefault();
 				Grow(node, ms, sw, Ungrown, debug);
@@ -337,10 +340,9 @@ namespace Shiv {
 			try {
 				// Push growth out on certain edges by following their edgeOffsets
 				Items(0,1,2,3,4,6,10,12).Select(i => {
-				// Range(0, 13).Select(i => {
 					var e = (NodeHandle)((long)node + edgeOffsets[i]);
-					var ePos = Position(e);
-					var gPos = PutOnGround(ePos, 1f);
+					Vector3 ePos = Position(e);
+					Vector3 gPos = PutOnGround(ePos, 1f);
 					NodeHandle g = GetHandle(gPos);
 					gPos = Position(g);
 					if( debug ) {
@@ -348,10 +350,10 @@ namespace Shiv {
 						UI.DrawTextInWorld(gPos, $"{i}");
 					}
 					if( IsPossibleEdge(node, g) && !HasEdge(node, g) ) {
-						var delta = gPos - nodePos;
+						Vector3 delta = gPos - nodePos;
 						var len = delta.Length();
 						Vector3 end = nodePos + (Vector3.Normalize(delta) * (len - capsuleSize / 2));
-						var result = Raycast(nodePos, end, capsuleSize, growRayOpts, Self);
+						RaycastResult result = Raycast(nodePos, end, capsuleSize, growRayOpts, Self);
 						if( result.DidHit ) {
 							if( debug ) {
 								DrawLine(nodePos + Up * .01f, end + Up * .01f, Color.Red);
@@ -372,7 +374,7 @@ namespace Shiv {
 								}
 							}
 							*/
-							var m = result.Material;
+							Materials m = result.Material;
 							if( m != Materials.metal_railing
 								&& m != Materials.metal_garage_door
 								&& m != Materials.bushes
@@ -420,6 +422,13 @@ namespace Shiv {
 			}
 		}
 
+		public static IEnumerable<NodeHandle> PossibleEdges(NodeHandle node) {
+			for(int i = 0; i < 30; i++ ) {
+				yield return (NodeHandle)((long)node + edgeOffsets[i]);
+			}
+		}
+
+		public static bool HasEdges(NodeHandle a) => AllEdges != null && AllEdges.TryGetValue(a, out uint flags) && flags != 0;
 		public static IEnumerable<NodeHandle> Edges(NodeHandle a) {
 			if( AllEdges == null ) {
 				yield break;
@@ -657,8 +666,8 @@ namespace Shiv {
 						yield return n;
 					}
 				}
-				foreach( var e in Edges(n) ) {
-					foreach( var r in Select(e, maxDepth, pred, stack, seen) ) {
+				foreach( NodeHandle e in Edges(n) ) {
+					foreach( NodeHandle r in Select(e, maxDepth, pred, stack, seen) ) {
 						yield return r;
 					}
 				}
@@ -674,9 +683,31 @@ namespace Shiv {
 			return NodeHandle.Invalid;
 		}
 
+		public static IEnumerable<NodeHandle> Flood(NodeHandle n, int maxDepth) => Flood(n, maxDepth, new HashSet<NodeHandle>(), new HashSet<NodeHandle>(), PossibleEdges);
+		private static IEnumerable<NodeHandle> Flood(NodeHandle n, int maxDepth, HashSet<NodeHandle> stack, HashSet<NodeHandle> seen, Func<NodeHandle, IEnumerable<NodeHandle>> edges) {
+			if( n != NodeHandle.Invalid
+				&& stack.Count <= maxDepth
+				&& !stack.Contains(n) ) {
+				stack.Add(n);
+				if( !seen.Contains(n) ) {
+					seen.Add(n);
+					yield return n;
+				}
+				try {
+					foreach( NodeHandle e in edges(n) ) {
+						foreach( NodeHandle ee in Flood(e, maxDepth, stack, seen, edges) ) {
+							yield return ee;
+						}
+					}
+				} finally {
+					stack.Remove(n);
+				}
+			}
+		}
+
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static void Visit(NodeHandle n, int maxDepth, Action<NodeHandle> action) => Visit(n, maxDepth, action, new HashSet<NodeHandle>(), new HashSet<NodeHandle>());
-		private static void Visit(NodeHandle n, int maxDepth, Action<NodeHandle> action, HashSet<NodeHandle> stack, HashSet<NodeHandle> seen) {
+		public static void Visit(NodeHandle n, int maxDepth, Action<NodeHandle> action) => Visit(n, maxDepth, action, new HashSet<NodeHandle>(), new HashSet<NodeHandle>(), Edges);
+		private static void Visit(NodeHandle n, int maxDepth, Action<NodeHandle> action, HashSet<NodeHandle> stack, HashSet<NodeHandle> seen, Func<NodeHandle, IEnumerable<NodeHandle>> edges) {
 			if( n == 0
 				|| stack == null
 				|| stack.Count > maxDepth
@@ -690,8 +721,8 @@ namespace Shiv {
 				action(n);
 			}
 			try {
-				foreach( NodeHandle e in Edges(n) ) {
-					Visit(e, maxDepth, action, stack, seen);
+				foreach( NodeHandle e in edges(n) ) {
+					Visit(e, maxDepth, action, stack, seen, edges);
 				}
 			} finally {
 				stack.Remove(n);
@@ -704,9 +735,9 @@ namespace Shiv {
 				return;
 			}
 
-			var v = NearbyVehicles[0];
-			var m = Matrix(v);
-			var model = GetModel(v);
+			VehicleHandle v = NearbyVehicles[0];
+			Matrix4x4 m = Matrix(v);
+			VehicleHash model = GetModel(v);
 			GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
 
 			foreach( Vector3 n in NavMesh.GetAllHandlesInBox(m, backLeft, frontRight).Select(Position) ) {
@@ -715,7 +746,7 @@ namespace Shiv {
 				}
 			}
 
-			var d = frontRight - backLeft;
+			Vector3 d = frontRight - backLeft;
 			// UI.DrawTextInWorld(Vector3.Transform(new Vector3(0f, 0f, dZ/2), m), "dZ/2 HERE");
 			// UI.DrawTextInWorld(Vector3.Transform(new Vector3(0f, dY/2, 0f), m), "dY/2 HERE");
 			// UI.DrawTextInWorld(Vector3.Transform(new Vector3(dX/2f, 0f, 0f), m), "dX/2 HERE");
@@ -742,18 +773,18 @@ namespace Shiv {
 			VehicleOffsets.BackBumper,
 		};
 		public static IEnumerable<NodeHandle> FindCoverBehindVehicle(Vector3 danger, int maxScan = 10) {
-			foreach( var v in NearbyVehicles.Take(maxScan) ) {
+			foreach( VehicleHandle v in NearbyVehicles.Take(maxScan) ) {
 				var count = GetSeatMap(v).Values.Where(IsValid).Count();
 				if( count > 0 ) {
 					UI.DrawTextInWorld(Global.Position(v), $"Seat Map Occupied: {count}");
 					continue;
 				}
-				var m = Matrix(v);
-				var pos = Global.Position(m);
-				var delta = (danger - pos);
-				var heading = AbsHeading(Heading(m) - Rad2Deg(Atan2(delta.Y, delta.X)));
+				Matrix4x4 m = Matrix(v);
+				Vector3 pos = Global.Position(m);
+				Vector3 delta = danger - pos;
+				float heading = AbsHeading(Heading(m) - Rad2Deg(Atan2(delta.Y, delta.X)));
 				int slot = (int)(6 * (heading / 360));
-				var loc = GetVehicleOffset(v, vehicleCoverOffset[slot], m);
+				Vector3 loc = GetVehicleOffset(v, vehicleCoverOffset[slot], m);
 				yield return GetHandle(loc);
 			}
 		}
@@ -764,8 +795,8 @@ namespace Shiv {
 					if( danger == Vector3.Zero ) {
 						return true;
 					}
-					var pos = Position(n);
-					var end = pos + Vector3.Normalize(danger - pos) * 2f;
+					Vector3 pos = Position(n);
+					Vector3 end = pos + (Vector3.Normalize(danger - pos) * 2f);
 					if( Raycast(pos, end, IntersectOptions.Map | IntersectOptions.Objects, Self).DidHit ) {
 						Line.Add(pos, end, Color.Red, 5000);
 						return true;
