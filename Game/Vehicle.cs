@@ -22,10 +22,6 @@ namespace Shiv {
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static void Heading(VehicleHandle ent, float value) => Heading((EntHandle)ent, value);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static VehicleHash GetModel(VehicleHandle ent) => (VehicleHash)GetModel((EntHandle)ent);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static void GetModelDimensions(VehicleHash model, out Vector3 backLeft, out Vector3 frontRight) => GetModelDimensions((ModelHash)model, out backLeft, out frontRight);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 LeftPosition(VehicleHandle ent) => LeftPosition((EntHandle)ent);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 RightPosition(VehicleHandle ent) => RightPosition((EntHandle)ent);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 FrontPosition(VehicleHandle ent) => FrontPosition((EntHandle)ent);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 RearPosition(VehicleHandle ent) => RearPosition((EntHandle)ent);
 
 		public static float Fuel(VehicleHandle ent) => Read<float>(Address(ent), 0x7F4);
 		public static void Fuel(VehicleHandle ent, float value) => Write(Address(ent), 0x7F4, value);

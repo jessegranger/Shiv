@@ -54,7 +54,7 @@ namespace Shiv {
 		public static bool IsFacing(PedHandle ent, Vector3 pos) => IsFacing((EntHandle)ent, pos);
 		public static bool IsFacing(VehicleHandle ent, Vector3 pos) => IsFacing((EntHandle)ent, pos);
 		public static bool IsFacing(EntHandle ent, Vector3 pos) {
-			var m = Matrix(ent);
+			Matrix4x4 m = Matrix(ent);
 			return Vector3.Dot(pos - Position(m), Forward(m)) > 0.2f;
 		}
 
@@ -102,26 +102,6 @@ namespace Shiv {
 		/// <summary>  Expensive. </summary>
 		public static Vector3 GetPositionOffset(EntHandle ent, Vector3 pos) => GetPositionOffset(Matrix(ent), pos);
 		// ent == 0 ? Vector3.Zero : Call<Vector3>(GET_OFFSET_FROM_ENTITY_GIVEN_WORLD_COORDS, ent, pos);
-
-		public static Vector3 LeftPosition(EntHandle ent) {
-			GetModelDimensions(GetModel(ent), out Vector3 backLeft, out Vector3 frontRight);
-			return GetOffsetPosition(ent, new Vector3(backLeft.X, 0, 0));
-		}
-
-		public static Vector3 RightPosition(EntHandle ent) {
-			GetModelDimensions(GetModel(ent), out Vector3 backLeft, out Vector3 frontRight);
-			return GetOffsetPosition(ent, new Vector3(frontRight.X, 0, 0));
-		}
-
-		public static Vector3 FrontPosition(EntHandle ent) {
-			GetModelDimensions(GetModel(ent), out Vector3 backLeft, out Vector3 frontRight);
-			return GetOffsetPosition(ent, new Vector3(0, frontRight.Y, 0));
-		}
-
-		public static Vector3 RearPosition(EntHandle ent) {
-			GetModelDimensions(GetModel(ent), out Vector3 backLeft, out Vector3 frontRight);
-			return GetOffsetPosition(ent, new Vector3(0, backLeft.Y, 0));
-		}
 
 		public static Vector3 Velocity(EntHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_VELOCITY, ent);
 		public static void Velocity(EntHandle ent, Vector3 value) => Call(SET_ENTITY_VELOCITY, ent, value);
@@ -191,12 +171,12 @@ namespace Shiv {
 		public static void Scale(BlipHandle blip, float value) => Call(SET_BLIP_SCALE, blip, value);
 		public static BlipHUDColor GetBlipHUDColor(BlipHandle blip) => Call<BlipHUDColor>(GET_BLIP_HUD_COLOUR, blip);
 		public static BlipColor GetBlipColor(BlipHandle blip) => Call<BlipColor>(GET_BLIP_COLOUR, blip);
-		public static Color GetColor(BlipHandle blip) {
-			if (blip == BlipHandle.Invalid) return default;
-			return GetColor(GetBlipHUDColor(blip));
-		}
+		public static Color GetColor(BlipHandle blip) => blip == BlipHandle.Invalid ? (default) : GetColor(GetBlipHUDColor(blip));
 		public static Color GetColor(BlipHUDColor color) {
-			if( color == BlipHUDColor.Invalid ) return default;
+			if( color == BlipHUDColor.Invalid ) {
+				return default;
+			}
+
 			switch( color ) {
 				case BlipHUDColor.Blue: return Color.Blue;
 				case BlipHUDColor.Red: return Color.Red;
@@ -260,9 +240,9 @@ namespace Shiv {
 		public static void GiveWeapons(PedHandle ped, params uint[] items) {
 			uint weapon = 0;
 			for( int i = 0; i < items.Length; i++ ) {
-				if( weapon == 0 )
+				if( weapon == 0 ) {
 					weapon = items[i];
-				else {
+				} else {
 					GiveWeapon(ped, (WeaponHash)weapon, items[i], i == items.Length - 1);
 					weapon = 0;
 				}
@@ -270,8 +250,13 @@ namespace Shiv {
 		}
 
 		public static void RemoveWeapons(PedHandle ped, params WeaponHash[] weapons) {
-			if( weapons.Length == 0 ) Call(REMOVE_ALL_PED_WEAPONS, ped);
-			else foreach( WeaponHash w in weapons ) Call(REMOVE_WEAPON_FROM_PED, ped, w);
+			if( weapons.Length == 0 ) {
+				Call(REMOVE_ALL_PED_WEAPONS, ped);
+			} else {
+				foreach( WeaponHash w in weapons ) {
+					Call(REMOVE_WEAPON_FROM_PED, ped, w);
+				}
+			}
 		}
 
 		private static Dictionary<WeaponHash, string> weaponLabels = new Dictionary<WeaponHash, string>() {

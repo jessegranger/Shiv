@@ -8,6 +8,7 @@ using System.Numerics;
 using static GTA.Native.MemoryAccess;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
+using System.Drawing;
 
 namespace Shiv {
 
@@ -26,10 +27,6 @@ namespace Shiv {
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 Forward(PedHandle ent) => Forward(Matrix(ent));
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 Right(PedHandle ent) => Right(Matrix(ent));
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 UpVector(PedHandle ent) => UpVector(Matrix(ent));
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 LeftPosition(PedHandle ent) => LeftPosition((EntHandle)ent);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 RightPosition(PedHandle ent) => RightPosition((EntHandle)ent);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 FrontPosition(PedHandle ent) => FrontPosition((EntHandle)ent);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 RearPosition(PedHandle ent) => RearPosition((EntHandle)ent);
 
 		public static bool IsHuman(PedHandle ent) => ent == 0 ? false : Call<bool>(IS_PED_HUMAN, ent);
 		public static bool IsAlive(PedHandle ent) => IsAlive((EntHandle)ent);
@@ -102,7 +99,7 @@ namespace Shiv {
 		public static bool CanSee(PedHandle ped, Vector3 pos, IntersectOptions opts = IntersectOptions.Map | IntersectOptions.Objects ) {
 			Vector3 start = HeadPosition(ped);
 			float len = (start - pos).Length();
-			var result = Raycast(HeadPosition(ped), pos, opts, ped);
+			RaycastResult result = Raycast(HeadPosition(ped), pos, opts, ped);
 			return result.DidHit ? (start - result.HitPosition).Length() / len > .99f : false;
 		}
 
@@ -119,7 +116,7 @@ namespace Shiv {
 		public static bool IsTaskActive(PedHandle p, TaskID taskId) => Call<bool>(GET_IS_TASK_ACTIVE, p, taskId);
 		public static int GetScriptTaskStatus(PedHandle p, TaskStatusHash hash) => Call<int>(GET_SCRIPT_TASK_STATUS, p, hash);
 		public static void DebugAllTasks(PedHandle ent) {
-			var s = ScreenCoords(HeadPosition(ent));
+			PointF s = ScreenCoords(HeadPosition(ent));
 			UI.DrawText(s.X, s.Y, $"Model: {GetModel(ent)}");
 			s.Y += .019f;
 			Enum.GetValues(typeof(TaskID)).Each<TaskID>(id => {
