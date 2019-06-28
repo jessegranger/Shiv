@@ -33,7 +33,9 @@
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="Future.cs" />
+    <Compile Include="Global.cs" />
     <Compile Include="Goals\TakeCover.cs" />
+    <Compile Include="Shiv.cs" />
     <Compile Include="Util\MovingAverage.cs" />
     <Compile Include="Scripts\Console.cs" />
     <Compile Include="Scripts\Menu.cs" />
@@ -54,7 +56,6 @@
     <Compile Include="Util\Codec.cs" />
     <Compile Include="Scripts\Goals.cs" />
     <Compile Include="Game\Imports.cs" />
-    <Compile Include="Main.cs" />
     <Compile Include="Util\Math.cs" />
     <Compile Include="Game\NativeHashes.cs" />
     <Compile Include="Game\NativeMemory.cs" />
@@ -67,6 +68,7 @@
     <Compile Include="Scripts\Senses.cs" />
     <Compile Include="Scripts\UI.cs" />
     <Compile Include="Scripts\VehicleMesh.cs" />
+    <Compile Include="Util\Throttle.cs" />
   </ItemGroup>
   <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
