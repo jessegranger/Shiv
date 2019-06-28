@@ -29,8 +29,13 @@ namespace Shiv {
 		}
 		~Blacklist() { Dispose(); }
 		public void Dispose() {
-			if( instances != null ) instances.Remove(this);
-			if( data != null ) data.Clear();
+			if( instances != null ) {
+				instances.Remove(this);
+			}
+
+			if( data != null ) {
+				data.Clear();
+			}
 		}
 
 		internal static void RemoveAllExpired() => instances.Each(b => b.RemoveExpired());
@@ -40,7 +45,10 @@ namespace Shiv {
 		/// </summary>
 		private void RemoveExpired() { // TODO: could optimize this so there is an array sorted by expiration time, but keep the dict to answer Contains()
 			var done = data.Where(p => p.Value < GameTime).ToArray();
-			foreach( var p in done ) data.Remove(p.Key);
+			foreach( var p in done ) {
+				data.Remove(p.Key);
+			}
+
 			UI.DrawText($"Blacklist({Name}): {data.Count}");
 		}
 
@@ -52,9 +60,9 @@ namespace Shiv {
 		/// <summary>
 		/// Ban an ID for a duration in milliseconds.
 		/// </summary>
-		public void Add(ulong id, uint duration) { if(id != 0 ) data[id] = GameTime + duration; }
-		public void Add(int id, uint duration) { if(id != 0 ) data[(ulong)id] = GameTime + duration; }
-		
+		public void Add(ulong id, uint duration) => data[id] = GameTime + duration;
+		public void Add(int id, uint duration) => data[(ulong)id] = GameTime + duration;
+
 		/// <summary>
 		/// Blacklist a Ped.
 		/// </summary>
