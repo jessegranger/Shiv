@@ -13,6 +13,8 @@ namespace Shiv {
 
 	public static partial class Global {
 
+		public static uint LastGameTime = GameTime;
+		public static uint FrameCount = 0;
 		public static Stopwatch TotalTime = new Stopwatch();
 
 		/// <summary>
@@ -62,6 +64,10 @@ namespace Shiv {
 		/// </summary>
 		public static Matrix4x4 CameraMatrix { get; internal set; }
 
+		/// <summary>
+		/// Log to Console and to the "Shiv.log" file.
+		/// </summary>
+		public static void Log(string s) => Shiv.Log(s);
 	}
 }
 

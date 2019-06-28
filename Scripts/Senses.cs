@@ -67,19 +67,8 @@ namespace Shiv {
 	public class CoverSense : Sense {
 		private static readonly NodeHandle[] Empty = new NodeHandle[0];
 		public static NodeHandle[] NearbyCover = Empty;
-		private Task<NodeHandle[]> task;
 		private bool IsStopped(Task t) => (t.IsCanceled || t.IsFaulted || t.IsCompleted);
-		public CoverSense() {
-			Shiv.Log("CoverSense: Starting...");
-			task = Search();
-		}
-		private Task<NodeHandle[]> Search() {
-			return Task.Run(delegate {
-				if( !NavMesh.IsLoaded )
-					return Empty;
-				return NavMesh.Select(PlayerNode, 6, NavMesh.IsCover).Take(1000).ToArray();
-			});
-		}
+		public CoverSense() => Log("CoverSense: Starting...");
 		public override void OnTick() {
 			UI.DrawText($"Cover: {NearbyCover.Length}");
 			int i = 0;
@@ -87,10 +76,6 @@ namespace Shiv {
 				DrawSphere(Position(n), .1f, Color.Blue);
 				UI.DrawTextInWorld(Position(n) + (Up * i/55), $"{i}:{n}");
 				i++;
-			}
-			if( task.IsCompleted ) {
-				NearbyCover = task.Result;
-				task = Task.Run(Search);
 			}
 		}
 	}

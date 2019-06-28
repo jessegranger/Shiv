@@ -130,14 +130,14 @@ namespace Shiv {
 					 debug: debug)));
 
 		private static Path Fail(string msg) {
-			Shiv.Log(msg);
+			Log(msg);
 			UI.DrawText(.3f, .3f, msg);
 			return new Path(Enumerable.Empty<NodeHandle>());
 		}
 		internal static Path FindPath(NodeHandle startNode, NodeHandle targetNode, ConcurrentSet<NodeHandle> closedSet, uint maxMs, CancellationToken cancelToken, bool debug=false) {
 			var s = new Stopwatch();
 			Vector3 targetNodePos = Position(targetNode);
-			// Shiv.Log($"[{targetNode}] FindPath Starting...");
+			// Log($"[{targetNode}] FindPath Starting...");
 
 			if( startNode == 0 ) {
 				return Fail($"[{targetNode}] FindPath failed: startNode is zero.");
@@ -155,7 +155,7 @@ namespace Shiv {
 			};
 			float FScore(NodeHandle n) => fScore.ContainsKey(n) ? fScore[n] : float.MaxValue;
 
-			// Shiv.Log($"[{targetNode}] Creating openSet...");
+			// Log($"[{targetNode}] Creating openSet...");
 			var openSet = new HashSet<NodeHandle>();
 			var cameFrom = new Dictionary<NodeHandle, NodeHandle>();
 
@@ -182,7 +182,7 @@ namespace Shiv {
 				}
 				if( (curPos - targetNodePos).LengthSquared() < .25f ) {
 					var ret = new Path(UnrollPath(cameFrom, cur, debug));
-					Shiv.Log($"[{targetNode}] Found a path of {ret.Count()} steps ({closedSet.Count} searched in {s.ElapsedMilliseconds}ms)");
+					Log($"[{targetNode}] Found a path of {ret.Count()} steps ({closedSet.Count} searched in {s.ElapsedMilliseconds}ms)");
 					return ret;
 				}
 

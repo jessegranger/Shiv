@@ -32,15 +32,15 @@ namespace Shiv {
 			}
 
 			if( future == null ) {
-				Shiv.Log("WalkTo: Requesting path...");
+				Log("WalkTo: Requesting path...");
 				future = new PathRequest(PlayerNode, TargetNode, (uint)Max(30, 4 * dist), false, true, true);
 			} else if( future.IsFailed() ) {
-				Shiv.Log($"WalkTo: Task failed (err={future.GetError()})");
+				Log($"WalkTo: Task failed (err={future.GetError()})");
 				return Status = GoalStatus.Failed;
 			} else if( future.IsReady() ) {
 				var slice = future.GetResult().Take(5);
 				if( slice.Count() == 0 ) {
-					Shiv.Log("WalkTo: Got an empty path.");
+					Log("WalkTo: Got an empty path.");
 					return Status = GoalStatus.Failed;
 				}
 				var steps = slice.Select(Position).ToArray();
@@ -61,7 +61,7 @@ namespace Shiv {
 						}
 						break;
 					default:
-						Shiv.Log("WalkTo: MoveToward failed.");
+						Log("WalkTo: MoveToward failed.");
 						return Status = GoalStatus.Failed;
 				}
 			} else {
@@ -75,7 +75,7 @@ namespace Shiv {
 		}
 		private void Stuck() {
 			var cur = PlayerNode;
-			Shiv.Log($"Stuck! {PlayerNode}");
+			Log($"Stuck! {PlayerNode}");
 			foreach( var step in future.GetResult().Take(2) ) {
 				// NavMesh.RemoveEdge(cur, step);
 				var pos = Position(cur);

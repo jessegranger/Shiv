@@ -106,8 +106,8 @@ namespace Shiv {
 		});
 
 		private static TextWriter LogFile;
-		public static void Log(params string[] strings) {
-			string msg = $"{TotalTime.Elapsed} " + string.Join(" ", strings);
+		public static void Log(string s) {
+			string msg = $"{TotalTime.Elapsed} " + s;
 			if( LogFile != null ) {
 				try {
 					LogFile.WriteLine(msg);

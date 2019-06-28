@@ -67,8 +67,8 @@ namespace Shiv {
 				} catch( ScriptComplete ) {
 					cur = list.RemoveAndContinue(cur);
 				} catch( Exception e ) {
-					Shiv.Log($"Uncaught exception in Visit<T>: {e.Message}");
-					Shiv.Log(e.StackTrace);
+					Log($"Uncaught exception in Visit<T>: {e.Message}");
+					Log(e.StackTrace);
 					cur = list.RemoveAndContinue(cur);
 				}
 			}

@@ -10,6 +10,7 @@ using static GTA.Native.Function;
 using static GTA.Native.Hash;
 using static Shiv.Global;
 using static System.Math;
+using Keys = System.Windows.Forms.Keys;
 
 namespace Shiv {
 	public static partial class Global {
@@ -28,10 +29,7 @@ namespace Shiv {
 		public static MoveResult MoveToward(EntHandle ent) => MoveToward(Position(ent));
 		public static MoveResult MoveToward(PedHandle ent) => MoveToward(Position(ent));
 		public static MoveResult MoveToward(Vector3 pos) {
-			if( pos == Vector3.Zero ) {
-				// Text.Add(PlayerPosition + Up, "Cannot MoveToward(0)", 1000);
-				return MoveResult.Complete;
-			}
+			if( pos == Vector3.Zero ) { return MoveResult.Complete; }
 			var obs = CheckObstruction(PlayerPosition, (pos - PlayerPosition));
 			if( obs < 0 ) {
 				// TODO: try to shuffle around a side
@@ -41,7 +39,7 @@ namespace Shiv {
 			} else if( obs > .25f && obs < 2.4f && Speed(Self) < .01f ) {
 				SetControlValue(0, Control.Jump, 1.0f); // Attempt to jump over a positive obstruction
 			}
-			var delta = pos - PlayerPosition; // Position(PlayerMatrix);
+			Vector3 delta = pos - PlayerPosition; // Position(PlayerMatrix);
 			float dX, dY;
 			SetControlValue(1, Control.MoveLeftRight, dX = MoveActivation(
 				+2f * Vector3.Dot(delta, Right(CameraMatrix)), // TODO: 2 should be aspect ratio?
@@ -56,14 +54,7 @@ namespace Shiv {
 		}
 		public static MoveResult FollowPath(IEnumerable<Vector3> path) => path == null ? MoveResult.Complete : MoveToward(Bezier(.5f, path.Take(4).ToArray()));
 
-		private static float LookActivation(float x, float factor) =>
-			// (float)Pow(Tanh(x * Abs(x)), .6) * CurrentFPS;
-			// (float)(x * Sqrt(Abs(factor*x))) * CurrentFPS;
-			// (float)(x * CurrentFPS);
-			(float)(x * CurrentFPS * Sqrt(Abs(CurrentFPS * x * factor)));
-			// (float)Tanh(Sqrt(x*x*Abs(x)) * x * CurrentFPS),
-			// (float)Tanh(x * CurrentFPS),
-			// 6f * (float)Tanh(x * Sqrt(Abs(x / 2)) * CurrentFPS),
+		private static float LookActivation(float x, float factor) => (float)(x * CurrentFPS * Sqrt(Abs(CurrentFPS * x * factor)));
 		public static bool LookToward(Vector3 pos) {
 			pos = pos - Velocity(Self) / CurrentFPS;
 			DrawSphere(pos, .05f, Color.Yellow);
@@ -98,8 +89,8 @@ namespace Shiv {
 			get => walkTarget;
 			set {
 				walkTarget = value;
-				var startNode = PlayerNode;
-				var targetNode = GetHandle(PutOnGround(value, 1f));
+				NodeHandle startNode = PlayerNode;
+				NodeHandle targetNode = GetHandle(PutOnGround(value, 1f));
 				if( targetNode == NodeHandle.Invalid ) {
 					walkTarget = Vector3.Zero;
 					return;
@@ -109,15 +100,12 @@ namespace Shiv {
 		}
 
 		public static float CheckObstruction(Vector3 pos, Vector3 forward) {
-			var opts = IntersectOptions.Map | IntersectOptions.MissionEntities | IntersectOptions.Objects
+			IntersectOptions opts = IntersectOptions.Map | IntersectOptions.MissionEntities | IntersectOptions.Objects
 				| IntersectOptions.Unk1 | IntersectOptions.Unk2 | IntersectOptions.Unk3 | IntersectOptions.Unk4;
-			forward = Vector3.Normalize(forward) * .6f;
+			forward = Vector3.Normalize(forward) * .4f;
 			pos = pos + forward + (Up * 1.2f); // pick a spot in the air
 			var end = new Vector3(pos.X, pos.Y, pos.Z - 1.9f); // try to drop it down
-			// DrawLine(pos, end, Color.Yellow);
-			// DrawLine(HeadPosition(Self), end, Color.Orange);
-			var result = Raycast(pos, end, .3f, opts, Self);
-			// if( result.DidHit ) DrawSphere(result.HitPosition, .2f, Color.Orange);
+			RaycastResult result = Raycast(pos, end, .4f, opts, Self);
 			return result.DidHit ? (result.HitPosition - end).Length() : 0f;
 		}
 
@@ -251,14 +239,14 @@ namespace Shiv {
 	public static partial class Global {
 		public static class Controls {
 			private struct Event {
-				public System.Windows.Forms.Keys key;
+				public Keys key;
 				public bool downBefore;
 				public bool upNow;
 			}
 			private static ConcurrentQueue<Event> keyEvents = new ConcurrentQueue<Event>();
-			private static Dictionary<System.Windows.Forms.Keys, Action> keyBindings = new Dictionary<System.Windows.Forms.Keys, Action>();
-			public static void Bind(System.Windows.Forms.Keys key, Action action) => keyBindings[key] = keyBindings.TryGetValue(key, out Action curr) ? (() => { curr(); action(); }) : action;
-			public static void Enqueue(System.Windows.Forms.Keys key, bool downBefore, bool upNow) => keyEvents.Enqueue(new Event() { key = key, downBefore = downBefore, upNow = upNow });
+			private static Dictionary<Keys, Action> keyBindings = new Dictionary<Keys, Action>();
+			public static void Bind(Keys key, Action action) => keyBindings[key] = keyBindings.TryGetValue(key, out Action curr) ? (() => { curr(); action(); }) : action;
+			public static void Enqueue(Keys key, bool downBefore, bool upNow) => keyEvents.Enqueue(new Event() { key = key, downBefore = downBefore, upNow = upNow });
 			public static void DisableAllThisFrame(Type except = null) { Disabled = true; DisabledExcept = except; }
 			public static Type DisabledExcept = null;
 			public static bool Disabled = false;
@@ -271,7 +259,7 @@ namespace Shiv {
 								action();
 							}
 						} catch( Exception err ) {
-							Shiv.Log($"OnKey({evt.key}) exception from key-binding: {err.Message} {err.StackTrace}");
+							Log($"OnKey({evt.key}) exception from key-binding: {err.Message} {err.StackTrace}");
 							keyBindings.Remove(evt.key);
 						}
 					} else if( DisabledExcept != null ) {

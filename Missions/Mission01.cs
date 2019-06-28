@@ -9,7 +9,7 @@ using static GTA.Native.Function;
 using static Shiv.Global;
 using System.Drawing;
 
-namespace Shiv.Missions {
+namespace Shiv {
 	abstract class Mission : Goal {
 		public override string ToString() => "Mission";
 		public static bool IsInMission() => Call<bool>(GET_MISSION_FLAG);
@@ -39,7 +39,7 @@ namespace Shiv.Missions {
 		BlipHUDColor WaitForBlip = BlipHUDColor.Invalid;
 		private static Blacklist blacklist = new Blacklist("combat");
 		private GoalStatus NextPhase(Phase p, BlipHUDColor waitFor=BlipHUDColor.Invalid) {
-			Shiv.Log($"Going to next phase: {p}");
+			Log($"Going to next phase: {p}");
 			WalkTarget = Vector3.Zero;
 			AimTarget = Vector3.Zero;
 			AimAtHead = PedHandle.Invalid;
@@ -50,10 +50,14 @@ namespace Shiv.Missions {
 			return Status;
 		}
 		private float Threat(PedHandle ped) {
-			if( blacklist.Contains(ped) )
+			if( blacklist.Contains(ped) ) {
 				return 0f;
-			if( GetColor(GetBlip(ped)) != Color.Red )
+			}
+
+			if( GetColor(GetBlip(ped)) != Color.Red ) {
 				return 0f;
+			}
+
 			float threat = 1 / DistanceToSelf(ped);
 			threat += IsAiming(ped) ? .1f : 0f;
 			threat += IsAimingFromCover(ped) ? .1f : 0f;
@@ -61,13 +65,18 @@ namespace Shiv.Missions {
 			return threat;
 		}
 		public override GoalStatus OnTick() {
-			if (!IsInMission())
+			if (!IsInMission()) {
 				return Status = GoalStatus.Complete;
+			}
+
 			UI.DrawText($"[Mission01] Phase: {CurrentPhase}");
 
 			bool HasControl = CanControlCharacter();
 			if( WaitForControl ) {
-				if( HasControl ) WaitForControl = false;
+				if( HasControl ) {
+					WaitForControl = false;
+				}
+
 				return Status;
 			}
 			var blips = GetAllBlips(BlipSprite.Standard);
@@ -81,8 +90,9 @@ namespace Shiv.Missions {
 			}
 			PedHandle ped;
 			Vector3 pos;
-			if( PauseStarted == 0 ) PauseStarted = GameTime;
-			else if( GameTime - PauseStarted > 200 )
+			if( PauseStarted == 0 ) {
+				PauseStarted = GameTime;
+			} else if( GameTime - PauseStarted > 200 ) {
 				switch( CurrentPhase ) {
 					case Phase.Approach:
 						if( HasControl ) {
@@ -132,7 +142,7 @@ namespace Shiv.Missions {
 						return NextPhase(Phase.GetMoney);
 					case Phase.GetMoney:
 						if( HasControl ) {
-							// Shiv.Log("Blip Colors: ", String.Join(" ", GetAllBlips(BlipSprite.Standard).Select(b => GetBlipColor(b).ToString())));
+							// Log("Blip Colors: ", String.Join(" ", GetAllBlips(BlipSprite.Standard).Select(b => GetBlipColor(b).ToString())));
 							var money = PutOnGround(Position(blips.FirstOrDefault(b => GetBlipColor(b) == BlipColor.MissionGreen)), 1.5f);
 							if( money != Vector3.Zero ) {
 								if( DistanceToSelf(money) < 10f ) {
@@ -218,6 +228,8 @@ namespace Shiv.Missions {
 						KillTarget = PedHandle.Invalid;
 						return Status = GoalStatus.Complete;
 				}
+			}
+
 			return Status;
 		}
 	}

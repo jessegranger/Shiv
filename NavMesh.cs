@@ -550,18 +550,18 @@ namespace Shiv {
 				using( BinaryReader r = Codec.Reader(filename) ) {
 					int magic = r.ReadInt32();
 					if( magic != magicBytes ) {
-						Shiv.Log($"Wrong magic bytes {magic:X}");
+						Log($"Wrong magic bytes {magic:X}");
 						return false;
 					}
 					int count = r.ReadInt32();
 					if( count <= 0 ) {
-						Shiv.Log($"Invalid count: {count}");
+						Log($"Invalid count: {count}");
 						return false;
 					}
 					byte[] buf;
 					ulong[] handles = new ulong[count];
 					uint[] edges = new uint[count];
-					Shiv.Log($"Reading {count} edges...");
+					Log($"Reading {count} edges...");
 					buf = r.ReadBytes(count * sizeof(ulong));
 					Buffer.BlockCopy(buf, 0, handles, 0, buf.Length);
 					buf = r.ReadBytes(count * sizeof(uint));
@@ -570,17 +570,17 @@ namespace Shiv {
 					Parallel.For(0, count, (i) => newEdges.TryAdd((NodeHandle)handles[i], edges[i]) );
 					int ungrownCount = r.ReadInt32();
 					if( ungrownCount > 0 ) {
-						Shiv.Log($"Reading {ungrownCount} ungrown nodes...");
+						Log($"Reading {ungrownCount} ungrown nodes...");
 						ulong[] ungrown = new ulong[ungrownCount];
 						buf = r.ReadBytes(ungrownCount * sizeof(ulong));
 						Buffer.BlockCopy(buf, 0, ungrown, 0, buf.Length);
 						Ungrown = new HashSet<NodeHandle>(ungrown.Cast<NodeHandle>());
 					}
-					Shiv.Log($"Finished loading {newEdges.Count}+{ungrownCount} nodes, after {s.Elapsed}");
+					Log($"Finished loading {newEdges.Count}+{ungrownCount} nodes, after {s.Elapsed}");
 					AllEdges = newEdges;
 				}
 			} catch( FileNotFoundException ) {
-				Shiv.Log($"File not found: {filename}");
+				Log($"File not found: {filename}");
 				AllEdges = new ConcurrentDictionary<NodeHandle, uint>();
 			}
 			Dirty = false;
@@ -599,26 +599,26 @@ namespace Shiv {
 				edges = handles.Select(h => AllEdges[h]).ToArray();
 				byte[] buf;
 				try {
-					Shiv.Log($"Writing {handles.Length} handles to file...");
+					Log($"Writing {handles.Length} handles to file...");
 					w.Write(handles.Length);
 					buf = new byte[handles.Length * sizeof(NodeHandle)];
 					Buffer.BlockCopy(handles.Cast<ulong>().ToArray(), 0, buf, 0, buf.Length);
 					w.Write(buf);
 				} catch( Exception err ) {
-					Shiv.Log("Failed: " + err.ToString());
+					Log("Failed: " + err.ToString());
 					return;
 				}
 				try {
-					Shiv.Log($"Writing {edges.Length} edges to file...");
+					Log($"Writing {edges.Length} edges to file...");
 					buf = new byte[edges.Length * sizeof(uint)];
 					Buffer.BlockCopy(edges, 0, buf, 0, buf.Length);
 					w.Write(buf);
 				} catch( Exception err ) {
-					Shiv.Log("Failed: " + err.ToString());
+					Log("Failed: " + err.ToString());
 					return;
 				}
 				try {
-					Shiv.Log($"Writing {Ungrown.Count} ungrown nodes to file...");
+					Log($"Writing {Ungrown.Count} ungrown nodes to file...");
 					ulong[] ungrown;
 					lock( Ungrown ) {
 						ungrown = Ungrown.Cast<ulong>().ToArray();
@@ -628,15 +628,15 @@ namespace Shiv {
 					Buffer.BlockCopy(ungrown, 0, buf, 0, buf.Length);
 					w.Write(buf);
 				} catch( Exception err ) {
-					Shiv.Log("Failed: " + err.ToString());
+					Log("Failed: " + err.ToString());
 					return;
 				}
 				w.Close();
-				Shiv.Log("All bytes written.");
+				Log("All bytes written.");
 			}
 			try { File.Delete(filename); } catch( FileNotFoundException ) { }
 			try { File.Move(filename + ".tmp", filename); } catch( Exception e ) {
-				Shiv.Log("File.Move Failed: " + e.ToString());
+				Log("File.Move Failed: " + e.ToString());
 			}
 		}
 

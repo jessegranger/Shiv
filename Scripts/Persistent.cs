@@ -23,9 +23,7 @@ namespace Shiv {
 			instances.TryAdd(this, this);
 		}
 		~Persistent() { Dispose(); }
-		public void Dispose() {
-			instances.TryRemove(this, out Persistent ignore);
-		}
+		public void Dispose() => instances.TryRemove(this, out Persistent ignore);
 	}
 	public class Sphere : Persistent {
 		public Vector3 Position;
@@ -83,18 +81,17 @@ namespace Shiv {
 		}
 		public override void OnTick(uint dt) {
 			base.OnTick(dt);
-			if( Position != Vector3.Zero )
+			if( Position != Vector3.Zero ) {
 				UI.DrawTextInWorldWithOffset(Position, Offset.X, Offset.Y, Value);
-			else
+			} else {
 				UI.DrawText(Offset.X, Offset.Y, Value, .4f, 4, color);
+			}
 		}
 		public static void Add(Vector3 pos, string text, uint duration, float dX=0, float dY=0) => new Text(pos, text, Color.White, dX, dY, duration);
 	}
 	
 	public class PersistentScript : Script {
-		public override void OnInit() {
-			Shiv.Log("Persistent::OnInit()");
-		}
+		public override void OnInit() => Log("Persistent::OnInit()");
 		private uint lastTick = GameTime;
 		public override void OnTick() {
 			uint dt = GameTime - lastTick;
@@ -107,9 +104,7 @@ namespace Shiv {
 			Persistent.instances.Clear();
 			base.OnAbort();
 		}
-		public override string ToString() {
-			return $"<Persistent[{Persistent.instances.Count}]>";
-		}
+		public override string ToString() => $"<Persistent[{Persistent.instances.Count}]>";
 	}
 	
 }

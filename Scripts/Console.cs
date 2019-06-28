@@ -5,7 +5,6 @@ using static Shiv.Global;
 using System.Drawing;
 using Keys = System.Windows.Forms.Keys;
 using System.Collections.Concurrent;
-using Shiv.Missions;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -29,7 +28,7 @@ namespace Shiv {
 		static int cursor = 0;
 		static List<string> inputHistory = new List<string>();
 		static int inputIndex = 0;
-		private static float stickyLineOffset = 2 * lineHeight;
+		private static readonly float stickyLineOffset = 2 * lineHeight;
 
 
 		public static bool IsOpen { get; internal set; } = false;
@@ -77,10 +76,13 @@ namespace Shiv {
 		StringBuilder receivingBuffer,
 		int bufferSize, uint flags);
 
-		private string getChar(Keys keys) {
+		private string GetChar(Keys keys) {
 			var buf = new StringBuilder(256);
 			var keyboardState = new byte[256];
-			if (shiftDown) keyboardState[(int)Keys.ShiftKey] = 0xff;
+			if (shiftDown) {
+				keyboardState[(int)Keys.ShiftKey] = 0xff;
+			}
+
 			if (ctrlDown) {
 				keyboardState[(int)Keys.ControlKey] = 0xff;
 				keyboardState[(int)Keys.Menu] = 0xff;
@@ -88,10 +90,8 @@ namespace Shiv {
 			ToUnicode((uint)keys, 0, keyboardState, buf, 256, 0);
 			return buf.ToString();
 		}
-		private void addKey(Keys key) {
-			addString(getChar(key));
-		}
-		private void addString(string c) {
+		private void AddKey(Keys key) => AddString(GetChar(key));
+		private void AddString(string c) {
 			string a = inputLine.Substring(0, cursor);
 			string b = inputLine.Substring(cursor);
 			inputLine = a + c + b;
@@ -182,7 +182,7 @@ namespace Shiv {
 						cursor = 0;
 						outputScrollback = 0;
 					} else if( IsValidInput(key) ) {
-						addKey(key);
+						AddKey(key);
 					}
 					// if( key != Keys.Back ) addString(key.ToString());
 					return true;
