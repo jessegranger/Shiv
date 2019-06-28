@@ -96,7 +96,7 @@ namespace Shiv {
 		public override void OnTick() {
 			uint dt = GameTime - lastTick;
 			lastTick = GameTime;
-			foreach( var p in Persistent.instances.Values.ToArray() ) {
+			foreach( Persistent p in Persistent.instances.Values.ToArray() ) {
 				p.OnTick(dt);
 			}
 		}

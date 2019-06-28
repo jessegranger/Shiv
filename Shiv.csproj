@@ -32,7 +32,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
-    <Compile Include="Future.cs" />
+    <Compile Include="Util\Future.cs" />
     <Compile Include="Global.cs" />
     <Compile Include="Goals\TakeCover.cs" />
     <Compile Include="Shiv.cs" />

@@ -11,12 +11,11 @@ namespace Shiv {
 		public bool Run = false;
 		public DirectMove(Vector3 pos) {
 			Target = () => pos;
-			if( pos == Vector3.Zero )
+			if( pos == Vector3.Zero ) {
 				Status = GoalStatus.Failed;
+			}
 		}
-		public DirectMove(Func<Vector3> pos) {
-			Target = pos;
-		}
+		public DirectMove(Func<Vector3> pos) => Target = pos;
 		public virtual bool CheckComplete(Vector3 target) => DistanceToSelf(target) < StoppingRange * StoppingRange;
 		public override GoalStatus OnTick() {
 			var target = Target();
@@ -28,10 +27,13 @@ namespace Shiv {
 				}
 				MoveToward(target);
 				var obs = CheckObstruction(PlayerPosition, (target - PlayerPosition));
-				if( obs < 0 ) return Status = GoalStatus.Failed; // Impassable
-				else if( obs > .25f && obs < 2.4f && Speed(Self) < .01f ) {
+				if( obs < 0 ) {
+					return Status = GoalStatus.Failed; // Impassable
+				} else if( obs > .25f && obs < 2.4f && Speed(Self) < .01f ) {
 					SetControlValue(0, Control.Jump, 1.0f); // Attempt to jump over a positive obstruction
-				} else if( Run && ! IsRunning(Self) ) ToggleSprint();
+				} else if( Run && ! IsRunning(Self) ) {
+					ToggleSprint();
+				}
 			}
 			return Status;
 		}

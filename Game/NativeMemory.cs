@@ -73,6 +73,7 @@ namespace GTA {
 
 				try {
 					// Log($"PushArgument {type.Name} {o}");
+#pragma warning disable IDE0011 // Add braces
 					if( type == typeof(bool) ) NativePush64((ulong)(((bool)o) ? 1 : 0));
 					else if( type == typeof(int) ) NativePush64(unchecked((ulong)(int)o));
 					else if( type == typeof(uint) ) NativePush64((uint)o);
@@ -87,6 +88,7 @@ namespace GTA {
 					else if( type == typeof(string) ) throw new ArgumentException("Must pass a PinnedString, not a managed string.");
 					else if( type == typeof(PinnedString) ) NativePush64((PinnedString)o);
 					else if( type == typeof(IntPtr) ) NativePush64((ulong)((IntPtr)o).ToInt64());
+#pragma warning restore IDE0011 // Add braces
 					else if( type == typeof(Color) ) {
 						var c = (Color)o;
 						PushObject(c.R);
@@ -110,8 +112,9 @@ namespace GTA {
 
 			private static unsafe object GetResult(Type type, ulong* o) {
 				if( type == typeof(VoidType) ) { return VoidValue; }
-				if( type.IsEnum ) type = Enum.GetUnderlyingType(type);
+				if( type.IsEnum ) { type = Enum.GetUnderlyingType(type); }
 
+#pragma warning disable IDE0011 // Add braces
 				if( o == null ) return 0;
 				else if( type == typeof(bool) ) return *(int*)o != 0;
 				else if( type == typeof(int) ) return *(int*)o;
@@ -122,6 +125,7 @@ namespace GTA {
 				else if( type == typeof(double) ) return (double)*(float*)o;
 				else if( type == typeof(IntPtr) ) return new IntPtr((long)o);
 				else if( type == typeof(string) ) return MemoryAccess.ReadString(new IntPtr((char*)*o), 0x0);
+#pragma warning restore IDE0011 // Add braces
 				else if( type == typeof(Vector3) ) { float* data = (float*)o;
 					// NOTE: does not use Read<Vector3> because the script API passes NativeVector3 back and forth (with larger fields)
 					return new Vector3(data[0], data[2], data[4]);
@@ -331,7 +335,7 @@ namespace GTA {
 				}
 			}
 
-			public static String ReadString(IntPtr addr, int off) {
+			public static string ReadString(IntPtr addr, int off) {
 				if( addr != IntPtr.Zero ) {
 					unsafe {
 						byte* start = (byte*)(addr + off).ToPointer();
@@ -357,8 +361,10 @@ namespace GTA {
 			}
 
 			public static void SetBit(IntPtr addr, int off, uint bit, bool value) {
-				if( addr == IntPtr.Zero || bit > 31 )
+				if( addr == IntPtr.Zero || bit > 31 ) {
 					return;
+				}
+
 				int mask = 1 << (int)bit;
 				unsafe {
 					int* data = (int*)(addr + off).ToPointer();
@@ -376,7 +382,7 @@ namespace GTA {
 				return false;
 			}
 
-			public static uint GetHashKey(String toHash) {
+			public static uint GetHashKey(string toHash) {
 				using( var handle = new PinnedString(toHash) ) {
 					return handle == 0 ? 0 : GetHashKeyFunc(handle, 0);
 				}
@@ -387,20 +393,14 @@ namespace GTA {
 				return entryText != null ? ReadString(new IntPtr(entryText), 0x0) : $"LABEL_{entryLabelHash}";
 			}
 
-			public static IntPtr GetEntityAddress(int handle) {
-				return new IntPtr((long)EntityAddressFunc(handle));
-			}
-			internal static IntPtr GetPlayerAddress(int handle) {
-				return new IntPtr((long)PlayerAddressFunc(handle));
-			}
+			public static IntPtr GetEntityAddress(int handle) => new IntPtr((long)EntityAddressFunc(handle));
+			internal static IntPtr GetPlayerAddress(int handle) => new IntPtr((long)PlayerAddressFunc(handle));
 			internal static IntPtr GetCheckpointAddress(int handle) {
 				ulong addr = CheckpointHandleAddr(CheckpointBaseAddr(), handle);
 				return addr == 0 ? IntPtr.Zero : new IntPtr((long)((ulong)addrCheckpointPool + (96 * ((ulong)*(int*)(addr + 16)))));
 			}
 
-			internal static IntPtr GetParticleFxAddress(int handle) {
-				return new IntPtr((long)ParticleFxAddressFunc(handle));
-			}
+			internal static IntPtr GetParticleFxAddress(int handle) => new IntPtr((long)ParticleFxAddressFunc(handle));
 
 			internal static IntPtr GetEntityBoneMatrixAddress(int handle, uint boneIndex) {
 				ulong fragSkeletonData = GetEntitySkeletonData(handle);

@@ -79,7 +79,7 @@ namespace Shiv {
 
 				return Status;
 			}
-			var blips = GetAllBlips(BlipSprite.Standard);
+			IEnumerable<BlipHandle> blips = GetAllBlips(BlipSprite.Standard);
 			if( WaitForBlip != BlipHUDColor.Invalid ) {
 				if( blips.Any(b => GetBlipHUDColor(b) == WaitForBlip) ) {
 					WaitForBlip = BlipHUDColor.Invalid;
@@ -100,7 +100,7 @@ namespace Shiv {
 								return NextPhase(Phase.KillAllCops);
 							}
 							ped = DangerSense.NearbyDanger.FirstOrDefault();
-							var model = GetModel(ped);
+							PedHash model = GetModel(ped);
 							if( model == PedHash.PrologueSec01Cutscene ) {
 								return NextPhase(Phase.ShootGuard); // skip ahead, we must be restarting mid-mission
 							} else if( model == PedHash.Snowcop01SMM ) {
@@ -117,7 +117,7 @@ namespace Shiv {
 						return NextPhase(Phase.Threaten);
 					case Phase.Threaten:
 						if( HasControl ) {
-							var targets = NearbyHumans.Where(p => GetBlipHUDColor(GetBlip(p)) == BlipHUDColor.Red);
+							IEnumerable<PedHandle> targets = NearbyHumans.Where(p => GetBlipHUDColor(GetBlip(p)) == BlipHUDColor.Red);
 							if( targets.Count() > 0 ) {
 								if( GameTime - LastShift > 3000 ) {
 									LastShift = GameTime;
@@ -143,7 +143,7 @@ namespace Shiv {
 					case Phase.GetMoney:
 						if( HasControl ) {
 							// Log("Blip Colors: ", String.Join(" ", GetAllBlips(BlipSprite.Standard).Select(b => GetBlipColor(b).ToString())));
-							var money = PutOnGround(Position(blips.FirstOrDefault(b => GetBlipColor(b) == BlipColor.MissionGreen)), 1.5f);
+							Vector3 money = PutOnGround(Position(blips.FirstOrDefault(b => GetBlipColor(b) == BlipColor.MissionGreen)), 1.5f);
 							if( money != Vector3.Zero ) {
 								if( DistanceToSelf(money) < 10f ) {
 									MoveToward(money);
@@ -210,7 +210,7 @@ namespace Shiv {
 						return NextPhase(Phase.KillAllCops);
 					case Phase.KillAllCops:
 						if( HasControl ) {
-							var cops = NearbyHumans.Where(p => GetColor(GetBlip(p)) == Color.Red);
+							IEnumerable<PedHandle> cops = NearbyHumans.Where(p => GetColor(GetBlip(p)) == Color.Red);
 							int count = cops.Count();
 							if( count > 0 ) {
 								KillTarget = cops.OrderByDescending(Threat).FirstOrDefault();

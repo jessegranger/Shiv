@@ -8,16 +8,24 @@ namespace Shiv {
 	public static partial class Global {
 
 		public static IEnumerable<T> Select<S, T>(this Array array, Func<S, T> func) {
-			foreach( S x in array ) yield return func(x);
+			foreach( S x in array ) {
+				yield return func(x);
+			}
 		}
 
 		public static Array Each<T>(this Array list, Action<T> func) {
-			foreach( T x in list ) func(x);
+			foreach( T x in list ) {
+				func(x);
+			}
+
 			return list;
 		}
 
 		public static IEnumerable<T> Each<T>(this IEnumerable<T> list, Action<T> func) {
-			foreach( T x in list ) func(x);
+			foreach( T x in list ) {
+				func(x);
+			}
+
 			return list;
 		}
 
@@ -29,17 +37,18 @@ namespace Shiv {
 				}
 			}
 		}
-		public static T Random<T>(this Array list) {
-			if( list.Length == 0 ) return default;
-			return (T)list.GetValue(random.Next(0, list.Length));
-		}
+		public static T Random<T>(this Array list) => list.Length == 0 ? (default) : (T)list.GetValue(random.Next(0, list.Length));
 
 		public static IEnumerable<T> Items<T>(params T[] items) {
-			foreach( var item in items ) yield return item;
+			foreach( T item in items ) {
+				yield return item;
+			}
 		}
 
 		public static IEnumerable<int> Range(int start, int end, int step = 1) {
-			for( int i = start; i < end; i += step ) yield return i;
+			for( int i = start; i < end; i += step ) {
+				yield return i;
+			}
 		}
 
 		public static void Clear<T>(this ConcurrentQueue<T> Q) {
@@ -47,20 +56,22 @@ namespace Shiv {
 		}
 
 		public static T Pop<T>(this LinkedList<T> list) {
-			if( list.Count != 0 )
+			if( list.Count != 0 ) {
 				try { return list.First.Value; } finally { list.RemoveFirst(); }
+			}
+
 			return default;
 		}
 
 		public static LinkedListNode<T> RemoveAndContinue<T>(this LinkedList<T> list, LinkedListNode<T> node) {
-			var next = node.Next;
+			LinkedListNode<T> next = node.Next;
 			list.Remove(node);
 			return next;
 		}
 
 		public static void Visit<T>(this LinkedList<T> list, Action<T> func) => list.Visit(s => { func(s); return false; });
 		public static void Visit<T>(this LinkedList<T> list, Func<T, bool> func) {
-			var cur = list.First;
+			LinkedListNode<T> cur = list.First;
 			while( cur != null ) {
 				try {
 					cur = func(cur.Value) ? list.RemoveAndContinue(cur) : cur.Next;

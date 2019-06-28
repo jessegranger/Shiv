@@ -26,9 +26,7 @@ namespace Shiv {
 			return this;
 		}
 
-		public void OnTick() {
-			senses.Each(s => s.OnTick());
-		}
+		public void OnTick() => senses.Each(s => s.OnTick());
 	}
 	public abstract class Sense {
 		public SenseSet Set;
@@ -46,9 +44,7 @@ namespace Shiv {
 			.Add(new BlipSense());
 			// .Add(new CoverSense());
 		}
-		public override void OnTick() {
-			Senses.OnTick();
-		}
+		public override void OnTick() => Senses.OnTick();
 	}
 
 	public class DangerSense : Sense {
@@ -72,7 +68,7 @@ namespace Shiv {
 		public override void OnTick() {
 			UI.DrawText($"Cover: {NearbyCover.Length}");
 			int i = 0;
-			foreach( var n in NearbyCover.Take(20) ) {
+			foreach( NodeHandle n in NearbyCover.Take(20) ) {
 				DrawSphere(Position(n), .1f, Color.Blue);
 				UI.DrawTextInWorld(Position(n) + (Up * i/55), $"{i}:{n}");
 				i++;
@@ -89,10 +85,10 @@ namespace Shiv {
 			foreach( BlipHandle blip in GetAllBlips(BlipSprite.Standard) ) {
 				blipCount += 1;
 				if( ShowBlips ) {
-					var pos = Position(blip);
-					var blipColor = GetBlipHUDColor(blip);
+					Vector3 pos = Position(blip);
+					BlipHUDColor blipColor = GetBlipHUDColor(blip);
 					msg += $"{blipColor} ";
-					var color = GetColor(blipColor);
+					Color color = GetColor(blipColor);
 					DrawSphere(pos + Up, .3f, color);
 				}
 			}

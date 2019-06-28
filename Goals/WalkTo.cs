@@ -38,19 +38,19 @@ namespace Shiv {
 				Log($"WalkTo: Task failed (err={future.GetError()})");
 				return Status = GoalStatus.Failed;
 			} else if( future.IsReady() ) {
-				var slice = future.GetResult().Take(5);
+				IEnumerable<NodeHandle> slice = future.GetResult().Take(5);
 				if( slice.Count() == 0 ) {
 					Log("WalkTo: Got an empty path.");
 					return Status = GoalStatus.Failed;
 				}
-				var steps = slice.Select(Position).ToArray();
+				Vector3[] steps = slice.Select(Position).ToArray();
 				DrawSphere(Bezier(.25f, steps), .03f, Color.Orange);
 				DrawSphere(Bezier(.5f, steps), .04f, Color.Orange);
 				DrawSphere(Bezier(.75f, steps), .03f, Color.Orange);
 				DrawSphere(Bezier(.99f, steps), .05f, Color.Orange);
 				switch( MoveToward(Bezier(.5f, steps)) ) {
 					case MoveResult.Complete:
-						var rest = future.GetResult().Skip(1);
+						IEnumerable<NodeHandle> rest = future.GetResult().Skip(1);
 						future = new Immediate<Path>(new Path(rest));
 						break;
 					case MoveResult.Continue:
@@ -74,12 +74,12 @@ namespace Shiv {
 			Started = 0;
 		}
 		private void Stuck() {
-			var cur = PlayerNode;
+			NodeHandle cur = PlayerNode;
 			Log($"Stuck! {PlayerNode}");
-			foreach( var step in future.GetResult().Take(2) ) {
+			foreach( NodeHandle step in future.GetResult().Take(2) ) {
 				// NavMesh.RemoveEdge(cur, step);
-				var pos = Position(cur);
-				Text.Add(pos, $"Removing edge: {cur} to {step}", 5000);
+				Vector3 pos = Position(cur);
+				Text.Add(pos, $"(Would) Remove edge: {cur} to {step}", 5000);
 				Line.Add(pos, Position(step), Color.Red, 5000);
 				cur = step;
 			}

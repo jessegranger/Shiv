@@ -58,14 +58,12 @@ namespace Shiv {
 		public static bool LookToward(Vector3 pos) {
 			pos = pos - Velocity(Self) / CurrentFPS;
 			DrawSphere(pos, .05f, Color.Yellow);
-			var forward = Forward(CameraMatrix);
-			var cam = Position(CameraMatrix);
-			var head = HeadPosition(Self);
-			var desired = Vector3.Normalize(pos - cam);
-			var delta = desired - forward;
-			var end = cam + forward;
-			var right = Vector3.Dot(delta, Right(CameraMatrix));
-			var up = Vector3.Dot(delta, UpVector(CameraMatrix));
+			Vector3 forward = Forward(CameraMatrix);
+			Vector3 cam = Position(CameraMatrix);
+			Vector3 delta = Vector3.Normalize(pos - cam) - forward;
+			Vector3 end = cam + forward;
+			float right = Vector3.Dot(delta, Right(CameraMatrix));
+			float up = Vector3.Dot(delta, UpVector(CameraMatrix));
 			// Vector3 delta = Vector3.Normalize(pos - Position(CameraMatrix)) - Forward(CameraMatrix);
 			DrawLine(end, end + delta, Color.White);
 			// probably a way to do all this with one quaternion multiply or something
@@ -84,7 +82,7 @@ namespace Shiv {
 		public static PedHandle KillTarget = PedHandle.Invalid;
 
 		private static Vector3 walkTarget = Vector3.Zero;
-		internal static Future<Path> WalkPath = new Future<Path>();
+		internal static Future<Path> WalkPath { get; private set; } = new Future<Path>();
 		public static Vector3 WalkTarget {
 			get => walkTarget;
 			set {
@@ -121,7 +119,7 @@ namespace Shiv {
 		public static void PressControl(int g, Global.Control c, uint dur) => active.Add(new ControlEvent() { group = g, control = c, expires = GameTime + dur });
 		public override void OnTick() {
 			active.RemoveAll(e => e.expires < GameTime);
-			foreach( var e in active ) {
+			foreach( ControlEvent e in active ) {
 				SetControlValue(e.group, e.control, 1.0f);
 			}
 			if( AimTarget != Vector3.Zero ) {
@@ -262,16 +260,14 @@ namespace Shiv {
 							Log($"OnKey({evt.key}) exception from key-binding: {err.Message} {err.StackTrace}");
 							keyBindings.Remove(evt.key);
 						}
-					} else if( DisabledExcept != null ) {
-						Script.Order.Where(s => s.GetType() == DisabledExcept).FirstOrDefault(s => s.OnKey(evt.key, evt.downBefore, evt.upNow));
-					} else if( ! Disabled ) {
-						Script.Order.FirstOrDefault(s => s.OnKey(evt.key, evt.downBefore, evt.upNow));
+					} else if( !Disabled ) {
+						IEnumerable<Script> items = DisabledExcept == null ? Script.Order : Script.Order.Where(s => s.GetType() == DisabledExcept);
+						items.FirstOrDefault(s => s.OnKey(evt.key, evt.downBefore, evt.upNow));
 					}
 				}
 				if( Disabled ) {
 					Call(DISABLE_ALL_CONTROL_ACTIONS, 1);
 				}
-
 				Disabled = false;
 				DisabledExcept = null;
 			}
