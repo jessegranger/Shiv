@@ -27,12 +27,24 @@ namespace Shiv {
 		public PathRequest(NodeHandle start, NodeHandle target, uint timeout, bool avoidPeds, bool avoidCars, bool avoidObjects):base() {
 			Start = start;
 			Target = target;
+			if( !IsGrown(Target) ) {
+				Log($"[{Target}] target node not grown, trying to grow there.");
+				NavMesh.Grow(Target, 10);
+			}
 			Timeout = timeout;
 			AvoidPeds = avoidPeds;
 			AvoidCars = avoidCars;
 			AvoidObjects = avoidObjects;
 			Blocked = Pathfinder.GetBlockedNodes(AvoidObjects, AvoidCars, AvoidPeds);
 			ThreadPool.QueueUserWorkItem((object arg) => {
+				if( !HasEdges(Target) ) {
+					Log($"[{Target}] target node has no edges, groping for nearest graph...");
+					Target = NavMesh.Flood(Target, 2).Where(HasEdges).OrderBy(DistanceToSelf).FirstOrDefault();
+					if( Target == NodeHandle.Invalid ) {
+						Reject(new Exception("Target node is not mappable."));
+						return;
+					}
+				}
 				try {
 					PathStatus.Guard.Wait(1000, cancel.Token);
 				} catch( Exception err ) {
@@ -82,7 +94,7 @@ namespace Shiv {
 				// let path requests sit around for a few seconds so they can be seen 
 				Queue.TryDequeue(out PathRequest done);
 			}
-			foreach( var req in Queue ) {
+			foreach( PathRequest req in Queue ) {
 				UI.DrawText(padding + left, padding + top + (lineNum++ * lineHeight), req.ToString());
 			}
 		}
@@ -150,9 +162,8 @@ namespace Shiv {
 				return Fail($"[{targetNode}] FindPath failed: targetNode is blocked");
 			}
 
-			var fScore = new Dictionary<NodeHandle, float> {
-				{ startNode, Estimate(startNode, targetNode) }
-			};
+			var fScore = new Dictionary<NodeHandle, float>();
+			fScore.TryAdd(startNode, Estimate(startNode, targetNode));
 			float FScore(NodeHandle n) => fScore.ContainsKey(n) ? fScore[n] : float.MaxValue;
 
 			// Log($"[{targetNode}] Creating openSet...");
@@ -161,46 +172,38 @@ namespace Shiv {
 
 			openSet.Add(startNode);
 
-			var gScore = new Dictionary<NodeHandle, float>() { { startNode, 0 } };
+			var gScore = new Dictionary<NodeHandle, float>();
+			gScore.TryAdd(startNode, 0);
 			float GScore(NodeHandle n) => gScore.ContainsKey(n) ? gScore[n] : float.MaxValue;
 
 			s.Start();
-			NodeHandle prev = NodeHandle.Invalid;
 			while( openSet.Count > 0 ) {
 				if( cancelToken.IsCancellationRequested ) {
 					return Fail($"[{targetNode}] Cancelled.");
 				}
-				var cur = openSet.OrderBy(FScore).FirstOrDefault();
-				if( debug && prev != NodeHandle.Invalid ) {
-				}
-				prev = cur;
-				openSet.Remove(cur);
-				closedSet.Add(cur);
-				var curPos = Position(cur);
 				if( s.ElapsedMilliseconds > maxMs ) {
 					return Fail($"[{targetNode}] Searching for too long, ({closedSet.Count} nodes in {s.ElapsedMilliseconds}ms.");
 				}
-				if( (curPos - targetNodePos).LengthSquared() < .25f ) {
+				NodeHandle cur = openSet.OrderBy(FScore).FirstOrDefault();
+				openSet.Remove(cur);
+				closedSet.Add(cur);
+				Vector3 curPos = Position(cur);
+				if( (curPos - targetNodePos).LengthSquared() <= .5f ) {
 					var ret = new Path(UnrollPath(cameFrom, cur, debug));
 					Log($"[{targetNode}] Found a path of {ret.Count()} steps ({closedSet.Count} searched in {s.ElapsedMilliseconds}ms)");
 					return ret;
 				}
 
 				foreach( NodeHandle e in Edges(cur) ) {
-					if( closedSet.Contains(e) ) {
-						continue;
-					}
-
-					if( !openSet.Contains(e) ) {
+					if( !closedSet.Contains(e) ) {
 						openSet.Add(e);
-					}
-
-					var ePos = Position(e);
-					float score = GScore(cur) + (curPos - ePos).Length();
-					if( score < GScore(e) ) {
-						cameFrom[e] = cur;
-						gScore[e] = score;
-						fScore[e] = GScore(e) + Estimate(e, targetNode) + Math.Abs(ePos.Z - curPos.Z);
+						Vector3 ePos = Position(e);
+						float score = GScore(cur) + (curPos - ePos).Length();
+						if( score < GScore(e) ) {
+							cameFrom[e] = cur;
+							gScore[e] = score;
+							fScore[e] = GScore(e) + Estimate(e, targetNode) + Math.Abs(ePos.Z - curPos.Z);
+						}
 					}
 				}
 			}
@@ -231,16 +234,16 @@ namespace Shiv {
 					}
 
 					m = Matrix(v);
-					var model = GetModel(v);
+					ModelHash model = GetModel(v);
 					if( ignoreModels.Contains((long)model) ) {
 						continue;
 					}
 					GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
-					var pos = Position(v);
-					var blockedCount = 0;
+					Vector3 pos = Position(v);
+					int blockedCount = 0;
 					foreach( NodeHandle n in NavMesh.GetAllHandlesInBox(m, backLeft, frontRight) ) {
 						if( debug && random.NextDouble() < .1f ) {
-							var npos = Position(n);
+							Vector3 npos = Position(n);
 							DrawLine(pos, npos, Color.Yellow);
 							DrawSphere(npos, .05f, Color.Red);
 						}
