@@ -19,9 +19,20 @@ namespace Shiv {
 			void Reject(Exception err);
 		}
 		public class Future<T> : IFuture<T> {
-			public Future() {
-				cancel = new CancellationTokenSource();
-				ready = new CountdownEvent(1);
+			private ReaderWriterLockSlim guard = new ReaderWriterLockSlim();
+			private T result = default;
+			private Exception error;
+			protected CancellationTokenSource cancel = new CancellationTokenSource();
+			private CountdownEvent ready = new CountdownEvent(1);
+
+			public Future() { }
+			~Future() {
+				if( !ready.IsSet ) {
+					ready.Signal();
+				}
+				if( !cancel.IsCancellationRequested ) {
+					cancel.Cancel();
+				}
 			}
 			public Future(Func<T> func):this() {
 				ThreadPool.QueueUserWorkItem((object arg) => {
@@ -35,8 +46,6 @@ namespace Shiv {
 					catch( Exception err ) { Reject(err); }
 				});
 			}
-			private ReaderWriterLockSlim guard = new ReaderWriterLockSlim();
-			private T result = default;
 			public T GetResult() {
 				if( guard.TryEnterReadLock(20) ) {
 					try { return result; } finally { guard.ExitReadLock(); }
@@ -44,9 +53,6 @@ namespace Shiv {
 				return default;
 			}
 
-			private Exception error;
-			protected CancellationTokenSource cancel;
-			private CountdownEvent ready;
 
 			public Exception GetError() => error;
 			public bool IsDone() => IsFailed() || IsCanceled() || IsReady();
@@ -88,6 +94,13 @@ namespace Shiv {
 			public virtual bool Contains(T k) => data.ContainsKey(k);
 			public virtual void Remove(T k) => data.TryRemove(k, out T ignore);
 			public virtual void Add(T k) => data.TryAdd(k, k);
+			public virtual T Get(T k) {
+				if( data.TryGetValue(k, out T value) ) {
+					return value;
+				}
+				return default;
+			}
+			public virtual bool TryRemove(T k) => data.TryRemove(k, out T ignore);
 
 			public virtual IEnumerator<T> GetEnumerator() => data.Keys.GetEnumerator();
 			IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
