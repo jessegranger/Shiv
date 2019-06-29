@@ -38,26 +38,21 @@ namespace Shiv {
 			);
 		}
 
-		public static float Rad2Deg(double rad) { return (float)(rad * 180 / Math.PI); }
-		public static float Deg2Rad(double deg) { return (float)(deg * Math.PI / 180); }
+		public static float Rad2Deg(double rad) => (float)(rad * 180 / Math.PI);
+		public static float Deg2Rad(double deg) => (float)(deg * Math.PI / 180);
 
-		public static float AbsHeading(float h) {
-			return h < 0 ? h + 360 : h;
-		}
-		public static float Heading(Matrix4x4 m) {
-			return Rad2Deg(Math.Atan2(m.M21, m.M22));
-		}
-		public static float RadHeading(Matrix4x4 m) {
-			return (float)Math.Atan2(m.M21, m.M22);
-		}
+		public static float AbsHeading(float h) => h < 0 ? h + 360 : h;
+		public static float Heading(Matrix4x4 m) => Rad2Deg(Math.Atan2(m.M21, m.M22));
+		public static float RadHeading(Matrix4x4 m) => (float)Math.Atan2(m.M21, m.M22);
 
-		public static bool Between(float min, float max, float value) {
-			return (value >= min) && (value <= max);
-		}
+		public static bool Between(float min, float max, float value) => (value >= min) && (value <= max);
 
 		public static float Clamp(float x, float min, float max) => Math.Max(min, Math.Min(max, x));
 
 		public static float Sigmoid(float x) => (float)(1 / (1 + Math.Pow(Math.E, -x)));
+
+		public static string BitString(int x, int bits = 32) => Convert.ToString(x, 2).PadLeft(bits, '0');
+		public static string BitString(long x, int bits = 64) => Convert.ToString(x, 2).PadLeft(bits, '0');
 
 		public static Vector3 Min(params Vector3[] vectors) {
 			var min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
