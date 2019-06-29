@@ -48,10 +48,10 @@ namespace Shiv {
 				DrawSphere(Bezier(.5f, steps), .04f, Color.Orange);
 				DrawSphere(Bezier(.75f, steps), .03f, Color.Orange);
 				DrawSphere(Bezier(.99f, steps), .05f, Color.Orange);
-				switch( MoveToward(Bezier(.5f, steps)) ) {
+				MoveResult result;
+				switch( result = MoveToward(Bezier(.5f, steps)) ) {
 					case MoveResult.Complete:
-						IEnumerable<NodeHandle> rest = future.GetResult().Skip(1);
-						future = new Immediate<Path>(new Path(rest));
+						future = new Immediate<Path>(new Path(future.GetResult().Skip(1)));
 						break;
 					case MoveResult.Continue:
 						if( Started == 0 ) {
@@ -64,6 +64,7 @@ namespace Shiv {
 						Log("WalkTo: MoveToward failed.");
 						return Status = GoalStatus.Failed;
 				}
+				UI.DrawTextInWorldWithOffset(HeadPosition(Self), 0f, .02f, $"{result}");
 			} else {
 				UI.DrawTextInWorld(HeadPosition(Self) + (Up * .1f), "Recalculating...");
 			}
@@ -77,7 +78,7 @@ namespace Shiv {
 			NodeHandle cur = PlayerNode;
 			Log($"Stuck! {PlayerNode}");
 			foreach( NodeHandle step in future.GetResult().Take(2) ) {
-				// NavMesh.RemoveEdge(cur, step);
+				NavMesh.RemoveEdge(cur, step);
 				Vector3 pos = Position(cur);
 				Text.Add(pos, $"(Would) Remove edge: {cur} to {step}", 5000);
 				Line.Add(pos, Position(step), Color.Red, 5000);
