@@ -44,12 +44,15 @@ namespace Shiv {
 					return Status = GoalStatus.Failed;
 				}
 				Vector3[] steps = slice.Select(Position).ToArray();
-				DrawSphere(Bezier(.25f, steps), .03f, Color.Orange);
+				DrawSphere(Bezier(.1f, steps), .03f, Color.Orange);
 				DrawSphere(Bezier(.5f, steps), .04f, Color.Orange);
-				DrawSphere(Bezier(.75f, steps), .03f, Color.Orange);
-				DrawSphere(Bezier(.99f, steps), .05f, Color.Orange);
+				DrawSphere(Bezier(.9f, steps), .05f, Color.Orange);
+				if( DistanceToSelf(steps[0]) < .25f ) {
+					future = new Immediate<Path>(new Path(future.GetResult().Skip(1)));
+					return GoalStatus.Active;
+				}
 				MoveResult result;
-				switch( result = MoveToward(Bezier(.5f, steps)) ) {
+				switch( result = MoveToward(Bezier(.25f, steps)) ) {
 					case MoveResult.Complete:
 						future = new Immediate<Path>(new Path(future.GetResult().Skip(1)));
 						break;
@@ -77,13 +80,7 @@ namespace Shiv {
 		private void Stuck() {
 			NodeHandle cur = PlayerNode;
 			Log($"Stuck! {PlayerNode}");
-			foreach( NodeHandle step in future.GetResult().Take(2) ) {
-				NavMesh.RemoveEdge(cur, step);
-				Vector3 pos = Position(cur);
-				Text.Add(pos, $"(Would) Remove edge: {cur} to {step}", 5000);
-				Line.Add(pos, Position(step), Color.Red, 5000);
-				cur = step;
-			}
+			NavMesh.Flood(future.GetResult().FirstOrDefault(), 1, Edges).Each(n => NavMesh.Block(n));
 			Restart();
 		}
 	}
