@@ -7,6 +7,8 @@ using Keys = System.Windows.Forms.Keys;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
 using static Shiv.Global;
+using System.Diagnostics;
+using System.Threading;
 
 namespace Shiv {
 
@@ -157,7 +159,7 @@ namespace Shiv {
 
 		public override void OnInit() {
 			Controls.Bind(Keys.Pause, () => TogglePause());
-			Controls.Bind(Keys.N, () => {
+			Controls.Bind(Keys.Right, () => {
 				MenuScript.Show(new Menu(.4f, .4f, .2f)
 					.Item("Goals", new Menu(.4f, .4f, .2f)
 						.Item("Mission01", new Menu(.4f, .4f, .2f)
@@ -170,7 +172,28 @@ namespace Shiv {
 							.Item("KillAllCops", () => Goals.Immediate(new Mission01() { CurrentPhase = Mission01.Phase.KillAllCops }))
 						)
 						.Item("Wander", () => Goals.Immediate(new TaskWander()) )
-						.Item("Explore", () => Goals.Immediate(new QuickGoal(() => {
+						.Item("Explore", () => Goals.Immediate(new QuickGoal("Explore", () => {
+							var pos = Position(NavMesh.LastGrown);
+							if( NavMesh.LastGrown == NodeHandle.Invalid || DistanceToSelf(pos) < 2f ) {
+								if( NavMesh.Ungrown.Count > 0 ) {
+									Log($"Exploring closest ungrown");
+									Goals.Immediate(new WalkTo(Position(NavMesh.Ungrown.OrderBy(DistanceToSelf).FirstOrDefault())));
+								} else {
+									Log($"Exploring via Flood");
+									var future = new Future<NodeHandle>((CancellationToken token) => {
+										return NavMesh.Flood(PlayerNode, 1000, token, Edges).FirstOrDefault(node => !IsGrown(node));
+									});
+									Goals.Immediate(new QuickGoal("Find Ungrown", () => {
+										if( future.TryGetResult(out NodeHandle node) ) {
+											Goals.Immediate(new WalkTo(Position(node)));
+											return GoalStatus.Complete;
+										} else {
+											UI.DrawText($"Waiting for flood to find a new ungrown");
+										}
+										return GoalStatus.Active;
+									}));
+								}
+							}
 							Goals.Immediate(new WalkTo(Position(NavMesh.LastGrown)));
 							return GoalStatus.Active;
 						})))
@@ -191,12 +214,37 @@ namespace Shiv {
 					).Item("Cancel", () => MenuScript.Hide()));
 			});
 			Controls.Bind(Keys.O, () => {
-				if( CurrentVehicle(Self) != 0 ) {
-					Sphere.Add(AimPosition(), .2f, Color.Blue, 10000);
-					Goals.Immediate(new DirectDrive(AimPosition()) { StoppingRange = 2f });
-				} else {
-					Goals.Immediate(new DirectMove(AimPosition()));
-				}
+				Goals.Immediate(new QuickGoal(() => {
+					float lineHeight = .019f;
+					UI.DrawText($"{Round(PlayerPosition,2)}");
+					NodeHandle node = NavMesh.GetHandle(PlayerPosition, true); // testing while NavMesh is disabled, so PlayerNode global is undefined
+					UI.DrawText($"{Round(Position(node),2)}");
+					Vector3 pos = HeadPosition(Self);
+					DrawLine(pos, Position(node), Color.Yellow);
+					UI.DrawTextInWorldWithOffset(pos, 0f, 1*lineHeight, $"{PlayerPosition}");
+					UI.DrawTextInWorldWithOffset(pos, 0f, 2*lineHeight, $"GetHandle(PlayerPosition): {node}");
+					UI.DrawTextInWorldWithOffset(pos, 0f, 4*lineHeight, $"GetRegion(PlayerPosition): {Region(PlayerPosition)}");
+					UI.DrawTextInWorldWithOffset(pos, 0f, 5*lineHeight, $"GetRegion(PlayerNode     ): {Region(node)}");
+					return GoalStatus.Active;
+				}));
+				/*
+				var sw = new Stopwatch();
+				sw.Start();
+				var future = new Future<NodeHandle>(() => Flood(PlayerNode, 10, PossibleEdges).Where(n => !IsGrown(n)).FirstOrDefault());
+				Goals.Immediate(new QuickGoal(() => {
+					// NavMesh.DebugNode(PlayerNode, true);
+					if( future.IsReady() ) {
+						var node = future.GetResult();
+						var pos = Position(node);
+						DrawLine(HeadPosition(Self), Position(node), Color.Red);
+						UI.DrawTextInWorld(pos, $"{sw.ElapsedMilliseconds}ms");
+						if( !IsGrown(node) ) {
+							NavMesh.Grow(node, 10);
+						}
+					}
+					return GoalStatus.Active;
+				}));
+				*/
 			});
 			Controls.Bind(Keys.G, () => {
 
@@ -215,7 +263,7 @@ namespace Shiv {
 						return GoalStatus.Failed;
 					}
 					if( future.IsReady() ) {
-						var node = future.GetResult();
+						NodeHandle node = future.GetResult();
 						Log($"Scan found: {node} at range {DistanceToSelf(node)}");
 						NavMesh.Grow(node, 10);
 						return GoalStatus.Complete;
@@ -231,12 +279,19 @@ namespace Shiv {
 				AimAtHead = PedHandle.Invalid;
 				KillTarget = PedHandle.Invalid;
 				WalkTarget = Vector3.Zero;
+				PathStatus.CancelAll();
 			});
 			Controls.Bind(Keys.X, () => {
 				NavMesh.Visit(PlayerNode, 2, (node) => NavMesh.Remove(node));
 			});
 			Controls.Bind(Keys.B, () => {
 				NavMesh.ShowEdges = !NavMesh.ShowEdges;
+			});
+			Controls.Bind(Keys.N, () => {
+				Goals.Immediate(new QuickGoal("Show Blocked", () => {
+					Pathfinder.GetBlockedNodes(true, false, false, true);
+					return GoalStatus.Active;
+				}));
 			});
 		}
 	}
