@@ -19,7 +19,7 @@ namespace Shiv {
 
 		const float lineHeight = .019f;
 		const float panelHeight = .5f;
-		const float panelWidth = .4f;
+		const float panelWidth = .6f;
 		const float closedX = .25f;
 		const int visibleLines = (int)(panelHeight / lineHeight) - 1;
 		static ConcurrentQueue<string> output = new ConcurrentQueue<string>();
@@ -29,7 +29,6 @@ namespace Shiv {
 		static List<string> inputHistory = new List<string>();
 		static int inputIndex = 0;
 		private static readonly float stickyLineOffset = 2 * lineHeight;
-
 
 		public static bool IsOpen { get; internal set; } = false;
 		public static void Open() => IsOpen = true;
@@ -115,7 +114,6 @@ namespace Shiv {
 				case Keys.ControlKey: ctrlDown = !isUpNow; break;
 				case (Keys.ControlKey | Keys.Control): ctrlDown = !isUpNow; break;
 			}
-			var kc = new KeysConverter();
 			bool onDown = !wasDownBefore && !isUpNow;
 			bool onRepeat = wasDownBefore && !isUpNow;
 			bool onUp = wasDownBefore && isUpNow;
@@ -183,6 +181,8 @@ namespace Shiv {
 						outputScrollback = 0;
 					} else if( IsValidInput(key) ) {
 						AddKey(key);
+					} else {
+						return false;
 					}
 					// if( key != Keys.Back ) addString(key.ToString());
 					return true;
