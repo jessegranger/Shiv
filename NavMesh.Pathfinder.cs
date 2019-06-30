@@ -21,8 +21,8 @@ namespace Shiv {
 		public bool AvoidObjects = true;
 		public bool AvoidPeds = false;
 		public bool AvoidCars = true;
-		public DateTime Started { get; private set; } = default;
-		public DateTime Ended { get; private set; } = default;
+		public Stopwatch Running = new Stopwatch();
+		public Stopwatch Stopped = new Stopwatch();
 		public ConcurrentSet<NodeHandle> Blocked;
 		public PathRequest(NodeHandle start, NodeHandle target, uint timeout, bool avoidPeds, bool avoidCars, bool avoidObjects):base() {
 			Start = start;
@@ -36,10 +36,13 @@ namespace Shiv {
 			AvoidCars = avoidCars;
 			AvoidObjects = avoidObjects;
 			Blocked = Pathfinder.GetBlockedNodes(AvoidObjects, AvoidCars, AvoidPeds);
+			Running.Start();
 			ThreadPool.QueueUserWorkItem((object arg) => {
+				RequestRegion(Region(Target)).Wait(500);
+				RequestRegion(Region(Start)).Wait(500);
 				if( !HasEdges(Target) ) {
 					Log($"[{Target}] target node has no edges, groping for nearest graph...");
-					Target = NavMesh.Flood(Target, 2).Where(HasEdges).OrderBy(DistanceToSelf).FirstOrDefault();
+					Target = NavMesh.Flood(Target, 2, cancel.Token, PossibleEdges).Where(HasEdges).OrderBy(DistanceToSelf).FirstOrDefault();
 					if( Target == NodeHandle.Invalid ) {
 						Reject(new Exception("Target node is not mappable."));
 						return;
@@ -52,18 +55,18 @@ namespace Shiv {
 					return;
 				}
 				PathStatus.Queue.Enqueue(this);
-				Started = new DateTime();
 				try { Resolve(Pathfinder.FindPath(Start, Target, Blocked, Timeout, cancel.Token)); }
 				catch( Exception err ) { Reject(err); }
 				finally {
 					PathStatus.Guard.Release();
-					Ended = new DateTime();
+					Running.Stop();
+					Stopped.Start();
 				}
 			});
 		}
 		public override string ToString() {
-			var elapsed = (Ended - Started).TotalMilliseconds;
-			return $"[{Target}] ({Blocked.Count} in {elapsed}ms)"
+			var elapsed = Running.ElapsedMilliseconds;
+			return $"{Blocked.Count} in {elapsed}ms "
 				+ (IsReady() ? GetResult().ToString() : "")
 				+ (IsFailed() ? GetError().ToString() : "")
 				+ (IsCanceled() ? "Canceled" : "");
@@ -72,7 +75,7 @@ namespace Shiv {
 	public static class PathStatus {
 		public static ConcurrentQueue<PathRequest> Queue = new ConcurrentQueue<PathRequest>();
 		public static SemaphoreSlim Guard = new SemaphoreSlim(1, 1); // only one at a time, available now
-		public static void Clear() {
+		public static void CancelAll() {
 			while( Queue.TryDequeue(out PathRequest req) ) {
 				if( ! req.IsDone() ) {
 					req.Cancel();
@@ -83,19 +86,20 @@ namespace Shiv {
 		static readonly float padding = .005f;
 		static readonly float top = .5f;
 		static readonly float left = 0f;
-		static readonly float width = .1f;
+		static readonly float width = .12f;
 		public static void Draw() {
 			int numLines = Queue.Count + 1;
-			UI.DrawRect(left, top, width, padding + (lineHeight * numLines) + padding, Color.SlateBlue);
-			UI.DrawText(left, top, "Pathfinder:");
+			UI.DrawRect(left, top, width, padding + (lineHeight * numLines) + padding, Color.SlateGray);
+			UI.DrawText(left, top, $"Pathfinder: {Queue.Count} Active");
 			int lineNum = 0;
 			while( Queue.TryPeek(out PathRequest req) 
-				&& req.IsDone() && (DateTime.Now - req.Ended).TotalMilliseconds > 3000 ) {
+				&& req.IsDone()
+				&& req.Stopped.ElapsedMilliseconds > 20000 ) {
 				// let path requests sit around for a few seconds so they can be seen 
 				Queue.TryDequeue(out PathRequest done);
 			}
 			foreach( PathRequest req in Queue ) {
-				UI.DrawText(padding + left, padding + top + (lineNum++ * lineHeight), req.ToString());
+				UI.DrawText(padding + left, padding + top + (++lineNum * lineHeight), req.ToString());
 			}
 		}
 	}
@@ -108,6 +112,7 @@ namespace Shiv {
 		IEnumerator IEnumerable.GetEnumerator() => iter.GetEnumerator();
 		public void Draw() => this.Select(Position)
 				.Each(DrawSphere(.06f, Color.Yellow));
+		public override string ToString() => $"({this.Count()} steps)";
 	}
 
 	public static partial class Global {
@@ -135,12 +140,6 @@ namespace Shiv {
 			}
 		}
 
-		public static Future<Path> RequestPath(PathRequest req, bool debug = false) => new Future<Path>((CancellationToken cancel) => new Path(
-				 FindPath(req.Start, req.Target,
-					 GetBlockedNodes(req.AvoidObjects, req.AvoidCars, req.AvoidPeds),
-					 req.Timeout, cancel,
-					 debug: debug)));
-
 		private static Path Fail(string msg) {
 			Log(msg);
 			UI.DrawText(.3f, .3f, msg);
@@ -149,7 +148,6 @@ namespace Shiv {
 		internal static Path FindPath(NodeHandle startNode, NodeHandle targetNode, ConcurrentSet<NodeHandle> closedSet, uint maxMs, CancellationToken cancelToken, bool debug=false) {
 			var s = new Stopwatch();
 			Vector3 targetNodePos = Position(targetNode);
-			// Log($"[{targetNode}] FindPath Starting...");
 
 			if( startNode == 0 ) {
 				return Fail($"[{targetNode}] FindPath failed: startNode is zero.");
@@ -166,7 +164,6 @@ namespace Shiv {
 			fScore.TryAdd(startNode, Estimate(startNode, targetNode));
 			float FScore(NodeHandle n) => fScore.ContainsKey(n) ? fScore[n] : float.MaxValue;
 
-			// Log($"[{targetNode}] Creating openSet...");
 			var openSet = new HashSet<NodeHandle>();
 			var cameFrom = new Dictionary<NodeHandle, NodeHandle>();
 
@@ -187,6 +184,7 @@ namespace Shiv {
 				NodeHandle cur = openSet.OrderBy(FScore).FirstOrDefault();
 				openSet.Remove(cur);
 				closedSet.Add(cur);
+				RequestRegion(Region(cur)).Wait(100);
 				Vector3 curPos = Position(cur);
 				if( (curPos - targetNodePos).LengthSquared() <= .5f ) {
 					var ret = new Path(UnrollPath(cameFrom, cur, debug));
@@ -226,31 +224,36 @@ namespace Shiv {
 			int count = 0;
 			Matrix4x4 m;
 			if( ents ) {
-				foreach( EntHandle v in NearbyObjects.Take(40) ) {
+				foreach( EntHandle v in NearbyObjects.Take(50) ) {
+					Vector3 pos = Position(v);
 					if( !Exists(v)
 						|| !IsVisible(v)
 						|| IsAttached(v) ) {
+						if( debug ) {
+							UI.DrawTextInWorld(pos, $"Ignoring");
+						}
 						continue; // dont block on items held or carried by peds
 					}
 
 					m = Matrix(v);
 					ModelHash model = GetModel(v);
 					if( ignoreModels.Contains((long)model) ) {
+						UI.DrawTextInWorld(pos, $"Ignoring");
 						continue;
 					}
 					GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
-					Vector3 pos = Position(v);
 					int blockedCount = 0;
 					foreach( NodeHandle n in NavMesh.GetAllHandlesInBox(m, backLeft, frontRight) ) {
 						if( debug && random.NextDouble() < .1f ) {
 							Vector3 npos = Position(n);
 							DrawLine(pos, npos, Color.Yellow);
-							DrawSphere(npos, .05f, Color.Red);
+							// if( DistanceToSelf(npos) < 8f ) DrawSphere(npos, .05f, Color.Red);
 						}
 						blocked.Add(n);
 						blockedCount += 1;
 					}
-					if( blockedCount > 10000 ) {
+					if( blockedCount > 20000 ) {
+						Log($"Ignoring too large model: {model} ({blockedCount} nodes)");
 						ignoreModels.Add((long)model);
 					}
 

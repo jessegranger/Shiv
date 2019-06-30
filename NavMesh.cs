@@ -14,6 +14,7 @@ using static System.Math;
 using static Shiv.Global;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
+using System.Threading;
 
 // pragma warning disable CS0649
 namespace Shiv {
@@ -22,14 +23,35 @@ namespace Shiv {
 	public static partial class Global {
 
 		public enum NodeHandle : ulong { Invalid = 0 };
+		public enum NavRegion : uint { Invalid = 0 };
+
+		public static NavRegion Region(NodeHandle a) => NavMesh.GetRegion(a);
+		public static NavRegion Region(Vector3 a) => NavMesh.GetRegion(a);
+		public static Future<NavRegion> RequestRegion(Vector3 v) => RequestRegion(Region(v));
+		public static Future<NavRegion> RequestRegion(NavRegion r) {
+			return loadedRegions.GetOrAdd(r, (region) => new Future<NavRegion>(() => {
+				Log($"Reading Region: {region} {loadedRegions.Count}");
+				try {
+					NavMesh.ReadFromFile($"scripts/Shiv.{region}.mesh");
+					return region;
+				} catch( FileNotFoundException ) {
+					Log($"Empty region: {region}");
+					return region;
+				}
+			}));
+			
+		}
+		private static ConcurrentDictionary<NavRegion, Future<NavRegion>> loadedRegions = new ConcurrentDictionary<NavRegion, Future<NavRegion>>();
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static float DistanceToSelf(NodeHandle n) => DistanceToSelf(Position(n));
 
 		public static NodeHandle PlayerNode;
+		public static NavRegion PlayerRegion;
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static NodeHandle GetHandle(Vector3 v) => NavMesh.GetHandle(v);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 Position(NodeHandle handle) => NavMesh.Position(handle);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static IEnumerable<NodeHandle> Edges(NodeHandle a) => NavMesh.Edges(a);
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static IEnumerable<NodeHandle> PossibleEdges(NodeHandle a) => NavMesh.PossibleEdges(a);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool HasEdges(NodeHandle a) => NavMesh.HasEdges(a);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool IsGrown(NodeHandle a) => NavMesh.IsGrown(a);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool IsCover(NodeHandle a) => NavMesh.IsCover(a);
@@ -37,37 +59,76 @@ namespace Shiv {
 	}
 
 	public class NavMesh : Script {
-		private const string DataFile = "scripts/LongMesh.dat";
-		private const int magicBytes = 0x000FEED4; // if any constants below should change, increment the magic bytes to invalidate the old data
 
 		public static bool Enabled = true;
-		public static bool LoadEnabled = true;
 		public static bool SaveEnabled = true;
-		public static bool Dirty = false; // if SaveEnabled, still only write if needed
 
+		private const int magicBytes = 0x000FEED6; // if any constants/structure below should change, increment the magic bytes to invalidate the old data
 		private const ulong mapRadius = 8192; // in the world, the map goes from -8192 to 8192
 		private const float gridScale = .5f; // how big are the X,Y steps of the mesh
 		private const float zScale = .25f; // how big are the Z steps of the mesh
+		private const float zDepth = 1000f; // how deep underwater can the mesh go
+		// zDepth can be at most mapRadius*zScale, because zScale changes vertical node density
+		// which makes mapShift too small, which corrupts NodeHandles
 
 		public static NodeHandle LastGrown { get; private set; } = NodeHandle.Invalid;
 
 		// how to pack Vector3 into a long:
-		// first, divide X,Y,Z by their scales
 		// add the mapRadius (so strictly positive)
-		// cast to ulong (so snapped to grid point)
+		// divide X,Y,Z by their scales
+		// round to a grid center and cast to ulong
 		// knowing that all values will be in [0..mapRadius*2/scale] = 32k = 15 bits per coord
-		// storing X,Y,Z this way uses 3 * 15 bits = 45 bits = 1 ulong
-		private static readonly int shift = (int)Math.Log(mapRadius * 2 / gridScale, 2);
+		// storing X,Y,Z this way uses 3 * 15 bits = 45 bits = 1 ulong with 19 bits to spare
+		private static readonly int mapShift = (int)Math.Log(mapRadius * 2 / gridScale, 2);
+		private static readonly ulong nodeHandleMask = (1u << (3 * mapShift)) - 1;
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static NodeHandle GetHandle(Vector3 v) {
+		public static NodeHandle GetHandle(Vector3 v, bool debug=false) {
 			if( v == Vector3.Zero ) {
 				return NodeHandle.Invalid;
 			}
-
+			// v.X starts [-8192..8192] becomes [0..32k]
+			ulong x = (ulong)Round((v.X + mapRadius) / gridScale);
+			ulong y = (ulong)Round((v.Y + mapRadius) / gridScale);
+			ulong z = (ulong)Round((v.Z + zDepth) / zScale);
 			return (NodeHandle)(
-				((ulong)Round((v.X + mapRadius) / gridScale) << (2 * shift))
-				| ((ulong)Round((v.Y + mapRadius) / gridScale) << (1 * shift))
-				| (ulong)(v.Z / zScale)); // TODO: if we want to go underwater, we may need a mapRadius offset for Z too
+				(x << (2 * mapShift)) |
+				(y << (1 * mapShift)) |
+				(z << (0 * mapShift))
+			);
+		}
+
+		private const float regionScale = 128f;
+		private const int regionShift = 7; // we use 3*7=21 bits of a NavRegion:uint
+		
+		public static NavRegion GetRegion(Vector3 v) {
+			if( v == Vector3.Zero ) {
+				return NavRegion.Invalid;
+			}
+			// v.X starts [-8192..8192] becomes [0..128]
+			uint x = (uint)(Round((v.X + mapRadius) / regionScale));
+			uint y = (uint)(Round((v.Y + mapRadius) / regionScale));
+			uint z = (uint)(Round((v.Z + zDepth) / regionScale));
+			return (NavRegion)(
+				(x << (2 * regionShift)) |
+				(y << (1 * regionShift)) |
+				(z << (0 * regionShift))
+			);
+		}
+		private static readonly uint mapShiftMask = (1u << mapShift) - 1;
+		public static NavRegion GetRegion(NodeHandle a) {
+			ulong u = (ulong)a;
+			ulong z = u & mapShiftMask;
+			u >>= mapShift;
+			ulong y = u & mapShiftMask;
+			u >>= mapShift;
+			ulong x = u & mapShiftMask;
+			float scale = gridScale / regionScale;
+			x = (ulong)Round(x * scale);
+			y = (ulong)Round(y * scale);
+			z = (ulong)Round(z * zScale / regionScale);
+			return (NavRegion)((x << (2 * regionShift))
+				| (y << (1 * regionShift))
+				| z);
 		}
 
 		// how to unpack a (reduced accuracy) Vector3 from inside a ulong
@@ -77,12 +138,13 @@ namespace Shiv {
 				return Vector3.Zero;
 			}
 
-			ulong mask = (ulong)(1 << shift) - 1; // make a 15-bit mask
+			ulong mask = (ulong)(1 << mapShift) - 1; // make a 15-bit mask
 			ulong h = (ulong)handle;
 			return new Vector3(
-				(gridScale * ((h >> (2 * shift)) & mask)) - mapRadius,
-				(gridScale * ((h >> (1 * shift)) & mask)) - mapRadius,
-				zScale * (h & mask));
+				(gridScale * ((h >> (2 * mapShift)) & mask)) - mapRadius,
+				(gridScale * ((h >> (1 * mapShift)) & mask)) - mapRadius,
+				(zScale * (h & mask)) - zDepth
+			);
 		}
 
 		// constants to use when expanding the mesh
@@ -94,9 +156,9 @@ namespace Shiv {
 		// each NodeHandle (ulong) maps to a NodeEdges (uint)
 		// a bit-field for which next NodeHandle we are connected to
 		[Flags] public enum NodeEdges : uint { Empty = 0 }
-		private static readonly uint xStep = (uint)Pow(2, (2*shift)); // if you add X+1, how much does the NodeHandle change
-		private static readonly uint yStep = (uint)Pow(2, (1*shift)); // if you add Y+1, how much does the NodeHandle change
-		private static readonly uint zStep = (uint)Pow(2, (0*shift)); // if you add Z+1, how much does the NodeHandle change
+		private static readonly uint xStep = (uint)Pow(2, (2*mapShift)); // if you add X+1, how much does the NodeHandle change
+		private static readonly uint yStep = (uint)Pow(2, (1*mapShift)); // if you add Y+1, how much does the NodeHandle change
+		private static readonly uint zStep = (uint)Pow(2, (0*mapShift)); // if you add Z+1, how much does the NodeHandle change
 		private static readonly Dictionary<long, int> whichEdgeBit = new Dictionary<long, int>() {
 
 			{ (+0*xStep) + (+1*yStep) + (+2*zStep), 0 }, // a pair of { delta, index }
@@ -154,67 +216,94 @@ namespace Shiv {
 			// and could store Clearance values large enough to use with vehicles
 
 		};
+
+
 		private const int grownBit = 30;
 		private const int coverBit = 31;
 
 		// create a reverse mapping, given an edge bit index, return the NodeHandle delta
-		public static readonly long[] edgeOffsets = whichEdgeBit.Keys.OrderByDescending(k => k).ToArray();
+		public static readonly long[] edgeOffsets = whichEdgeBit.Keys.OrderBy(k => whichEdgeBit[k]).ToArray();
 
 		// track a 'frontier' of not-yet-explored nodes
 		internal static HashSet<NodeHandle> Ungrown = new HashSet<NodeHandle>();
 
-
 		public NavMesh() { }
 
 		private static uint started = 0;
-		private static uint loaded = 0;
 		private static uint saved = 0;
 		private static uint aborted = 0;
-		public static ConcurrentDictionary<NodeHandle, uint> AllEdges = null;
+		public static ConcurrentSet<NavRegion> LoadedRegions = new ConcurrentSet<NavRegion>();
+		public static ConcurrentDictionary<NodeHandle, uint> AllEdges = new ConcurrentDictionary<NodeHandle, uint>();
 		public static bool IsLoaded => AllEdges != null && aborted == 0;
 		public static int Count => AllEdges == null ? 0 : AllEdges.Count;
 		public static bool ShowEdges { get; internal set; } = false;
+
+		internal static void DebugNode(NodeHandle node, bool grow) {
+			var pos = Position(node);
+			UI.DrawTextInWorld(pos, $"{node}");
+			/*
+			if( grow ) {
+				var sw = new Stopwatch();
+				sw.Start();
+				GrowResult result = Grow(node, 10, sw, new HashSet<NodeHandle>(), debug: true);
+				UI.DrawTextInWorldWithOffset(pos, 0f, -.02f, $"GrowResult:{result}");
+			}
+			*/
+			int i = 0;
+			var sw = new Stopwatch();
+			sw.Start();
+			foreach(NodeHandle e in Flood(node, 2, default, PossibleEdges)) {
+				var epos = Position(e);
+				// UI.DrawTextInWorldWithOffset(epos, 0f, 0f, $"{i}");
+				i++;
+			}
+			UI.DrawTextInWorldWithOffset(pos, .01f, -.02f, $"Flood:{i} in {sw.ElapsedMilliseconds}ms");
+		}
+		private static int[] possibleGrowthEdges = new int[] { 0, 1, 2, 3, 4, 6, 10, 12 };
+		private static IEnumerable<NodeHandle> PossibleGrowthEdges(NodeHandle node) => possibleGrowthEdges.Select(i => (NodeHandle)((long)node + edgeOffsets[i]));
+		private static IEnumerable<NodeHandle> GroundEdges(NodeHandle node) => PossibleGrowthEdges(node).Each(n => StopAtWater(PutOnGround(Position(n), 1f), 0f));
 
 		private NodeHandle prevNode;
 		public override void OnTick() {
 			if( (!Enabled) || aborted != 0 ) {
 				return;
 			}
+			/*
+				Items(0,1,2,3,4,6,10,12).Each(i => {
+				// Range(0,30).Each(i => {
+					var e = (NodeHandle)((long)PlayerNode + edgeOffsets[i]);
+					var epos = Position(e);
+					DrawLine(PlayerPosition, epos, Color.Teal);
+					UI.DrawTextInWorld(epos, $"{i}");
+				});
+			*/
 
 			PlayerNode = GetHandle(PlayerPosition);
 			if( PlayerNode != prevNode ) {
 				AddEdge(prevNode, PlayerNode);
 			}
 			prevNode = PlayerNode;
+			PlayerRegion = GetRegion(PlayerNode);
+			if( !RequestRegion(PlayerRegion).IsDone() ) {
+				UI.DrawText("Loading player region...");
+				return;
+			}
+				
 			if( started == 0 ) {
 				started = GameTime;
+				saved = GameTime;
 			} else if( GameTime - started < 100 || !CanControlCharacter() ) {
-				UI.DrawText(.55f, .45f, $"Warmup...{new TimeSpan(0,0,0,0,(int)(GameTime - started))}");
-			} else if( LoadEnabled && loaded == 0 ) {
-				loaded = GameTime;
-				Task.Run(() => {
-					saved = GameTime;
-					ReadFromFile(DataFile);
-				});
+				UI.DrawText(.45f, .65f, $"Cutscene...");
 			} else if( AllEdges != null ) {
-				if( SaveEnabled && GameTime - saved > 90000 ) {
+				if( SaveEnabled && GameTime - saved > 60000 ) {
 					saved = GameTime;
-					Task.Run(() => { SaveToFile(DataFile); });
+					Task.Run(() => { SaveToFile(); });
 				}
 				// UI.DrawText($"NavMesh: {Ungrown.Count}/{AllEdges.Count}", color: IsGrown(PlayerNode) ? Color.White : Color.Orange);
 				int msPerFrame = (int)(1000 / CurrentFPS);
 				uint msPerGrow = (uint)Max(5, 35 - msPerFrame);
 				if( !IsGrown(PlayerNode) ) {
-					Grow(PlayerNode, msPerGrow);
-					/* Debug Edge connections
-					var pos = Position(PlayerNode);
-					Range(13,21).Each(i => {
-						var e = (NodeHandle)((long)PlayerNode + edgeOffsets[i]);
-						var epos = Position(e);
-						DrawLine(pos, epos, Color.Teal);
-						UI.DrawTextInWorld(epos, $"{i}");
-					});
-					*/
+					Grow(PlayerNode, msPerGrow, debug:false);
 				} else {
 					DrawEdges(PlayerNode, 7);
 					if( Ungrown.Count > 0 ) {
@@ -224,21 +313,27 @@ namespace Shiv {
 								Ungrown = Ungrown.OrderBy(DistanceToSelf).Take(Ungrown.Count / 2).ToHashSet();
 							}
 						}
-						first = Ungrown.OrderBy(DistanceToSelf).FirstOrDefault();
+						lock( Ungrown ) {
+							first = Ungrown.OrderBy(DistanceToSelf).FirstOrDefault();
+						}
 						if( first != NodeHandle.Invalid ) {
-							lock( Ungrown ) {
-								Ungrown.Remove(first);
-							}
 							DrawLine(HeadPosition(Self), Position(first), Color.Orange);
-							Grow(first, msPerGrow);
+							if( RequestRegion(Region(first)).IsDone() ) {
+								lock( Ungrown ) {
+									Ungrown.Remove(first);
+								}
+								Grow(first, msPerGrow);
+							}
 						}
 					} else {
-						Vector3 pos = PutOnGround(AimPosition(), 1f);
+						Vector3 pos = StopAtWater(PutOnGround(AimPosition(), 1f), 0f);
 						NodeHandle handle = GetHandle(pos);
 						pos = Position(handle);
 						if( !IsGrown(handle) ) {
-							Sphere.Add(pos, .1f, Color.Red, 3000);
-							Grow(handle, msPerGrow);
+							if( RequestRegion(Region(handle)).IsDone() ) {
+								Sphere.Add(pos, .1f, Color.Red, 3000);
+								Grow(handle, msPerGrow);
+							}
 						}
 					}
 					// if( Ungrown.Count > 0 ) { foreach(var n in Ungrown ) { DrawSphere(Position(n), .1f, Color.Orange); } }
@@ -268,7 +363,7 @@ namespace Shiv {
 				if( IsCover(node) ) {
 					DrawSphere(nodePos, .05f, Color.Blue);
 				}
-				//UI.DrawTextInWorldWithOffset(nodePos, 0f, -.005f * count, $"{count}");
+				// UI.DrawTextInWorldWithOffset(nodePos, 0f, -.005f * count, $"{count}");
 				foreach( NodeHandle e in Edges(node) ) {
 					Vector3 ePos = Position(e);
 					count += 1;
@@ -289,14 +384,14 @@ namespace Shiv {
 			GrowResult result = Grow(node, ms, sw, Ungrown, debug);
 			while( result == GrowResult.IsGrowing && sw.ElapsedMilliseconds < ms ) {
 				node = Ungrown.OrderBy(DistanceToSelf).FirstOrDefault();
-				Grow(node, ms, sw, Ungrown, debug);
+				Grow(node, ms, sw, new HashSet<NodeHandle>(), debug);
 			}
 			if( debug ) {
 				UI.DrawText(.3f, .4f, $"Grew for {sw.ElapsedMilliseconds} / {ms} ms ({result})");
 			}
 		}
 		public static bool ShowGrowth = false;
-		private enum GrowResult {
+		internal enum GrowResult {
 			InvalidNode,
 			NodeOnStack,
 			IsGrown,
@@ -305,7 +400,7 @@ namespace Shiv {
 			NotLoaded,
 			IsGrowing
 		}
-		private static GrowResult Grow(NodeHandle node, uint ms, Stopwatch sw, HashSet<NodeHandle> stack, bool debug = false) {
+		internal static GrowResult Grow(NodeHandle node, uint ms, Stopwatch sw, HashSet<NodeHandle> stack, bool debug = false) {
 			if( !IsLoaded ) {
 				return GrowResult.NotLoaded;
 			}
@@ -313,19 +408,23 @@ namespace Shiv {
 				return GrowResult.InvalidNode;
 			}
 			Vector3 nodePos = Position(node);
+			/*
 			if( stack.Contains(node) ) {
 				if( debug ) {
 					UI.DrawTextInWorld(nodePos, "OnStack");
 				}
-
 				return GrowResult.NodeOnStack;
 			}
+			*/
 			if( IsGrown(node) ) {
 				if( debug ) {
 					UI.DrawTextInWorld(nodePos, "IsGrown");
 				}
-
 				return GrowResult.IsGrown;
+			}
+			if( !RequestRegion(Region(node)).IsDone() ) {
+				lock( Ungrown ) { Ungrown.Add(node); }
+				return GrowResult.NotLoaded;
 			}
 			if( sw.ElapsedMilliseconds > ms ) {
 				lock( Ungrown ) { Ungrown.Add(node); }
@@ -339,10 +438,11 @@ namespace Shiv {
 
 			try {
 				// Push growth out on certain edges by following their edgeOffsets
-				Items(0,1,2,3,4,6,10,12).Select(i => {
+				possibleGrowthEdges.Select(i => { 
+				// Items(0,1,2,3,4,6,10,12).Select(i => {
 					var e = (NodeHandle)((long)node + edgeOffsets[i]);
 					Vector3 ePos = Position(e);
-					Vector3 gPos = PutOnGround(ePos, 1f);
+					Vector3 gPos = StopAtWater(PutOnGround(ePos, 1f), 0f);
 					NodeHandle g = GetHandle(gPos);
 					gPos = Position(g);
 					if( debug ) {
@@ -422,8 +522,9 @@ namespace Shiv {
 			}
 		}
 
+		// public static IEnumerable<NodeHandle> PossibleEdges(NodeHandle node) => edgeOffsets.Select(o => (NodeHandle)((long)node + o));
 		public static IEnumerable<NodeHandle> PossibleEdges(NodeHandle node) {
-			for(int i = 0; i < 30; i++ ) {
+			for( int i = 0; i < 30; i++ ) {
 				yield return (NodeHandle)((long)node + edgeOffsets[i]);
 			}
 		}
@@ -456,6 +557,12 @@ namespace Shiv {
 				: false;
 		}
 
+		public static void Block(NodeHandle n) {
+			Remove(n);
+			IsGrown(n, true);
+			Text.Add(Position(n), "Blocked", 3000);
+		}
+
 		public static bool Remove(NodeHandle a) => AllEdges == null ? false : AllEdges.TryRemove(a, out uint edges);
 		private static uint GetRawEdges(NodeHandle a) {
 			if( AllEdges == null ) {
@@ -465,17 +572,6 @@ namespace Shiv {
 			AllEdges.TryGetValue(a, out uint edges);
 			uint mask = unchecked((0x1u << grownBit) | (0x1u << coverBit));
 			return edges & ~mask;
-		}
-		private static void SetRawEdges(NodeHandle a, uint edges, bool grown, bool cover) {
-			if( AllEdges == null ) {
-				return;
-			}
-
-			edges = edges
-				| (grown ? (1u << grownBit) : 0)
-				| (cover ? (1u << coverBit) : 0);
-			AllEdges.AddOrUpdate(a, edges, (k, v) => edges);
-			Dirty = true;
 		}
 		public static bool SetEdge(NodeHandle a, NodeHandle b, bool value) {
 			if( AllEdges == null ) {
@@ -492,7 +588,8 @@ namespace Shiv {
 			} else {
 				AllEdges.AddOrUpdate(a, 0, (k, oldValue) => oldValue & ~mask);
 			}
-			Dirty = true;
+			dirtyRegions.Add(GetRegion(a));
+			dirtyRegions.Add(GetRegion(b));
 			return true;
 		}
 		public static bool AddEdge(NodeHandle a, NodeHandle b) => SetEdge(a, b, true);
@@ -510,7 +607,7 @@ namespace Shiv {
 			} else {
 				AllEdges.AddOrUpdate(a, 0, (key, oldValue) => oldValue & ~grownBitMask);
 			}
-			Dirty = true;
+			dirtyRegions.Add(GetRegion(a));
 		}
 		public static bool IsCover(NodeHandle a) => AllEdges == null ? false : AllEdges.TryGetValue(a, out uint flags) && (flags & (1u << coverBit)) > 0;
 		public static void IsCover(NodeHandle a, bool value) {
@@ -524,7 +621,7 @@ namespace Shiv {
 			} else {
 				AllEdges.AddOrUpdate(a, 0, (key, oldValue) => oldValue & ~mask);
 			}
-			Dirty = true;
+			dirtyRegions.Add(GetRegion(a));
 		}
 
 		public static IEnumerable<NodeHandle> GetAllHandlesInBox(Matrix4x4 m, Vector3 backLeft, Vector3 frontRight) {
@@ -551,6 +648,36 @@ namespace Shiv {
 				Color.White);
 		}
 
+		public override void OnInit() {
+			RequestRegion(GetRegion(Global.Position(Call<PedHandle>(GET_PLAYER_PED, CurrentPlayer))));
+			ReadFrontierFile();
+			base.OnInit();
+		}
+
+		public static bool ReadFrontierFile() {
+			var filename = "scripts/Shiv.Frontier.mesh";
+			try {
+				using( BinaryReader r = Codec.Reader(filename) ) {
+					int magic = r.ReadInt32();
+					if( magic != magicBytes ) {
+						Log($"Wrong magic bytes {magic:X}");
+						return false;
+					}
+					int count = r.ReadInt32();
+					if( count <= 0 ) {
+						Log($"Invalid count: {count}");
+						return false;
+					}
+					ulong[] handles = new ulong[count];
+					byte[] buf = r.ReadBytes(count * sizeof(ulong));
+					Buffer.BlockCopy(buf, 0, handles, 0, buf.Length);
+					Ungrown = new HashSet<NodeHandle>(handles.Cast<NodeHandle>());
+				}
+			} catch( FileNotFoundException ) {
+				return false;
+			}
+			return false;
+		}
 
 		public static bool ReadFromFile(string filename) {
 			var s = new Stopwatch();
@@ -570,62 +697,61 @@ namespace Shiv {
 					byte[] buf;
 					ulong[] handles = new ulong[count];
 					uint[] edges = new uint[count];
-					Log($"Reading {count} edges...");
+					Log($"Reading {count} nodes...");
 					buf = r.ReadBytes(count * sizeof(ulong));
 					Buffer.BlockCopy(buf, 0, handles, 0, buf.Length);
 					buf = r.ReadBytes(count * sizeof(uint));
 					Buffer.BlockCopy(buf, 0, edges, 0, buf.Length);
-					var newEdges = new ConcurrentDictionary<NodeHandle, uint>();
-					Parallel.For(0, count, (i) => newEdges.TryAdd((NodeHandle)handles[i], edges[i]) );
-					int ungrownCount = r.ReadInt32();
-					if( ungrownCount > 0 ) {
-						Log($"Reading {ungrownCount} ungrown nodes...");
-						ulong[] ungrown = new ulong[ungrownCount];
-						buf = r.ReadBytes(ungrownCount * sizeof(ulong));
-						Buffer.BlockCopy(buf, 0, ungrown, 0, buf.Length);
-						Ungrown = new HashSet<NodeHandle>(ungrown.Cast<NodeHandle>());
-					}
-					Log($"Finished loading {newEdges.Count}+{ungrownCount} nodes, after {s.Elapsed}");
-					AllEdges = newEdges;
+					Parallel.For(0, count, (i) => AllEdges.TryAdd((NodeHandle)handles[i], edges[i]) );
+					Log($"Finished loading {count} nodes, after {s.Elapsed}");
 				}
 			} catch( FileNotFoundException ) {
 				Log($"File not found: {filename}");
-				AllEdges = new ConcurrentDictionary<NodeHandle, uint>();
 			}
-			Dirty = false;
 			s.Stop();
 			return true;
 		}
-		public static void SaveToFile(string filename = "scripts/LongMesh.dat") {
-			if( !Dirty ) {
-				return;
-			}
+		private static ConcurrentSet<NavRegion> dirtyRegions = new ConcurrentSet<NavRegion>();
+		public static void SaveToFile() {
+			AllEdges.Keys.GroupBy(GetRegion).Each(g => {
+				NavRegion region = g.Key;
+				if( dirtyRegions.TryRemove(region) ) {
+					Log($"Saving dirty region: {region}");
+					var file = $"scripts/Shiv.{region}.mesh";
+					using( BinaryWriter w = Codec.Writer(file + ".tmp") ) {
+						w.Write(magicBytes);
+						ulong[] handles = g.Cast<ulong>().ToArray();
+						uint[] edges = handles.Select(h => AllEdges[(NodeHandle)h]).ToArray();
+						byte[] buf;
+						try {
+							Log($"Writing {handles.Length} handles to file...");
+							w.Write(handles.Length);
+							buf = new byte[handles.Length * sizeof(NodeHandle)];
+							Buffer.BlockCopy(handles, 0, buf, 0, buf.Length);
+							w.Write(buf);
+						} catch( Exception err ) {
+							Log("Failed to write handles to file: " + err.ToString());
+							return;
+						}
+						try {
+							Log($"Writing {edges.Length} edges to file...");
+							buf = new byte[edges.Length * sizeof(uint)];
+							Buffer.BlockCopy(edges, 0, buf, 0, buf.Length);
+							w.Write(buf);
+						} catch( Exception err ) {
+							Log("Failed: " + err.ToString());
+							return;
+						}
+					}
+					try { File.Delete(file); } catch( FileNotFoundException ) { }
+					try { File.Move(file + ".tmp", file); } catch( Exception e ) {
+						Log("File.Move Failed: " + e.ToString());
+					}
+				}
+			});
+			var filename = "scripts/Shiv.Frontier.mesh";
 			using( BinaryWriter w = Codec.Writer(filename + ".tmp") ) {
 				w.Write(magicBytes);
-				NodeHandle[] handles;
-				uint[] edges;
-				handles = AllEdges.Keys.ToArray();
-				edges = handles.Select(h => AllEdges[h]).ToArray();
-				byte[] buf;
-				try {
-					Log($"Writing {handles.Length} handles to file...");
-					w.Write(handles.Length);
-					buf = new byte[handles.Length * sizeof(NodeHandle)];
-					Buffer.BlockCopy(handles.Cast<ulong>().ToArray(), 0, buf, 0, buf.Length);
-					w.Write(buf);
-				} catch( Exception err ) {
-					Log("Failed: " + err.ToString());
-					return;
-				}
-				try {
-					Log($"Writing {edges.Length} edges to file...");
-					buf = new byte[edges.Length * sizeof(uint)];
-					Buffer.BlockCopy(edges, 0, buf, 0, buf.Length);
-					w.Write(buf);
-				} catch( Exception err ) {
-					Log("Failed: " + err.ToString());
-					return;
-				}
 				try {
 					Log($"Writing {Ungrown.Count} ungrown nodes to file...");
 					ulong[] ungrown;
@@ -633,7 +759,7 @@ namespace Shiv {
 						ungrown = Ungrown.Cast<ulong>().ToArray();
 					}
 					w.Write(ungrown.Length);
-					buf = new byte[ungrown.Length * sizeof(NodeHandle)];
+					byte[] buf = new byte[ungrown.Length * sizeof(NodeHandle)];
 					Buffer.BlockCopy(ungrown, 0, buf, 0, buf.Length);
 					w.Write(buf);
 				} catch( Exception err ) {
@@ -683,26 +809,27 @@ namespace Shiv {
 			return NodeHandle.Invalid;
 		}
 
-		public static IEnumerable<NodeHandle> Flood(NodeHandle n, int maxDepth) => Flood(n, maxDepth, new HashSet<NodeHandle>(), new HashSet<NodeHandle>(), PossibleEdges);
-		private static IEnumerable<NodeHandle> Flood(NodeHandle n, int maxDepth, HashSet<NodeHandle> stack, HashSet<NodeHandle> seen, Func<NodeHandle, IEnumerable<NodeHandle>> edges) {
-			if( n != NodeHandle.Invalid
+		public static IEnumerable<NodeHandle> Flood(NodeHandle n, int maxDepth, CancellationToken cancel) => Flood(n, maxDepth, new HashSet<NodeHandle>(), new HashSet<NodeHandle>(), PossibleEdges, cancel, new List<NodeHandle>());
+		public static IEnumerable<NodeHandle> Flood(NodeHandle n, int maxDepth, CancellationToken cancel, Func<NodeHandle, IEnumerable<NodeHandle>> edges) => Flood(n, maxDepth, new HashSet<NodeHandle>(), new HashSet<NodeHandle>(), edges, cancel, new List<NodeHandle>());
+		private static IEnumerable<NodeHandle> Flood(NodeHandle n, int maxDepth, HashSet<NodeHandle> stack, HashSet<NodeHandle> seen, Func<NodeHandle, IEnumerable<NodeHandle>> edges, CancellationToken cancel, List<NodeHandle> result) {
+			if( (cancel == null || cancel == default || !cancel.IsCancellationRequested)
+				&& n != NodeHandle.Invalid
 				&& stack.Count <= maxDepth
 				&& !stack.Contains(n) ) {
 				stack.Add(n);
 				if( !seen.Contains(n) ) {
 					seen.Add(n);
-					yield return n;
+					result.Add(n);
 				}
 				try {
 					foreach( NodeHandle e in edges(n) ) {
-						foreach( NodeHandle ee in Flood(e, maxDepth, stack, seen, edges) ) {
-							yield return ee;
-						}
+						Flood(e, maxDepth, stack, seen, edges, cancel, result);
 					}
 				} finally {
 					stack.Remove(n);
 				}
 			}
+			return result;
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
