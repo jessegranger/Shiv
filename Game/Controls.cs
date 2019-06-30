@@ -49,7 +49,10 @@ namespace Shiv {
 				CurrentFPS));
 			DrawLine(HeadPosition(Self), pos, Color.Orange);
 			var dist = DistanceToSelf(pos);
-			if( debug ) UI.DrawTextInWorld(pos, $"dX:{dX:F2} dY:{dY:F2} dist:{DistanceToSelf(pos):F2}");
+			if( debug ) {
+				UI.DrawTextInWorld(pos, $"dX:{dX:F2} dY:{dY:F2} dist:{DistanceToSelf(pos):F2}");
+			}
+
 			return dist < .5f ? MoveResult.Complete : MoveResult.Continue;
 		}
 		public static MoveResult FollowPath(IEnumerable<Vector3> path) => path == null ? MoveResult.Complete : MoveToward(Bezier(.5f, path.Take(4).ToArray()));
@@ -251,18 +254,26 @@ namespace Shiv {
 			public static bool Disabled = false;
 			public static void OnTick() {
 				while( keyEvents.TryDequeue(out Event evt) ) {
-					if( Disabled ) {
-						continue; // still consume keys when disabled
+					IEnumerable<Script> items;
+					if( DisabledExcept == null ) {
+						// Log($"Only allowing {DisabledExcept} to consume keys this frame.");
+						if( Disabled ) {
+							continue;
+						}
+						items = Script.Order;
+					} else {
+						items = Script.Order.Where(s => s.GetType() == DisabledExcept);
 					}
-					IEnumerable<Script> items = DisabledExcept == null ? Script.Order : Script.Order.Where(s => s.GetType() == DisabledExcept);
 					// lets scripts consume the key
-					if( items.FirstOrDefault(s => s.OnKey(evt.key, evt.downBefore, evt.upNow)) == default ) {
+					Script consumer = items.FirstOrDefault(s => s.OnKey(evt.key, evt.downBefore, evt.upNow));
+					if( consumer == null ) {
 						// if no script did consume it, and it's newly pressed, trigger the Console.Bind() binding
 						if( (!evt.downBefore) && keyBindings.TryGetValue(evt.key, out Action action) ) {
 							try {
 								action();
 							} catch( Exception err ) {
-								Log($"OnKey({evt.key}) exception from key-binding: {err.Message} {err.StackTrace}");
+								Log($"OnKey({evt.key}) exception from key-binding: {err.Message}");
+								Log(err.StackTrace);
 								keyBindings.Remove(evt.key);
 							}
 						}
