@@ -52,7 +52,7 @@ namespace Shiv {
 					return GoalStatus.Active;
 				}
 				MoveResult result;
-				switch( result = MoveToward(Bezier(.25f, steps)) ) {
+				switch( result = MoveToward(Bezier(.15f, steps)) ) {
 					case MoveResult.Complete:
 						future = new Immediate<Path>(new Path(future.GetResult().Skip(1)));
 						break;
@@ -80,7 +80,7 @@ namespace Shiv {
 		private void Stuck() {
 			NodeHandle cur = PlayerNode;
 			Log($"Stuck! {PlayerNode}");
-			NavMesh.Flood(future.GetResult().FirstOrDefault(), 1, Edges).Each(n => NavMesh.Block(n));
+			NavMesh.Flood(future.GetResult().Skip(1).FirstOrDefault(), 1, default, Edges).Each(n => NavMesh.Block(n));
 			Restart();
 		}
 	}
