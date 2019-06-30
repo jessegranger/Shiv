@@ -18,7 +18,7 @@ namespace Shiv {
 			IFuture<T> Resolve(T item);
 			void Reject(Exception err);
 		}
-		public class Future<T> : IFuture<T> {
+		public class Future<T> : IFuture<T>, IDisposable {
 			private ReaderWriterLockSlim guard = new ReaderWriterLockSlim();
 			private T result = default;
 			private Exception error;
@@ -26,13 +26,20 @@ namespace Shiv {
 			private CountdownEvent ready = new CountdownEvent(1);
 
 			public Future() { }
+			private bool disposed = false;
+			public void Dispose() {
+				if( ! disposed ) {
+					disposed = true;
+					if( !cancel.IsCancellationRequested ) {
+						cancel.Cancel();
+					}
+					if( !ready.IsSet ) {
+						ready.Signal();
+					}
+				}
+			}
 			~Future() {
-				if( !ready.IsSet ) {
-					ready.Signal();
-				}
-				if( !cancel.IsCancellationRequested ) {
-					cancel.Cancel();
-				}
+				Dispose();
 			}
 			public Future(Func<T> func):this() {
 				ThreadPool.QueueUserWorkItem((object arg) => {
@@ -51,6 +58,18 @@ namespace Shiv {
 					try { return result; } finally { guard.ExitReadLock(); }
 				}
 				return default;
+			}
+			public bool TryGetResult(out T result) {
+				result = default;
+				if( ready.IsSet && guard.TryEnterReadLock(20) ) {
+					try {
+						result = this.result;
+						return true;
+					} finally {
+						guard.ExitReadLock();
+					}
+				}
+				return false;
 			}
 
 
@@ -94,12 +113,7 @@ namespace Shiv {
 			public virtual bool Contains(T k) => data.ContainsKey(k);
 			public virtual void Remove(T k) => data.TryRemove(k, out T ignore);
 			public virtual void Add(T k) => data.TryAdd(k, k);
-			public virtual T Get(T k) {
-				if( data.TryGetValue(k, out T value) ) {
-					return value;
-				}
-				return default;
-			}
+			public virtual T Get(T k) => data.TryGetValue(k, out T value) ? value : (default);
 			public virtual bool TryRemove(T k) => data.TryRemove(k, out T ignore);
 
 			public virtual IEnumerator<T> GetEnumerator() => data.Keys.GetEnumerator();
