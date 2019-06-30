@@ -27,6 +27,7 @@ namespace Shiv {
 			}
 			return z;
 		}
+		public static Vector3 StopAtWater(Vector3 pos, float delta) => new Vector3(pos.X, pos.Y, Math.Max(pos.Z, delta));
 
 		public static void DrawLine(Vector3 start, Vector3 end, Color color) => Call(DRAW_LINE, start, end, color);
 		public static Action<Vector3> DrawSphere(float radius, Color color) => (Vector3 v) => DrawSphere(v, radius, color);
