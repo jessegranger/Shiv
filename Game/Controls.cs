@@ -30,15 +30,15 @@ namespace Shiv {
 		public static MoveResult MoveToward(PedHandle ent) => MoveToward(Position(ent));
 		public static MoveResult MoveToward(Vector3 pos, bool debug=false) {
 			if( pos == Vector3.Zero ) { return MoveResult.Complete; }
-			var obs = CheckObstruction(PlayerPosition, (pos - PlayerPosition));
-			if( obs < 0 ) {
-				// TODO: try to shuffle around a side
-				// TODO: maybe unlink some Edges() so we dont path here again
-				Text.Add(pos, "Obstruction", 3000);
-				return MoveResult.Failed; // currently impossible
-			} else if( obs > .25f && obs < 2.4f && Speed(Self) < .01f ) {
-				SetControlValue(0, Control.Jump, 1.0f); // Attempt to jump over a positive obstruction
+			ObstructionFlags result = CheckObstruction(PlayerPosition, (pos - PlayerPosition), debug);
+			if( ! IsWalkable(result ) ) {
+				if( IsClimbable(result) ) {
+					SetControlValue(0, Control.Jump, 1.0f); // Attempt to jump over a positive obstruction
+				} else {
+					return MoveResult.Failed;
+				}
 			}
+
 			Vector3 delta = pos - PlayerPosition; // Position(PlayerMatrix);
 			float dX, dY;
 			SetControlValue(1, Control.MoveLeftRight, dX = MoveActivation(
@@ -53,7 +53,7 @@ namespace Shiv {
 				UI.DrawTextInWorld(pos, $"dX:{dX:F2} dY:{dY:F2} dist:{DistanceToSelf(pos):F2}");
 			}
 
-			return dist < .5f ? MoveResult.Complete : MoveResult.Continue;
+			return dist < .25f ? MoveResult.Complete : MoveResult.Continue;
 		}
 		public static MoveResult FollowPath(IEnumerable<Vector3> path) => path == null ? MoveResult.Complete : MoveToward(Bezier(.5f, path.Take(4).ToArray()));
 
@@ -96,19 +96,83 @@ namespace Shiv {
 					walkTarget = Vector3.Zero;
 					return;
 				}
-				WalkPath = new PathRequest(PlayerNode, targetNode, 100, false, true, true);
+				WalkPath = new PathRequest(PlayerNode, targetNode, 1000, false, true, true);
 			}
 		}
 
-		public static float CheckObstruction(Vector3 pos, Vector3 forward) {
+		[Flags]
+		public enum ObstructionFlags {
+			None,
+			CannotClimb = 1,
+			MaxClimb = 2,
+			CanClimb = 4,
+			Overhead = 8,
+			Head = 16,
+			Shoulder = 32,
+			Chest = 64,
+			Stomach = 128,
+			Waist = 256,
+			Knee = 512,
+			Ankle =  1024
+		}
+		public static bool IsClimbable(ObstructionFlags flags) => (flags & ObstructionFlags.CannotClimb) == 0;
+		public static bool IsWalkable(ObstructionFlags flags) => (0 == (flags &
+			(ObstructionFlags.Waist | ObstructionFlags.Stomach | ObstructionFlags.Chest | ObstructionFlags.Shoulder | ObstructionFlags.Head)));
+
+		public static ObstructionFlags CheckObstruction(Vector3 start, Vector3 heading, bool debug = false) {
+
+			ObstructionFlags ret = ObstructionFlags.None;
+
+			heading = new Vector3(heading.X, heading.Y, 0f);
+
+			IntersectOptions opts = IntersectOptions.Map | IntersectOptions.Objects | IntersectOptions.Vehicles;
+			float capsuleSize = .12f;
+			float stepSize = .25f;
+			heading = Vector3.Normalize(heading) * .5f;
+			var head = HeadPosition(Self) + (Up * 5 * stepSize);
+			if( debug ) {
+				// DrawLine(head, head + heading, Color.Orange);
+			}
+			for(int i = 1; i <= (int)ObstructionFlags.Knee; i*=2 ) { // do probes from top to bottom
+				var headRay = Raycast(head, head + heading, capsuleSize, opts, Self);
+				if( headRay.DidHit ) {
+					if( debug ) {
+						DrawSphere(headRay.HitPosition, .01f, Color.Red);
+					}
+					ret |= (ObstructionFlags)i;
+				}
+				head.Z -= stepSize;
+			}
+			if( debug ) {
+				string str = IsWalkable(ret) ? "Walkable" : IsClimbable(ret) ? "Climbable" : "Impassable";
+				UI.DrawTextInWorld(HeadPosition(Self) + heading, $"{str}");
+			}
+			return ret;
+		}
+			/*
 			IntersectOptions opts = IntersectOptions.Map | IntersectOptions.MissionEntities | IntersectOptions.Objects
 				| IntersectOptions.Unk1 | IntersectOptions.Unk2 | IntersectOptions.Unk3 | IntersectOptions.Unk4;
 			forward = Vector3.Normalize(forward) * .4f;
 			pos = pos + forward + (Up * 1.2f); // pick a spot in the air
-			var end = new Vector3(pos.X, pos.Y, pos.Z - 1.9f); // try to drop it down
-			RaycastResult result = Raycast(pos, end, .4f, opts, Self);
+			if( debug ) {
+				DrawSphere(pos, .02f, Color.Orange);
+			}
+			var end = new Vector3(pos.X, pos.Y, pos.Z - 1.65f); // try to drop it down
+			if( debug ) {
+				DrawLine(pos, end, Color.Orange);
+			}
+			RaycastResult result = Raycast(pos, end, .25f, opts, Self);
+			if( debug ) {
+				if( result.DidHit ) {
+					var len = (result.HitPosition - end).Length();
+					DrawSphere(result.HitPosition, .02f, Color.Red);
+					UI.DrawTextInWorld(result.HitPosition, $"{len:F2}m");
+				}
+			}
+			// result is larger if more obstructed
 			return result.DidHit ? (result.HitPosition - end).Length() : 0f;
 		}
+		*/
 
 	}
 
