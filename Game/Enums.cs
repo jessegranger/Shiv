@@ -3596,14 +3596,16 @@ namespace Shiv {
 		public enum IntersectOptions {
 			Everything = -1,
 			Map = 1,
-			MissionEntities,
-			Peds1 = 12,
+			Vehicles = 2,
+			Unk4 = 4,
+			Unk8 = 8,
+			Peds = 12,
 			Objects = 16,
-			Unk1 = 32,
-			Unk2 = 64,
-			Unk3 = 128,
+			Water = 32,
+			Unk64 = 64,
+			Unk128 = 128,
 			Vegetation = 256,
-			Unk4 = 512
+			Unk512 = 512,
 		}
 
 		public enum MarkerType {
