@@ -21,6 +21,27 @@ namespace Shiv {
 			return list;
 		}
 
+		public static T Min<T>(this IEnumerable<T> list, Func<T,float> score) {
+			T minItem = default;
+			float minScore = float.MaxValue;
+			foreach( var x in list ) {
+				float xScore = score(x);
+				if( xScore < minScore ) {
+					minItem = x;
+					minScore = xScore;
+				}
+			}
+			return minItem;
+		}
+
+		public static IEnumerable<T> Without<T>(this IEnumerable<T> list, Predicate<T> pred) {
+			foreach( T x in list ) {
+				if( !pred(x) ) {
+					yield return x;
+				}
+			}
+		}
+
 		public static IEnumerable<T> Each<T>(this IEnumerable<T> list, Action<T> func) {
 			foreach( T x in list ) {
 				func(x);
