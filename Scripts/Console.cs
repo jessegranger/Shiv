@@ -62,7 +62,7 @@ namespace Shiv {
 					UI.DrawText(closedX, .99f - stickyLineOffset - (StickyLines * lineHeight) + (lineNum++) * lineHeight, line, .4f, 4, Foreground);
 				}
 				UI.DrawText(closedX, .99f - stickyLineOffset, 
-					$"{TotalTime.Elapsed.ToString().Substring(0,8)} FPS:{CurrentFPS:F0} (Nav:{NavMesh.Ungrown.Count}/{NavMesh.Count}) (H:{NearbyHumans.Length} V:{NearbyVehicles.Length} E:{NearbyObjects.Length})");
+					$"{TotalTime.Elapsed.ToString().Substring(0,8)} FPS:{CurrentFPS:F0} {PlayerPosition} (H:{NearbyHumans.Length} V:{NearbyVehicles.Length} E:{NearbyObjects.Length})");
 			}
 		}
 
