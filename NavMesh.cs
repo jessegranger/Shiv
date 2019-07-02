@@ -15,6 +15,7 @@ using static Shiv.Global;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
 using System.Threading;
+using GTA.Native;
 
 // pragma warning disable CS0649
 namespace Shiv {
@@ -27,21 +28,8 @@ namespace Shiv {
 
 		public static NavRegion Region(NodeHandle a) => NavMesh.GetRegion(a);
 		public static NavRegion Region(Vector3 a) => NavMesh.GetRegion(a);
-		public static Future<NavRegion> RequestRegion(Vector3 v) => RequestRegion(Region(v));
-		public static Future<NavRegion> RequestRegion(NavRegion r) {
-			return loadedRegions.GetOrAdd(r, (region) => new Future<NavRegion>(() => {
-				Log($"Reading Region: {region} {loadedRegions.Count}");
-				try {
-					NavMesh.ReadFromFile($"scripts/Shiv.{region}.mesh");
-					return region;
-				} catch( FileNotFoundException ) {
-					Log($"Empty region: {region}");
-					return region;
-				}
-			}));
-			
-		}
-		private static ConcurrentDictionary<NavRegion, Future<NavRegion>> loadedRegions = new ConcurrentDictionary<NavRegion, Future<NavRegion>>();
+		public static IFuture<NavRegion> RequestRegion(Vector3 v) => RequestRegion(Region(v));
+		public static IFuture<NavRegion> RequestRegion(NavRegion r) => NavMesh.RequestRegion(r);
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static float DistanceToSelf(NodeHandle n) => DistanceToSelf(Position(n));
 
@@ -58,7 +46,7 @@ namespace Shiv {
 
 	}
 
-	public class NavMesh : Script {
+	public partial class NavMesh : Script {
 
 		public static bool Enabled = true;
 		public static bool SaveEnabled = true;
@@ -72,6 +60,7 @@ namespace Shiv {
 		// which makes mapShift too small, which corrupts NodeHandles
 
 		public static NodeHandle LastGrown { get; private set; } = NodeHandle.Invalid;
+		public static long LastGrownMS = 0;
 
 		// how to pack Vector3 into a long:
 		// add the mapRadius (so strictly positive)
@@ -148,7 +137,7 @@ namespace Shiv {
 		}
 
 		// constants to use when expanding the mesh
-		private const IntersectOptions growRayOpts = IntersectOptions.Map | IntersectOptions.Objects | IntersectOptions.Unk1 | IntersectOptions.Unk2 | IntersectOptions.Unk3 | IntersectOptions.Unk4;
+		private const IntersectOptions growRayOpts = IntersectOptions.Map | IntersectOptions.Objects | IntersectOptions.Water| IntersectOptions.Unk64 | IntersectOptions.Unk128 | IntersectOptions.Unk512;
 		private const float capsuleSize = 0.30f; // when checking for obstructions, how big of a box to use for collision
 		private const float maxGrowRange = 70f * 70f; // dont trust the game to have geometry loaded farther than this
 
@@ -232,7 +221,6 @@ namespace Shiv {
 		private static uint started = 0;
 		private static uint saved = 0;
 		private static uint aborted = 0;
-		public static ConcurrentSet<NavRegion> LoadedRegions = new ConcurrentSet<NavRegion>();
 		public static ConcurrentDictionary<NodeHandle, uint> AllEdges = new ConcurrentDictionary<NodeHandle, uint>();
 		public static bool IsLoaded => AllEdges != null && aborted == 0;
 		public static int Count => AllEdges == null ? 0 : AllEdges.Count;
@@ -248,7 +236,6 @@ namespace Shiv {
 				GrowResult result = Grow(node, 10, sw, new HashSet<NodeHandle>(), debug: true);
 				UI.DrawTextInWorldWithOffset(pos, 0f, -.02f, $"GrowResult:{result}");
 			}
-			*/
 			int i = 0;
 			var sw = new Stopwatch();
 			sw.Start();
@@ -258,26 +245,18 @@ namespace Shiv {
 				i++;
 			}
 			UI.DrawTextInWorldWithOffset(pos, .01f, -.02f, $"Flood:{i} in {sw.ElapsedMilliseconds}ms");
+			*/
 		}
 		private static int[] possibleGrowthEdges = new int[] { 0, 1, 2, 3, 4, 6, 10, 12 };
 		private static IEnumerable<NodeHandle> PossibleGrowthEdges(NodeHandle node) => possibleGrowthEdges.Select(i => (NodeHandle)((long)node + edgeOffsets[i]));
-		private static IEnumerable<NodeHandle> GroundEdges(NodeHandle node) => PossibleGrowthEdges(node).Each(n => StopAtWater(PutOnGround(Position(n), 1f), 0f));
+		public static IEnumerable<NodeHandle> GroundEdges(NodeHandle node) => PossibleGrowthEdges(node).Each(n => StopAtWater(PutOnGround(Position(n), 1f), 0f));
 
 		private NodeHandle prevNode;
 		public override void OnTick() {
 			if( (!Enabled) || aborted != 0 ) {
 				return;
 			}
-			/*
-				Items(0,1,2,3,4,6,10,12).Each(i => {
-				// Range(0,30).Each(i => {
-					var e = (NodeHandle)((long)PlayerNode + edgeOffsets[i]);
-					var epos = Position(e);
-					DrawLine(PlayerPosition, epos, Color.Teal);
-					UI.DrawTextInWorld(epos, $"{i}");
-				});
-			*/
-
+			DrawStatus();
 			PlayerNode = GetHandle(PlayerPosition);
 			if( PlayerNode != prevNode ) {
 				AddEdge(prevNode, PlayerNode);
@@ -302,10 +281,10 @@ namespace Shiv {
 				// UI.DrawText($"NavMesh: {Ungrown.Count}/{AllEdges.Count}", color: IsGrown(PlayerNode) ? Color.White : Color.Orange);
 				int msPerFrame = (int)(1000 / CurrentFPS);
 				uint msPerGrow = (uint)Max(5, 35 - msPerFrame);
+				DrawEdges(PlayerNode, 6);
 				if( !IsGrown(PlayerNode) ) {
 					Grow(PlayerNode, msPerGrow, debug:false);
 				} else {
-					DrawEdges(PlayerNode, 7);
 					if( Ungrown.Count > 0 ) {
 						NodeHandle first = NodeHandle.Invalid;
 						if( Ungrown.Count > 1200 ) {
@@ -314,7 +293,7 @@ namespace Shiv {
 							}
 						}
 						lock( Ungrown ) {
-							first = Ungrown.OrderBy(DistanceToSelf).FirstOrDefault();
+							first = Ungrown.Min(DistanceToSelf);
 						}
 						if( first != NodeHandle.Invalid ) {
 							DrawLine(HeadPosition(Self), Position(first), Color.Orange);
@@ -346,7 +325,8 @@ namespace Shiv {
 				return;
 			}
 
-			DrawLine(Global.Position(Self), Position(node), Color.Pink);
+			UI.DrawText($"PlayerNode: {PlayerNode} {Position(PlayerNode)}");
+			DrawLine(HeadPosition(Self), Position(node), Color.Pink);
 			DrawEdges(node, Position(node), depth, new HashSet<NodeHandle>(), new HashSet<NodeHandle>(), 0);
 		}
 		private void DrawEdges(NodeHandle node, Vector3 nodePos, uint depth, HashSet<NodeHandle> stack, HashSet<NodeHandle> seen, int count) {
@@ -363,6 +343,7 @@ namespace Shiv {
 				if( IsCover(node) ) {
 					DrawSphere(nodePos, .05f, Color.Blue);
 				}
+				// UI.DrawTextInWorld(nodePos, $"{node}");
 				// UI.DrawTextInWorldWithOffset(nodePos, 0f, -.005f * count, $"{count}");
 				foreach( NodeHandle e in Edges(node) ) {
 					Vector3 ePos = Position(e);
@@ -374,6 +355,35 @@ namespace Shiv {
 			}
 		}
 
+		private static ConcurrentDictionary<NavRegion, Future<NavRegion>> loadedRegions = new ConcurrentDictionary<NavRegion, Future<NavRegion>>();
+		public static IFuture<NavRegion> RequestRegion(NavRegion r) {
+			if( r == NavRegion.Invalid ) {
+				return new Immediate<NavRegion>(r);
+			}
+			return loadedRegions.GetOrAdd(r, (region) => new Future<NavRegion>(() => {
+				Log($"Reading Region: {region} {loadedRegions.Count}");
+				try {
+					ReadFromFile($"scripts/Shiv.{region}.mesh");
+					return region;
+				} catch( FileNotFoundException ) {
+					Log($"Empty region: {region}");
+					return region;
+				}
+			}));
+		}
+
+		public void DrawStatus() {
+			float left = 0f;
+			float top = .75f;
+			float lineHeight = .019f;
+			int line = 0;
+			UI.DrawText(left, top + (line++ * lineHeight), $"NavMesh Status:");
+			UI.DrawText(left, top + (line++ * lineHeight), $"{Ungrown.Count}/{AllEdges.Count} nodes in {loadedRegions.Count} regions ({dirtyRegions.Count} dirty)");
+			if( LastGrown != NodeHandle.Invalid ) {
+				UI.DrawText(left, top + (line++ * lineHeight), $"Grew:{Sqrt(DistanceToSelf(LastGrown)):F2} away for {LastGrownMS}ms");
+			}
+		}
+
 		internal static void Grow(NodeHandle node, uint ms, bool debug=false) {
 			if( !IsLoaded ) {
 				return;
@@ -381,14 +391,12 @@ namespace Shiv {
 
 			var sw = new Stopwatch();
 			sw.Start();
-			GrowResult result = Grow(node, ms, sw, Ungrown, debug);
-			while( result == GrowResult.IsGrowing && sw.ElapsedMilliseconds < ms ) {
-				node = Ungrown.OrderBy(DistanceToSelf).FirstOrDefault();
+			Grow(node, ms, sw, new HashSet<NodeHandle>(), debug);
+			while( node != NodeHandle.Invalid && sw.ElapsedMilliseconds < ms && Ungrown.Count > 0 ) {
+				node = Ungrown.Min(DistanceToSelf);
 				Grow(node, ms, sw, new HashSet<NodeHandle>(), debug);
 			}
-			if( debug ) {
-				UI.DrawText(.3f, .4f, $"Grew for {sw.ElapsedMilliseconds} / {ms} ms ({result})");
-			}
+			LastGrownMS = sw.ElapsedMilliseconds;
 		}
 		public static bool ShowGrowth = false;
 		internal enum GrowResult {
@@ -408,18 +416,13 @@ namespace Shiv {
 				return GrowResult.InvalidNode;
 			}
 			Vector3 nodePos = Position(node);
-			/*
 			if( stack.Contains(node) ) {
 				if( debug ) {
 					UI.DrawTextInWorld(nodePos, "OnStack");
 				}
 				return GrowResult.NodeOnStack;
 			}
-			*/
 			if( IsGrown(node) ) {
-				if( debug ) {
-					UI.DrawTextInWorld(nodePos, "IsGrown");
-				}
 				return GrowResult.IsGrown;
 			}
 			if( !RequestRegion(Region(node)).IsDone() ) {
@@ -435,6 +438,8 @@ namespace Shiv {
 				return GrowResult.TooFar;
 			}
 			stack.Add(node);
+			LastGrown = node;
+			IsGrown(node, true);
 
 			try {
 				// Push growth out on certain edges by following their edgeOffsets
@@ -506,8 +511,6 @@ namespace Shiv {
 						Grow(e, ms, sw, stack, debug: debug);
 					}
 				});
-				LastGrown = node;
-				IsGrown(node, true);
 				return GrowResult.IsGrowing;
 			} finally {
 				stack.Remove(node);
@@ -624,7 +627,8 @@ namespace Shiv {
 			dirtyRegions.Add(GetRegion(a));
 		}
 
-		public static IEnumerable<NodeHandle> GetAllHandlesInBox(Matrix4x4 m, Vector3 backLeft, Vector3 frontRight) {
+		public static void GetAllHandlesInBox(ModelBox box, ConcurrentSet<NodeHandle> output) => GetAllHandlesInBox(box.M, box.Back, box.Front, output);
+		public static void GetAllHandlesInBox(Matrix4x4 m, Vector3 backLeft, Vector3 frontRight, ConcurrentSet<NodeHandle> output) {
 			float minX = Min(backLeft.X, frontRight.X);
 			float minY = Min(backLeft.Y, frontRight.Y);
 			float minZ = Min(backLeft.Z, frontRight.Z);
@@ -636,7 +640,7 @@ namespace Shiv {
 					for( float z = minZ; z <= maxZ; z += zScale ) {
 						var v = new Vector3(x, y, z);
 						var p = Vector3.Transform(v, m);
-						yield return GetHandle(p);
+						output.Add(GetHandle(p));
 					}
 				}
 			}
@@ -775,85 +779,57 @@ namespace Shiv {
 			}
 		}
 
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static IEnumerable<NodeHandle> Select(NodeHandle n, int maxDepth) => Select(n, maxDepth, null, new HashSet<NodeHandle>(), new HashSet<NodeHandle>());
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static IEnumerable<NodeHandle> Select(NodeHandle n, int maxDepth, Predicate<NodeHandle> pred) => Select(n, maxDepth, pred, new HashSet<NodeHandle>(), new HashSet<NodeHandle>());
-		private static IEnumerable<NodeHandle> Select(NodeHandle n, int maxDepth, Predicate<NodeHandle> pred, HashSet<NodeHandle> stack, HashSet<NodeHandle> seen) {
-			if( AllEdges == null
-				|| !AllEdges.ContainsKey(n)
-				|| stack.Count >= maxDepth
-				|| stack.Contains(n) ) {
-				yield break;
-			}
-			try {
-				stack.Add(n);
-				if( (pred == null) || pred(n) ) {
-					if( !seen.Contains(n) ) {
-						seen.Add(n);
-						yield return n;
-					}
+		public static IEnumerable<NodeHandle> Flood(NodeHandle cur, int maxNodes, int maxDepth, CancellationToken cancel, Func<NodeHandle, IEnumerable<NodeHandle>> edges) {
+			var queue = new Queue<NodeHandle>();
+			var seen = new HashSet<NodeHandle>();
+			queue.Enqueue(cur);
+			while( true ) {
+				if( cancel != default && cancel.IsCancellationRequested ) {
+					Log($"Flood cancelled.");
+					yield break;
 				}
-				foreach( NodeHandle e in Edges(n) ) {
-					foreach( NodeHandle r in Select(e, maxDepth, pred, stack, seen) ) {
-						yield return r;
-					}
+				if( queue.Count == 0 ) {
+					Log($"Flood exhausted search area");
+					yield break;
 				}
-			} finally {
-				stack.Remove(n);
+				if( seen.Count >= maxNodes ) {
+					Log($"Flood stopped at limit {maxNodes}");
+					yield break;
+				}
+				cur = queue.Dequeue();
+				if( !seen.Contains(cur) ) {
+					seen.Add(cur);
+					yield return cur;
+					edges(cur).Each(queue.Enqueue);
+				}
 			}
 		}
 
-		public static NodeHandle FirstOrDefault(NodeHandle n, int maxDepth, Predicate<NodeHandle> pred) {
-			foreach( NodeHandle x in Select(n, maxDepth, pred, new HashSet<NodeHandle>(), new HashSet<NodeHandle>()) ) {
-				return x;
-			}
-			return NodeHandle.Invalid;
-		}
-
-		public static IEnumerable<NodeHandle> Flood(NodeHandle n, int maxDepth, CancellationToken cancel) => Flood(n, maxDepth, new HashSet<NodeHandle>(), new HashSet<NodeHandle>(), PossibleEdges, cancel, new List<NodeHandle>());
-		public static IEnumerable<NodeHandle> Flood(NodeHandle n, int maxDepth, CancellationToken cancel, Func<NodeHandle, IEnumerable<NodeHandle>> edges) => Flood(n, maxDepth, new HashSet<NodeHandle>(), new HashSet<NodeHandle>(), edges, cancel, new List<NodeHandle>());
-		private static IEnumerable<NodeHandle> Flood(NodeHandle n, int maxDepth, HashSet<NodeHandle> stack, HashSet<NodeHandle> seen, Func<NodeHandle, IEnumerable<NodeHandle>> edges, CancellationToken cancel, List<NodeHandle> result) {
-			if( (cancel == null || cancel == default || !cancel.IsCancellationRequested)
-				&& n != NodeHandle.Invalid
-				&& stack.Count <= maxDepth
-				&& !stack.Contains(n) ) {
-				stack.Add(n);
-				if( !seen.Contains(n) ) {
-					seen.Add(n);
-					result.Add(n);
-				}
-				try {
-					foreach( NodeHandle e in edges(n) ) {
-						Flood(e, maxDepth, stack, seen, edges, cancel, result);
+		public static Producer<NodeHandle> FloodThread(NodeHandle n, int maxNodes, int maxDepth, Func<NodeHandle, IEnumerable<NodeHandle>> edges) {
+			var producer = new DistinctProducer<NodeHandle>() { Limit = (ulong)maxNodes };
+			ThreadPool.QueueUserWorkItem((object state) => {
+				var queue = new Queue<NodeHandle>();
+				queue.Enqueue(n);
+				while( true ) {
+					if( queue.Count == 0 ) {
+						Log("FloodThread: Exhausted search area.");
+						break;
 					}
-				} finally {
-					stack.Remove(n);
+					if( producer.IsCancellationRequested ) {
+						Log($"FloodThread: Cancelled after {producer.Count}");
+						break;
+					}
+					NodeHandle cur = queue.Dequeue();
+					if( producer.Produce(cur) && queue.Count < maxDepth * 8 ) {
+						foreach( var e in edges(cur) ) {
+							queue.Enqueue(e);
+						}
+					}
 				}
-			}
-			return result;
-		}
-
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static void Visit(NodeHandle n, int maxDepth, Action<NodeHandle> action) => Visit(n, maxDepth, action, new HashSet<NodeHandle>(), new HashSet<NodeHandle>(), Edges);
-		private static void Visit(NodeHandle n, int maxDepth, Action<NodeHandle> action, HashSet<NodeHandle> stack, HashSet<NodeHandle> seen, Func<NodeHandle, IEnumerable<NodeHandle>> edges) {
-			if( n == 0
-				|| stack == null
-				|| stack.Count > maxDepth
-				|| stack.Contains(n) ) {
-				return;
-			}
-
-			stack.Add(n);
-			if( !seen.Contains(n) ) {
-				seen.Add(n);
-				action(n);
-			}
-			try {
-				foreach( NodeHandle e in edges(n) ) {
-					Visit(e, maxDepth, action, stack, seen, edges);
-				}
-			} finally {
-				stack.Remove(n);
-			}
+				Log("FloodThread: Closing");
+				producer.Close();
+			});
+			return producer;
 		}
 
 		private static Random random = new Random();
@@ -866,27 +842,17 @@ namespace Shiv {
 			Matrix4x4 m = Matrix(v);
 			VehicleHash model = GetModel(v);
 			GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
+			Stopwatch sw = new Stopwatch();
+			sw.Start();
+			ConcurrentSet<NodeHandle> blocked = new ConcurrentSet<NodeHandle>();
+			GetAllHandlesInBox(m, backLeft, frontRight, blocked);
+			UI.DrawText($"GetAllHandlesInBox: {blocked.Count} in {sw.ElapsedTicks} ticks");
 
-			foreach( Vector3 n in NavMesh.GetAllHandlesInBox(m, backLeft, frontRight).Select(Position) ) {
-				if( random.NextDouble() > .5 ) {
+			foreach( Vector3 n in blocked.Select(Position) ) {
+				if( random.NextDouble() < .2 ) {
 					DrawSphere(n, .05f, Color.Red);
 				}
 			}
-
-			Vector3 d = frontRight - backLeft;
-			// UI.DrawTextInWorld(Vector3.Transform(new Vector3(0f, 0f, dZ/2), m), "dZ/2 HERE");
-			// UI.DrawTextInWorld(Vector3.Transform(new Vector3(0f, dY/2, 0f), m), "dY/2 HERE");
-			// UI.DrawTextInWorld(Vector3.Transform(new Vector3(dX/2f, 0f, 0f), m), "dX/2 HERE");
-			Items(VehicleOffsets.DriverDoor, VehicleOffsets.FrontGrill, VehicleOffsets.FrontLeftWheel, VehicleOffsets.FrontRightWheel, VehicleOffsets.BackLeftWheel, VehicleOffsets.BackRightWheel)
-				.Each((offset) => DrawSphere(Vector3.Transform(offset * d, m), .05f, Color.Aquamarine));
-			UI.DrawTextInWorld(Vector3.Transform(VehicleOffsets.DriverDoor * d, m), "DriverDoor");
-			UI.DrawTextInWorld(Vector3.Transform(VehicleOffsets.FrontGrill * d, m), "FrontGrill");
-			UI.DrawTextInWorld(Vector3.Transform(VehicleOffsets.FrontLeftWheel * d, m), "FrontLeftWheel");
-			UI.DrawTextInWorld(Vector3.Transform(VehicleOffsets.FrontRightWheel * d, m), "FrontRightWheel");
-			UI.DrawTextInWorld(Vector3.Transform(VehicleOffsets.BackLeftWheel * d, m), "BackLeftWheel");
-			UI.DrawTextInWorld(Vector3.Transform(VehicleOffsets.BackRightWheel * d, m), "BackRightWheel");
-			UI.DrawTextInWorld(Vector3.Transform(VehicleOffsets.BackBumper * d, m), "BackBumper");
-			FindCoverBehindVehicle(PlayerPosition, 2).ToArray();
 
 		}
 
@@ -914,23 +880,6 @@ namespace Shiv {
 				Vector3 loc = GetVehicleOffset(v, vehicleCoverOffset[slot], m);
 				yield return GetHandle(loc);
 			}
-		}
-
-		public static NodeHandle FindClosestCover(NodeHandle node, Vector3 danger) {
-			return FirstOrDefault(node, 6, (n) => {
-				if( IsCover(n) ) {
-					if( danger == Vector3.Zero ) {
-						return true;
-					}
-					Vector3 pos = Position(n);
-					Vector3 end = pos + (Vector3.Normalize(danger - pos) * 2f);
-					if( Raycast(pos, end, IntersectOptions.Map | IntersectOptions.Objects, Self).DidHit ) {
-						Line.Add(pos, end, Color.Red, 5000);
-						return true;
-					}
-				}
-				return false;
-			});
 		}
 
 	}
