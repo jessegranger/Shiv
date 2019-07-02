@@ -173,10 +173,6 @@ namespace Shiv {
 		public static BlipColor GetBlipColor(BlipHandle blip) => Call<BlipColor>(GET_BLIP_COLOUR, blip);
 		public static Color GetColor(BlipHandle blip) => blip == BlipHandle.Invalid ? (default) : GetColor(GetBlipHUDColor(blip));
 		public static Color GetColor(BlipHUDColor color) {
-			if( color == BlipHUDColor.Invalid ) {
-				return default;
-			}
-
 			switch( color ) {
 				case BlipHUDColor.Blue: return Color.Blue;
 				case BlipHUDColor.Red: return Color.Red;
