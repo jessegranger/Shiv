@@ -79,7 +79,7 @@ namespace Shiv {
 		public static RaycastResult Raycast(Vector3 source, Vector3 target, IntersectOptions options, PedHandle ignoreEntity) => Raycast(source, target, options, (int)ignoreEntity);
 		public static RaycastResult Raycast(Vector3 source, Vector3 target, float radius, IntersectOptions options, PedHandle ignoreEntity) => Raycast(source, target, radius, options, (int)ignoreEntity);
 		public static RaycastResult Raycast(Vector3 source, Vector3 target, IntersectOptions options, int ignoreEntity) => 
-			new RaycastResult(Call<int>(START_SHAPE_TEST_LOS_PROBE, source, target, options, ignoreEntity, 7));
+			new RaycastResult(Call<int>(_START_SHAPE_TEST_RAY, source, target, options, ignoreEntity, 7));
 		public static RaycastResult Raycast(Vector3 source, Vector3 target, float radius, IntersectOptions options, int ignoreEntity) =>
 			new RaycastResult(Call<int>(START_SHAPE_TEST_CAPSULE, source, target, radius, options, ignoreEntity, 7));
 		public static bool IsCarMaterial(Materials m) =>
