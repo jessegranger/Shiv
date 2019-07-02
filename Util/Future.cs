@@ -17,6 +17,9 @@ namespace Shiv {
 			bool IsCanceled();
 			IFuture<T> Resolve(T item);
 			void Reject(Exception err);
+			void Wait();
+			void Wait(int timeout);
+			void Cancel();
 		}
 		public class Future<T> : IFuture<T>, IDisposable {
 			private ReaderWriterLockSlim guard = new ReaderWriterLockSlim();
@@ -107,14 +110,16 @@ namespace Shiv {
 			public bool IsCanceled() => false;
 			public void Reject(Exception err) { }
 			public IFuture<T> Resolve(T item) => this;
+			public void Wait() { }
+			public void Wait(int timeout) { }
+			public void Cancel() { }
 		}
 		public class ConcurrentSet<T> : IEnumerable<T> {
-			private ConcurrentDictionary<T, T> data = new ConcurrentDictionary<T, T>();
+			private ConcurrentDictionary<T, bool> data = new ConcurrentDictionary<T, bool>();
 			public virtual bool Contains(T k) => data.ContainsKey(k);
-			public virtual void Remove(T k) => data.TryRemove(k, out T ignore);
-			public virtual void Add(T k) => data.TryAdd(k, k);
-			public virtual T Get(T k) => data.TryGetValue(k, out T value) ? value : (default);
-			public virtual bool TryRemove(T k) => data.TryRemove(k, out T ignore);
+			public virtual void Remove(T k) => data.TryRemove(k, out var ignore);
+			public virtual void Add(T k) => data.TryAdd(k, true);
+			public virtual bool TryRemove(T k) => data.TryRemove(k, out var ignore);
 
 			public virtual IEnumerator<T> GetEnumerator() => data.Keys.GetEnumerator();
 			IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
