@@ -109,7 +109,6 @@ namespace Shiv {
 			}
 		}
 
-		public static bool IsInVehicle(PedHandle ent) => ent == PedHandle.Invalid ? false : Call<bool>(IS_PED_IN_ANY_VEHICLE, ent, 0);
 
 		public static VehicleHandle CurrentVehicle(PedHandle ped) => ped == PedHandle.Invalid ? VehicleHandle.Invalid :
 			Call<VehicleHandle>(GET_VEHICLE_PED_IS_IN, ped, false);

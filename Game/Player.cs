@@ -146,5 +146,6 @@ namespace Shiv {
 				Call(STAT_SET_INT, hash, value, 1);
 			}
 		}
+		public static bool IsClimbing(PlayerHandle p) => Call<bool>(IS_PLAYER_CLIMBING, p);
 	}
 }

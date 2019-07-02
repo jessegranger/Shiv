@@ -88,6 +88,7 @@ namespace Shiv {
 		public static bool IsReloading(PedHandle ped) => ped == PedHandle.Invalid ? false : Call<bool>(IS_PED_RELOADING, ped);
 		public static bool IsWeaponReadyToShoot(PedHandle ped) => ped == PedHandle.Invalid ? false : Call<bool>(IS_PED_WEAPON_READY_TO_SHOOT, ped);
 		public static bool IsInCover(PedHandle ped) => ped == PedHandle.Invalid ? false : Call<bool>(IS_PED_IN_COVER, ped, false);
+		public static bool IsInCoverFacingLeft(PedHandle ped) => ped == PedHandle.Invalid ? false : Call<bool>(IS_PED_IN_COVER_FACING_LEFT, ped, false);
 		public static bool IsAimingFromCover(PedHandle ped) => ped == PedHandle.Invalid ? false : Call<bool>(IS_PED_AIMING_FROM_COVER, ped);
 		public static bool IsGoingIntoCover(PedHandle ped) => ped == PedHandle.Invalid ? false : Call<bool>(IS_PED_GOING_INTO_COVER, ped);
 
@@ -134,6 +135,40 @@ namespace Shiv {
 			Call(TASK_PERFORM_SEQUENCE, Self, seq);
 			unsafe { Call(CLEAR_SEQUENCE_TASK, new IntPtr(&seq)); }
 		}
+		public static bool IsJumping(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_JUMPING, ped);
+		public static bool IsClimbing(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_CLIMBING, ped);
+		public static bool IsFalling(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_FALLING, ped);
+		public static bool IsVaulting(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_VAULTING, ped);
+		public static bool IsDiving(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_DIVING, ped);
+		public static bool IsJumpingOutOfVehicle(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_JUMPING_OUT_OF_VEHICLE, ped);
+		public static bool IsDucking(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_DUCKING, ped);
+		public static bool IsHangingOntoVehicle(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_HANGING_ON_TO_VEHICLE, ped);
+		public static bool IsProne(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_PRONE, ped);
+		public static bool IsInCombat(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_IN_COMBAT, ped);
+		public static bool IsDoingDriveBy(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_DOING_DRIVEBY, ped);
+		public static bool IsJacking(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_JACKING, ped);
+		public static bool IsBeingJacked(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_BEING_JACKED, ped);
+		public static bool IsStunned(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_BEING_STUNNED, ped);
+		public static bool IsFleeing(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_FLEEING, ped);
+			// _IS_PED_STANDING_IN_COVER = 0x6A03BF943D767C93, // 
+		public static bool IsInTaxi(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_IN_ANY_TAXI, ped);
+		public static bool IsInBoat(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_IN_ANY_BOAT, ped);
+		public static bool IsInPlane(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_IN_ANY_PLANE, ped);
+		public static bool IsInPoliceVehicle(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_IN_ANY_POLICE_VEHICLE, ped);
+		public static bool IsInTrain(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_IN_ANY_TRAIN, ped);
+		public static bool IsInSubmarine(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_IN_ANY_SUB, ped);
+		public static bool IsInVehicle(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_IN_ANY_VEHICLE, ped, 0);
+		public static bool IsInjured(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_INJURED, ped);
+		public static bool IsHurt(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_HURT, ped);
+		public static bool IsFatal(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_FATALLY_INJURED, ped);
+		public static bool IsDeadOrDying(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_DEAD_OR_DYING, ped);
+		public static bool IsPlayer(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_A_PLAYER, ped);
+		public static bool IsStopped(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_STOPPED, ped);
+		public static bool IsInMelee(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_IN_MELEE_COMBAT, ped);
+		public static bool IsShooting(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_SHOOTING, ped);
+		public static bool IsMale(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_MALE, ped);
+		public static bool IsOnVehicle(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_ON_VEHICLE, ped);
 	}
+
 
 }
