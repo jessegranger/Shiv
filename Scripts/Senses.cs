@@ -79,10 +79,9 @@ namespace Shiv {
 	public class BlipSense : Sense {
 		public static bool ShowBlips = true;
 		public override void OnTick() {
-			UI.DrawText($"CanControl: {CanControlCharacter()}");
 			int blipCount = 0;
 			string msg = "";
-			foreach( BlipHandle blip in GetAllBlips(BlipSprite.Standard) ) {
+			foreach( BlipHandle blip in GetAllBlips(BlipSprite.Standard)) {
 				blipCount += 1;
 				if( ShowBlips ) {
 					Vector3 pos = Position(blip);
@@ -92,7 +91,10 @@ namespace Shiv {
 					DrawSphere(pos + Up, .3f, color);
 				}
 			}
-			UI.DrawText("Blips: " + msg);
+			foreach( var blip in GetAllBlips(BlipSprite.Safehouse) ) {
+				UI.DrawText($"Safehouse: {DistanceToSelf(Position(blip))}");
+			}
+			UI.DrawText($"Blips({blipCount}): {msg}");
 		}
 	}
 
