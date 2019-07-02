@@ -32,6 +32,11 @@ namespace Shiv {
 			KillAllCops,
 			TakeCover,
 		}
+		public static Menu ToMenu() {
+			var menu = new Menu(.4f, .4f, .2f);
+			Enum.GetValues(typeof(Phase)).Each<Phase>(p => menu.Item(p.ToString(), () => Goals.Immediate(new Mission01() { CurrentPhase = p })));
+			return menu;
+		}
 		public Phase CurrentPhase = Phase.Approach;
 		bool WaitForControl = true;
 		uint PauseStarted = 0;
@@ -188,7 +193,7 @@ namespace Shiv {
 						if( HasControl && !IsInCover(Self) ) {
 							pos = Position(blips.FirstOrDefault(b => GetColor(b) == Color.Yellow));
 							if( pos != Vector3.Zero ) {
-								Goals.Immediate(new TakeCover(pos));
+								// Goals.Immediate(new TakeCover(pos));
 								return Status;
 							}
 						}
@@ -204,7 +209,7 @@ namespace Shiv {
 						return NextPhase(Phase.KillAllCops);
 					case Phase.TakeCover:
 						if( ! IsInCover(Self) ) {
-							Goals.Immediate(new TakeCover());
+							// Goals.Immediate(new TakeCover());
 							return Status;
 						}
 						return NextPhase(Phase.KillAllCops);
