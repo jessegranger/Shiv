@@ -20,29 +20,15 @@ using GTA.Native;
 // pragma warning disable CS0649
 namespace Shiv {
 
+	public enum NodeHandle : ulong { Invalid = 0 };
+	public enum NavRegion : uint { Invalid = 0 };
 
 	public static partial class Global {
-
-		public enum NodeHandle : ulong { Invalid = 0 };
-		public enum NavRegion : uint { Invalid = 0 };
-
-		public static NavRegion Region(NodeHandle a) => NavMesh.GetRegion(a);
-		public static NavRegion Region(Vector3 a) => NavMesh.GetRegion(a);
-		public static IFuture<NavRegion> RequestRegion(Vector3 v) => RequestRegion(Region(v));
-		public static IFuture<NavRegion> RequestRegion(NavRegion r) => NavMesh.RequestRegion(r);
-
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static float DistanceToSelf(NodeHandle n) => DistanceToSelf(Position(n));
 
 		public static NodeHandle PlayerNode;
 		public static NavRegion PlayerRegion;
 
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static NodeHandle GetHandle(Vector3 v) => NavMesh.GetHandle(v);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 Position(NodeHandle handle) => NavMesh.Position(handle);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static IEnumerable<NodeHandle> Edges(NodeHandle a) => NavMesh.Edges(a);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static IEnumerable<NodeHandle> PossibleEdges(NodeHandle a) => NavMesh.PossibleEdges(a);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool HasEdges(NodeHandle a) => NavMesh.HasEdges(a);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool IsGrown(NodeHandle a) => NavMesh.IsGrown(a);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool IsCover(NodeHandle a) => NavMesh.IsCover(a);
+		public static float DistanceToSelf(NodeHandle n) => DistanceToSelf(NavMesh.Position(n));
 
 	}
 
@@ -89,7 +75,7 @@ namespace Shiv {
 		private const float regionScale = 128f;
 		private const int regionShift = 7; // we use 3*7=21 bits of a NavRegion:uint
 		
-		public static NavRegion GetRegion(Vector3 v) {
+		public static NavRegion Region(Vector3 v) {
 			if( v == Vector3.Zero ) {
 				return NavRegion.Invalid;
 			}
@@ -104,7 +90,7 @@ namespace Shiv {
 			);
 		}
 		private static readonly uint mapShiftMask = (1u << mapShift) - 1;
-		public static NavRegion GetRegion(NodeHandle a) {
+		public static NavRegion Region(NodeHandle a) {
 			ulong u = (ulong)a;
 			ulong z = u & mapShiftMask;
 			u >>= mapShift;
@@ -262,7 +248,7 @@ namespace Shiv {
 				AddEdge(prevNode, PlayerNode);
 			}
 			prevNode = PlayerNode;
-			PlayerRegion = GetRegion(PlayerNode);
+			PlayerRegion = Region(PlayerNode);
 			if( !RequestRegion(PlayerRegion).IsDone() ) {
 				UI.DrawText("Loading player region...");
 				return;
@@ -381,6 +367,7 @@ namespace Shiv {
 			UI.DrawText(left, top + (line++ * lineHeight), $"{Ungrown.Count}/{AllEdges.Count} nodes in {loadedRegions.Count} regions ({dirtyRegions.Count} dirty)");
 			if( LastGrown != NodeHandle.Invalid ) {
 				UI.DrawText(left, top + (line++ * lineHeight), $"Grew:{Sqrt(DistanceToSelf(LastGrown)):F2} away for {LastGrownMS}ms");
+				UI.DrawMeter(left + .01f, top + (line++ * lineHeight), .15f, lineHeight, Color.SlateGray, Color.Green, (float)Sqrt(DistanceToSelf(LastGrown)) / 70f);
 			}
 		}
 
@@ -450,44 +437,18 @@ namespace Shiv {
 					Vector3 gPos = StopAtWater(PutOnGround(ePos, 1f), 0f);
 					NodeHandle g = GetHandle(gPos);
 					gPos = Position(g);
-					if( debug ) {
-						DrawLine(nodePos, gPos, Color.White);
-						UI.DrawTextInWorld(gPos, $"{i}");
-					}
 					if( IsPossibleEdge(node, g) && !HasEdge(node, g) ) {
 						Vector3 delta = gPos - nodePos;
 						var len = delta.Length();
 						Vector3 end = nodePos + (Vector3.Normalize(delta) * (len - capsuleSize / 2));
 						RaycastResult result = Raycast(nodePos, end, capsuleSize, growRayOpts, Self);
 						if( result.DidHit ) {
-							if( debug ) {
-								DrawLine(nodePos + Up * .01f, end + Up * .01f, Color.Red);
-								DrawLine(nodePos, result.HitPosition, Color.Red);
-								DrawSphere(result.HitPosition, .05f, Color.Red);
-							}
-							/*
-							if( Exists(result.Entity) ) {
-								Text.Add(result.HitPosition, $"Grow Hit: {result.Entity}", 1000);
-								var model = GetModel(result.Entity);
-								if( model == ModelHash.WoodenDoor ) {
-									// GetDoorState(model, gPos, out bool locked, out float heading);
-									// if( ! locked ) {
-										AddEdge(node, g);
-										AddEdge(g, node);
-										return g;
-									// }
-								}
-							}
-							*/
 							Materials m = result.Material;
 							if( m != Materials.metal_railing
 								&& m != Materials.metal_garage_door
 								&& m != Materials.bushes
 								&& Abs(Vector3.Dot(result.SurfaceNormal, Up)) < .01f ) {
 								IsCover(node, true);
-								if( debug ) {
-									UI.DrawTextInWorld(nodePos, "IsCover");
-								}
 
 								if( ShowGrowth ) {
 									Sphere.Add(nodePos, .11f, Color.Blue, 1000);
@@ -496,10 +457,6 @@ namespace Shiv {
 								return NodeHandle.Invalid;
 							}
 						} else {
-							if( debug ) {
-								DrawLine(nodePos + Up * .01f, gPos + Up * .01f, Color.Green);
-								DrawSphere(gPos, .03f, Color.Green);
-							}
 							AddEdge(node, g);
 							AddEdge(g, node);
 							return g;
@@ -591,8 +548,8 @@ namespace Shiv {
 			} else {
 				AllEdges.AddOrUpdate(a, 0, (k, oldValue) => oldValue & ~mask);
 			}
-			dirtyRegions.Add(GetRegion(a));
-			dirtyRegions.Add(GetRegion(b));
+			dirtyRegions.Add(Region(a));
+			dirtyRegions.Add(Region(b));
 			return true;
 		}
 		public static bool AddEdge(NodeHandle a, NodeHandle b) => SetEdge(a, b, true);
@@ -610,7 +567,7 @@ namespace Shiv {
 			} else {
 				AllEdges.AddOrUpdate(a, 0, (key, oldValue) => oldValue & ~grownBitMask);
 			}
-			dirtyRegions.Add(GetRegion(a));
+			dirtyRegions.Add(Region(a));
 		}
 		public static bool IsCover(NodeHandle a) => AllEdges == null ? false : AllEdges.TryGetValue(a, out uint flags) && (flags & (1u << coverBit)) > 0;
 		public static void IsCover(NodeHandle a, bool value) {
@@ -624,7 +581,7 @@ namespace Shiv {
 			} else {
 				AllEdges.AddOrUpdate(a, 0, (key, oldValue) => oldValue & ~mask);
 			}
-			dirtyRegions.Add(GetRegion(a));
+			dirtyRegions.Add(Region(a));
 		}
 
 		public static void GetAllHandlesInBox(ModelBox box, ConcurrentSet<NodeHandle> output) => GetAllHandlesInBox(box.M, box.Back, box.Front, output);
@@ -653,7 +610,7 @@ namespace Shiv {
 		}
 
 		public override void OnInit() {
-			RequestRegion(GetRegion(Global.Position(Call<PedHandle>(GET_PLAYER_PED, CurrentPlayer))));
+			RequestRegion(Region(Global.Position(Call<PedHandle>(GET_PLAYER_PED, CurrentPlayer))));
 			ReadFrontierFile();
 			base.OnInit();
 		}
@@ -717,7 +674,7 @@ namespace Shiv {
 		}
 		private static ConcurrentSet<NavRegion> dirtyRegions = new ConcurrentSet<NavRegion>();
 		public static void SaveToFile() {
-			AllEdges.Keys.GroupBy(GetRegion).Each(g => {
+			AllEdges.Keys.GroupBy(Region).Each(g => {
 				NavRegion region = g.Key;
 				if( dirtyRegions.TryRemove(region) ) {
 					Log($"Saving dirty region: {region}");

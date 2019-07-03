@@ -5,6 +5,7 @@ using System.Linq;
 using static GTA.Native.Function;
 using static GTA.Native.Hash;
 using static Shiv.Global;
+using static Shiv.NavMesh;
 using System.Threading.Tasks;
 
 namespace Shiv {

@@ -9,6 +9,7 @@ using System.Threading;
 using static GTA.Native.Function;
 using static GTA.Native.Hash;
 using static Shiv.Global;
+using static Shiv.NavMesh;
 using static System.Math;
 using Keys = System.Windows.Forms.Keys;
 

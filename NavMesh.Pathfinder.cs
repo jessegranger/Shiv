@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using static System.Math;
 using static Shiv.Global;
+using static Shiv.NavMesh;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
 
@@ -136,7 +137,7 @@ namespace Shiv {
 
 	public static partial class Global {
 
-		public static Vector3 Position(Path path) => path == null ? Vector3.Zero : Position(path.FirstOrDefault());
+		public static Vector3 Position(Path path) => path == null ? Vector3.Zero : NavMesh.Position(path.FirstOrDefault());
 
 	}
 
