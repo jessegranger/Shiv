@@ -36,6 +36,7 @@ namespace Shiv {
 
 		public static bool Enabled = true;
 		public static bool SaveEnabled = true;
+		public static bool LoadEnabled = true;
 
 		private const int magicBytes = 0x000FEED6; // if any constants/structure below should change, increment the magic bytes to invalidate the old data
 		private const ulong mapRadius = 8192; // in the world, the map goes from -8192 to 8192
@@ -200,7 +201,7 @@ namespace Shiv {
 		public static readonly long[] edgeOffsets = whichEdgeBit.Keys.OrderBy(k => whichEdgeBit[k]).ToArray();
 
 		// track a 'frontier' of not-yet-explored nodes
-		internal static HashSet<NodeHandle> Ungrown = new HashSet<NodeHandle>();
+		internal static ConcurrentQueue<NodeHandle> Ungrown = new ConcurrentQueue<NodeHandle>();
 
 		public NavMesh() { }
 
@@ -215,29 +216,13 @@ namespace Shiv {
 		internal static void DebugNode(NodeHandle node, bool grow) {
 			var pos = Position(node);
 			UI.DrawTextInWorld(pos, $"{node}");
-			/*
-			if( grow ) {
-				var sw = new Stopwatch();
-				sw.Start();
-				GrowResult result = Grow(node, 10, sw, new HashSet<NodeHandle>(), debug: true);
-				UI.DrawTextInWorldWithOffset(pos, 0f, -.02f, $"GrowResult:{result}");
-			}
-			int i = 0;
-			var sw = new Stopwatch();
-			sw.Start();
-			foreach(NodeHandle e in Flood(node, 2, default, PossibleEdges)) {
-				var epos = Position(e);
-				// UI.DrawTextInWorldWithOffset(epos, 0f, 0f, $"{i}");
-				i++;
-			}
-			UI.DrawTextInWorldWithOffset(pos, .01f, -.02f, $"Flood:{i} in {sw.ElapsedMilliseconds}ms");
-			*/
 		}
 		private static int[] possibleGrowthEdges = new int[] { 0, 1, 2, 3, 4, 6, 10, 12 };
 		private static IEnumerable<NodeHandle> PossibleGrowthEdges(NodeHandle node) => possibleGrowthEdges.Select(i => (NodeHandle)((long)node + edgeOffsets[i]));
 		public static IEnumerable<NodeHandle> GroundEdges(NodeHandle node) => PossibleGrowthEdges(node).Each(n => StopAtWater(PutOnGround(Position(n), 1f), 0f));
 
 		private NodeHandle prevNode;
+		private uint prevNodeCount = 0;
 		public override void OnTick() {
 			if( (!Enabled) || aborted != 0 ) {
 				return;
@@ -266,42 +251,20 @@ namespace Shiv {
 				}
 				// UI.DrawText($"NavMesh: {Ungrown.Count}/{AllEdges.Count}", color: IsGrown(PlayerNode) ? Color.White : Color.Orange);
 				int msPerFrame = (int)(1000 / CurrentFPS);
-				uint msPerGrow = (uint)Max(5, 35 - msPerFrame);
+				uint msPerGrow = (uint)Max(15, 35 - msPerFrame);
 				DrawEdges(PlayerNode, 6);
 				if( !IsGrown(PlayerNode) ) {
-					Grow(PlayerNode, msPerGrow, debug:false);
+					Grow(PlayerNode, msPerGrow);
 				} else {
-					if( Ungrown.Count > 0 ) {
-						NodeHandle first = NodeHandle.Invalid;
-						if( Ungrown.Count > 1200 ) {
-							lock( Ungrown ) {
-								Ungrown = Ungrown.OrderBy(DistanceToSelf).Take(Ungrown.Count / 2).ToHashSet();
-							}
-						}
-						lock( Ungrown ) {
-							first = Ungrown.Min(DistanceToSelf);
-						}
-						if( first != NodeHandle.Invalid ) {
-							DrawLine(HeadPosition(Self), Position(first), Color.Orange);
-							if( RequestRegion(Region(first)).IsDone() ) {
-								lock( Ungrown ) {
-									Ungrown.Remove(first);
-								}
-								Grow(first, msPerGrow);
-							}
-						}
+					if( Ungrown.TryDequeue(out var first) ) {
+						DrawLine(HeadPosition(Self), Position(first), Color.Orange);
+						Grow(first, msPerGrow);
 					} else {
-						Vector3 pos = StopAtWater(PutOnGround(AimPosition(), 1f), 0f);
-						NodeHandle handle = GetHandle(pos);
-						pos = Position(handle);
+						NodeHandle handle = GetHandle(StopAtWater(PutOnGround(AimPosition(), 1f), 0f));
 						if( !IsGrown(handle) ) {
-							if( RequestRegion(Region(handle)).IsDone() ) {
-								Sphere.Add(pos, .1f, Color.Red, 3000);
-								Grow(handle, msPerGrow);
-							}
+							Grow(handle, msPerGrow);
 						}
 					}
-					// if( Ungrown.Count > 0 ) { foreach(var n in Ungrown ) { DrawSphere(Position(n), .1f, Color.Orange); } }
 				}
 			}
 		}
@@ -366,111 +329,8 @@ namespace Shiv {
 			UI.DrawText(left, top + (line++ * lineHeight), $"NavMesh Status:");
 			UI.DrawText(left, top + (line++ * lineHeight), $"{Ungrown.Count}/{AllEdges.Count} nodes in {loadedRegions.Count} regions ({dirtyRegions.Count} dirty)");
 			if( LastGrown != NodeHandle.Invalid ) {
-				UI.DrawText(left, top + (line++ * lineHeight), $"Grew:{Sqrt(DistanceToSelf(LastGrown)):F2} away for {LastGrownMS}ms");
-				UI.DrawMeter(left + .01f, top + (line++ * lineHeight), .15f, lineHeight, Color.SlateGray, Color.Green, (float)Sqrt(DistanceToSelf(LastGrown)) / 70f);
-			}
-		}
-
-		internal static void Grow(NodeHandle node, uint ms, bool debug=false) {
-			if( !IsLoaded ) {
-				return;
-			}
-
-			var sw = new Stopwatch();
-			sw.Start();
-			Grow(node, ms, sw, new HashSet<NodeHandle>(), debug);
-			while( node != NodeHandle.Invalid && sw.ElapsedMilliseconds < ms && Ungrown.Count > 0 ) {
-				node = Ungrown.Min(DistanceToSelf);
-				Grow(node, ms, sw, new HashSet<NodeHandle>(), debug);
-			}
-			LastGrownMS = sw.ElapsedMilliseconds;
-		}
-		public static bool ShowGrowth = false;
-		internal enum GrowResult {
-			InvalidNode,
-			NodeOnStack,
-			IsGrown,
-			TooFar,
-			Timeout,
-			NotLoaded,
-			IsGrowing
-		}
-		internal static GrowResult Grow(NodeHandle node, uint ms, Stopwatch sw, HashSet<NodeHandle> stack, bool debug = false) {
-			if( !IsLoaded ) {
-				return GrowResult.NotLoaded;
-			}
-			if( node == NodeHandle.Invalid ) {
-				return GrowResult.InvalidNode;
-			}
-			Vector3 nodePos = Position(node);
-			if( stack.Contains(node) ) {
-				if( debug ) {
-					UI.DrawTextInWorld(nodePos, "OnStack");
-				}
-				return GrowResult.NodeOnStack;
-			}
-			if( IsGrown(node) ) {
-				return GrowResult.IsGrown;
-			}
-			if( !RequestRegion(Region(node)).IsDone() ) {
-				lock( Ungrown ) { Ungrown.Add(node); }
-				return GrowResult.NotLoaded;
-			}
-			if( sw.ElapsedMilliseconds > ms ) {
-				lock( Ungrown ) { Ungrown.Add(node); }
-				return GrowResult.Timeout;
-			}
-			if( DistanceToSelf(nodePos) > maxGrowRange ) {
-				lock( Ungrown ) { Ungrown.Add(node); }
-				return GrowResult.TooFar;
-			}
-			stack.Add(node);
-			LastGrown = node;
-			IsGrown(node, true);
-
-			try {
-				// Push growth out on certain edges by following their edgeOffsets
-				possibleGrowthEdges.Select(i => { 
-				// Items(0,1,2,3,4,6,10,12).Select(i => {
-					var e = (NodeHandle)((long)node + edgeOffsets[i]);
-					Vector3 ePos = Position(e);
-					Vector3 gPos = StopAtWater(PutOnGround(ePos, 1f), 0f);
-					NodeHandle g = GetHandle(gPos);
-					gPos = Position(g);
-					if( IsPossibleEdge(node, g) && !HasEdge(node, g) ) {
-						Vector3 delta = gPos - nodePos;
-						var len = delta.Length();
-						Vector3 end = nodePos + (Vector3.Normalize(delta) * (len - capsuleSize / 2));
-						RaycastResult result = Raycast(nodePos, end, capsuleSize, growRayOpts, Self);
-						if( result.DidHit ) {
-							Materials m = result.Material;
-							if( m != Materials.metal_railing
-								&& m != Materials.metal_garage_door
-								&& m != Materials.bushes
-								&& Abs(Vector3.Dot(result.SurfaceNormal, Up)) < .01f ) {
-								IsCover(node, true);
-
-								if( ShowGrowth ) {
-									Sphere.Add(nodePos, .11f, Color.Blue, 1000);
-								}
-
-								return NodeHandle.Invalid;
-							}
-						} else {
-							AddEdge(node, g);
-							AddEdge(g, node);
-							return g;
-						}
-					}
-					return NodeHandle.Invalid;
-				}).Each(e => {
-					if( e != NodeHandle.Invalid ) {
-						Grow(e, ms, sw, stack, debug: debug);
-					}
-				});
-				return GrowResult.IsGrowing;
-			} finally {
-				stack.Remove(node);
+				UI.DrawText(left, top + (line++ * lineHeight), $"Grew:{Sqrt(DistanceToSelf(LastGrown)):F2} away ({grownPerSecond.Value:F2}/sec)");
+				UI.DrawMeter(left + .01f, top + (line++ * lineHeight), .15f, lineHeight, Color.SlateGray, Color.Green, (float)Min(1.0f, Sqrt(DistanceToSelf(LastGrown)) / 100f));
 			}
 		}
 
@@ -616,6 +476,9 @@ namespace Shiv {
 		}
 
 		public static bool ReadFrontierFile() {
+			if( !LoadEnabled ) {
+				return false;
+			}
 			var filename = "scripts/Shiv.Frontier.mesh";
 			try {
 				using( BinaryReader r = Codec.Reader(filename) ) {
@@ -624,6 +487,9 @@ namespace Shiv {
 						Log($"Wrong magic bytes {magic:X}");
 						return false;
 					}
+					// let EndOfStreamException tell us when to stop
+					while( true ) { Ungrown.Enqueue((NodeHandle)r.ReadInt64()); }
+					/*
 					int count = r.ReadInt32();
 					if( count <= 0 ) {
 						Log($"Invalid count: {count}");
@@ -632,15 +498,23 @@ namespace Shiv {
 					ulong[] handles = new ulong[count];
 					byte[] buf = r.ReadBytes(count * sizeof(ulong));
 					Buffer.BlockCopy(buf, 0, handles, 0, buf.Length);
-					Ungrown = new HashSet<NodeHandle>(handles.Cast<NodeHandle>());
+					foreach(ulong h in handles) {
+						Ungrown.Enqueue((NodeHandle)h);
+					}
+					*/
 				}
-			} catch( FileNotFoundException ) {
+			} catch( EndOfStreamException ) {
+				return true;
+			} catch( IOException ) {
+				return false;
+			} catch( ObjectDisposedException ) {
 				return false;
 			}
-			return false;
 		}
 
 		public static bool ReadFromFile(string filename) {
+			if( !LoadEnabled )
+				return false;
 			var s = new Stopwatch();
 			s.Start();
 			try {
@@ -674,10 +548,11 @@ namespace Shiv {
 		}
 		private static ConcurrentSet<NavRegion> dirtyRegions = new ConcurrentSet<NavRegion>();
 		public static void SaveToFile() {
+			if( !SaveEnabled )
+				return;
 			AllEdges.Keys.GroupBy(Region).Each(g => {
 				NavRegion region = g.Key;
 				if( dirtyRegions.TryRemove(region) ) {
-					Log($"Saving dirty region: {region}");
 					var file = $"scripts/Shiv.{region}.mesh";
 					using( BinaryWriter w = Codec.Writer(file + ".tmp") ) {
 						w.Write(magicBytes);
@@ -685,7 +560,7 @@ namespace Shiv {
 						uint[] edges = handles.Select(h => AllEdges[(NodeHandle)h]).ToArray();
 						byte[] buf;
 						try {
-							Log($"Writing {handles.Length} handles to file...");
+							Log($"Saving dirty region: {region} {handles.Length} nodes...");
 							w.Write(handles.Length);
 							buf = new byte[handles.Length * sizeof(NodeHandle)];
 							Buffer.BlockCopy(handles, 0, buf, 0, buf.Length);
@@ -695,12 +570,11 @@ namespace Shiv {
 							return;
 						}
 						try {
-							Log($"Writing {edges.Length} edges to file...");
 							buf = new byte[edges.Length * sizeof(uint)];
 							Buffer.BlockCopy(edges, 0, buf, 0, buf.Length);
 							w.Write(buf);
 						} catch( Exception err ) {
-							Log("Failed: " + err.ToString());
+							Log("Failed to write edges to file: " + err.ToString());
 							return;
 						}
 					}
@@ -715,6 +589,10 @@ namespace Shiv {
 				w.Write(magicBytes);
 				try {
 					Log($"Writing {Ungrown.Count} ungrown nodes to file...");
+					foreach( NodeHandle h in Ungrown ) {
+						w.Write((ulong)h);
+					}
+					/*
 					ulong[] ungrown;
 					lock( Ungrown ) {
 						ungrown = Ungrown.Cast<ulong>().ToArray();
@@ -723,6 +601,7 @@ namespace Shiv {
 					byte[] buf = new byte[ungrown.Length * sizeof(NodeHandle)];
 					Buffer.BlockCopy(ungrown, 0, buf, 0, buf.Length);
 					w.Write(buf);
+					*/
 				} catch( Exception err ) {
 					Log("Failed: " + err.ToString());
 					return;
@@ -760,6 +639,68 @@ namespace Shiv {
 					edges(cur).Each(queue.Enqueue);
 				}
 			}
+		}
+
+		public static IEnumerable<NodeHandle> GrowOne(NodeHandle node) {
+			if( IsGrown(node) ) {
+				yield break;
+			}
+			var nodePos = Position(node);
+			if( DistanceToSelf(nodePos) > 100f * 100f ) {
+				yield break;
+			}
+			IsGrown(node, true);
+			foreach( var i in possibleGrowthEdges ) {
+				var e = (NodeHandle)((long)node + edgeOffsets[i]);
+				NodeHandle g = GetHandle(StopAtWater(PutOnGround(Position(e), 1f), 0f));
+				Vector3 gPos = Position(g);
+				if( IsPossibleEdge(node, g) && !HasEdge(node, g) ) {
+					Vector3 delta = gPos - nodePos;
+					var len = delta.Length();
+					Vector3 end = nodePos + (Vector3.Normalize(delta) * (len - capsuleSize / 2));
+					RaycastResult result = Raycast(nodePos, end, capsuleSize, growRayOpts, Self);
+					if( result.DidHit ) {
+						Materials m = result.Material;
+						if( m != Materials.metal_railing
+							&& m != Materials.metal_garage_door
+							&& m != Materials.bushes
+							&& Abs(Vector3.Dot(result.SurfaceNormal, Up)) < .01f ) {
+							IsCover(node, true);
+						}
+					} else {
+						AddEdge(node, g);
+						AddEdge(g, node);
+						if( !IsGrown(g) ) {
+							yield return g;
+						}
+					}
+				}
+			}
+		}
+		public static MovingAverage grownPerSecond = new MovingAverage(20);
+		public static void Grow(NodeHandle start, uint maxMs) {
+			var sw = new Stopwatch();
+			sw.Start();
+			int count = 0;
+			var queue = new Queue<NodeHandle>();
+			queue.Enqueue(start);
+			while( sw.ElapsedMilliseconds < maxMs ) {
+				NodeHandle next;
+				if( queue.Count > 0 ) {
+					next = queue.Dequeue();
+				} else if( ! Ungrown.TryDequeue(out next) ) {
+					break;
+				}
+				RequestRegion(Region(next)).Wait(20);
+				GrowOne(next).Each(queue.Enqueue);
+				count += 1;
+				LastGrown = next;
+			}
+			if( queue.Count > 0 ) {
+				queue.Each(Ungrown.Enqueue);
+			}
+			double seconds = (float)(sw.ElapsedTicks + 1) / (float)TimeSpan.TicksPerSecond;
+			grownPerSecond.Add((float)count / (float)seconds);
 		}
 
 		public static Producer<NodeHandle> FloodThread(NodeHandle n, int maxNodes, int maxDepth, Func<NodeHandle, IEnumerable<NodeHandle>> edges) {
