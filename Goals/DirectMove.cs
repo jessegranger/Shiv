@@ -26,14 +26,15 @@ namespace Shiv {
 					return Status = GoalStatus.Complete;
 				}
 				MoveToward(target);
-				var obs = CheckObstruction(PlayerPosition, (target - PlayerPosition));
-				if( obs < 0 ) {
-					return Status = GoalStatus.Failed; // Impassable
-				} else if( obs > .25f && obs < 2.4f && Speed(Self) < .01f ) {
-					SetControlValue(0, Control.Jump, 1.0f); // Attempt to jump over a positive obstruction
-				} else if( Run && ! IsRunning(Self) ) {
+				ObstructionFlags result = CheckObstruction(PlayerPosition, (target - PlayerPosition));
+				if( !IsWalkable(result) ) {
+					if( IsClimbable(result) ) {
+						SetControlValue(0, Control.Jump, 1.0f);
+					}
+				} else if( Run && !IsRunning(Self) ) {
 					ToggleSprint();
 				}
+					
 			}
 			return Status;
 		}
