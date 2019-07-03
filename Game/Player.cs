@@ -125,7 +125,7 @@ namespace Shiv {
 		public static Vector3 AimPosition() {
 			Vector3 start = Position(CameraMatrix);
 			Vector3 end = start + (Forward(CameraMatrix) * 1000f);
-			var result = Raycast(start, end, IntersectOptions.Everything, Self);
+			var result = Raycast(start, end, IntersectOptions.Everything ^ IntersectOptions.Vegetation, Self);
 			return result.DidHit ? result.HitPosition : end;
 		}
 
