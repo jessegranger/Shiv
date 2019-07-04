@@ -17,6 +17,8 @@ using static GTA.Native.Function;
 namespace Shiv {
 
 	public struct ModelBox {
+		public ModelHash Model;
+		public EntHandle Entity;
 		public Matrix4x4 M;
 		public Vector3 Front;
 		public Vector3 Back;
@@ -44,7 +46,7 @@ namespace Shiv {
 			}
 			if( !IsGrown(Target) ) {
 				Log($"[{Target}] target node not grown, trying to grow there.");
-				NavMesh.Grow(Target, 10);
+				NavMesh.Grow(Target, 5);
 			}
 			Timeout = timeout;
 			AvoidPeds = avoidPeds;
@@ -58,7 +60,10 @@ namespace Shiv {
 				RequestRegion(Region(Start)).Wait(500);
 				if( !HasEdges(Target) ) {
 					Log($"[{Target}] target node has no edges, groping for nearest graph...");
-					// Target = NavMesh.Flood(Target, 2, cancel.Token, PossibleEdges).Where(HasEdges).OrderBy(DistanceToSelf).FirstOrDefault();
+					var originalPosition = Position(Target);
+					Target = Flood(Target, 1000, 10, cancel.Token, PossibleEdges)
+						.Where(HasEdges)
+						.Min(n => (originalPosition - Position(n)).LengthSquared());
 					if( Target == NodeHandle.Invalid ) {
 						Reject(new Exception("Target node is not mappable."));
 						return;
@@ -102,12 +107,12 @@ namespace Shiv {
 		static readonly float padding = .005f;
 		static readonly float top = .6f;
 		static readonly float left = 0f;
-		static readonly float width = .12f;
+		static readonly float width = .15f;
 		public static void Draw() {
-			int numLines = Queue.Count + 1;
+			int numLines = Min(8, Queue.Count + 1);
 			UI.DrawRect(left, top, width, padding + (lineHeight * numLines) + padding, Color.SlateGray);
 			UI.DrawText(left, top, $"Pathfinder: {Queue.Count} Active");
-			UI.DrawText(left, top - lineHeight, Pathfinder.Timers());
+			UI.DrawText(left, top - (padding + lineHeight), Pathfinder.Timers());
 			int lineNum = 0;
 			while( Queue.TryPeek(out PathRequest req) 
 				&& req.IsDone()
@@ -128,6 +133,7 @@ namespace Shiv {
 		// iter comes from UnrollPath inside FindPath
 		private IEnumerable<NodeHandle> iter;
 		public Path(IEnumerable<NodeHandle> path) => iter = path;
+		public void Pop() => iter = iter.Skip(1);
 		public IEnumerator<NodeHandle> GetEnumerator() => iter.GetEnumerator();
 		IEnumerator IEnumerable.GetEnumerator() => iter.GetEnumerator();
 		public void Draw() => this.Select(Position)
@@ -290,15 +296,16 @@ namespace Shiv {
 			3585126029, 2745551480, 326972916, 1392246133, 672606124, 1105091386,
 			4068091429, 2967538074, 3069248192, 1572003612
 		};
-		private static HashSet<ModelHash> checkDoorModels = new HashSet<ModelHash>() {
-			ModelHash.WoodenDoor
+		internal static HashSet<ModelHash> checkDoorModels = new HashSet<ModelHash>() {
+			ModelHash.WoodenDoor, ModelHash.WoodenFireDoor, ModelHash.WoodenBathroomDoor
 		};
-		public static IEnumerable<ModelBox> GetBlockingEnts(int limit=30) {
+		public static IEnumerable<ModelBox> GetBlockingEnts(int limit=30, bool debug=false) {
 			foreach( EntHandle ent in NearbyObjects.Take(limit) ) {
 				if( IsAttached(ent) ) {
 					continue; // dont block on items held or carried by peds
 				}
-				Vector3 pos = Position(ent);
+				Matrix4x4 m = Matrix(ent);
+				Vector3 pos = Position(m);
 				if( pos == Vector3.Zero || DistanceToSelf(pos) > 100f * 100f ) {
 					continue;
 				}
@@ -315,14 +322,16 @@ namespace Shiv {
 				}
 
 				GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
-				if( GetVolume(frontRight, backLeft) > 10000 ) {
+				float volume = GetVolume(frontRight, backLeft);
+				if( debug ) { UI.DrawTextInWorldWithOffset(pos, 0f, .02f, $"{model} ({volume})"); }
+				if( volume > 5000 ) {
 					ignoreModels.Add((long)model);
 				} else {
-					yield return new ModelBox() { M = Matrix(ent), Front = frontRight, Back = backLeft };
+					yield return new ModelBox() { Model = model, Entity = ent, M = m, Front = frontRight, Back = backLeft };
 				}
 			}
 		}
-		public static IEnumerable<ModelBox> GetBlockingVehicles(int limit=20) {
+		public static IEnumerable<ModelBox> GetBlockingVehicles(int limit=20, bool debug=false) {
 			VehicleHandle ignore = VehicleHandle.Invalid;
 			if( IsOnVehicle(Self) ) {
 				var result = Raycast(PlayerPosition, PlayerPosition - (2 * Up), .3f, IntersectOptions.Vehicles, Self);
@@ -340,17 +349,18 @@ namespace Shiv {
 				}
 				VehicleHash model = GetModel(v);
 				GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
-				yield return new ModelBox() { M = Matrix(v), Front = frontRight, Back = backLeft };
+				yield return new ModelBox() { Model = (ModelHash)model, Entity = (EntHandle)v, M = Matrix(v), Front = frontRight, Back = backLeft };
 			}
 
 		}
-		public static IEnumerable<ModelBox> GetBlockingPeds(int limit=20) {
+		public static IEnumerable<ModelBox> GetBlockingPeds(int limit=20, bool debug=false) {
 			foreach( PedHandle p in NearbyHumans.Take(limit) ) {
 				if( p == Self || !IsAlive(p) ) {
 					continue;
 				}
-				GetModelDimensions(GetModel(p), out Vector3 backLeft, out Vector3 frontRight);
-				yield return new ModelBox() { M = Matrix(p), Front = frontRight, Back = backLeft };
+				PedHash model = GetModel(p);
+				GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
+				yield return new ModelBox() { Model = (ModelHash)model, Entity = (EntHandle)p, M = Matrix(p), Front = frontRight, Back = backLeft };
 			}
 		}
 		public static ConcurrentSet<NodeHandle> GetBlockedNodes(bool ents = true, bool vehicles = true, bool peds = true, bool debug = false) {
@@ -358,15 +368,15 @@ namespace Shiv {
 			s.Start();
 			var boxes = new List<ModelBox>();
 			if( ents ) {
-				boxes.AddRange(GetBlockingEnts(50));
+				boxes.AddRange(GetBlockingEnts(50, debug));
 			}
 
 			if( vehicles ) {
-				boxes.AddRange(GetBlockingVehicles(30));
+				boxes.AddRange(GetBlockingVehicles(30, debug));
 			}
 
 			if( peds ) {
-				boxes.AddRange(GetBlockingPeds(20));
+				boxes.AddRange(GetBlockingPeds(20, debug));
 			}
 			var blocked = new ConcurrentSet<NodeHandle>();
 			Parallel.For(0, boxes.Count, i => NavMesh.GetAllHandlesInBox(boxes[i], blocked));
@@ -380,7 +390,7 @@ namespace Shiv {
 
 	public class DebugPath : Goal {
 
-		public bool AvoidObjects = false;
+		public bool AvoidObjects = true;
 		public bool AvoidPeds = false;
 		public bool AvoidCars = false;
 
