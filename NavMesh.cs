@@ -21,14 +21,16 @@ using GTA.Native;
 namespace Shiv {
 
 	public enum NodeHandle : ulong { Invalid = 0 };
-	public enum NavRegion : uint { Invalid = 0 };
+	public enum RegionHandle : uint { Invalid = 0 };
 
 	public static partial class Global {
 
 		public static NodeHandle PlayerNode;
-		public static NavRegion PlayerRegion;
+		public static RegionHandle PlayerRegion;
 
 		public static float DistanceToSelf(NodeHandle n) => DistanceToSelf(NavMesh.Position(n));
+
+		public static NodeHandle AimNode() => NavMesh.GetHandle(StopAtWater(PutOnGround(NavMesh.Position(NavMesh.GetHandle(AimPosition())) + (Up * .1f), 1f), 0f));
 
 	}
 
@@ -38,16 +40,18 @@ namespace Shiv {
 		public static bool SaveEnabled = true;
 		public static bool LoadEnabled = true;
 
-		private const int magicBytes = 0x000FEED6; // if any constants/structure below should change, increment the magic bytes to invalidate the old data
+		private const int magicBytes = 0x000FEED7; // if any constants/structure below should change, increment the magic bytes to invalidate the old data
+
 		private const ulong mapRadius = 8192; // in the world, the map goes from -8192 to 8192
 		private const float gridScale = .5f; // how big are the X,Y steps of the mesh
+		private const int gridScaleShift = 1;
 		private const float zScale = .25f; // how big are the Z steps of the mesh
+		private const int zScaleShift = 2;
 		private const float zDepth = 1000f; // how deep underwater can the mesh go
 		// zDepth can be at most mapRadius*zScale, because zScale changes vertical node density
 		// which makes mapShift too small, which corrupts NodeHandles
 
 		public static NodeHandle LastGrown { get; private set; } = NodeHandle.Invalid;
-		public static long LastGrownMS = 0;
 
 		// how to pack Vector3 into a long:
 		// add the mapRadius (so strictly positive)
@@ -66,32 +70,24 @@ namespace Shiv {
 			ulong x = (ulong)Round((v.X + mapRadius) / gridScale);
 			ulong y = (ulong)Round((v.Y + mapRadius) / gridScale);
 			ulong z = (ulong)Round((v.Z + zDepth) / zScale);
-			return (NodeHandle)(
-				(x << (2 * mapShift)) |
-				(y << (1 * mapShift)) |
-				(z << (0 * mapShift))
-			);
+			return (NodeHandle)( (x << (mapShift << 1)) | (y << mapShift) | z );
 		}
 
 		private const float regionScale = 128f;
 		private const int regionShift = 7; // we use 3*7=21 bits of a NavRegion:uint
 		
-		public static NavRegion Region(Vector3 v) {
+		public static RegionHandle Region(Vector3 v) {
 			if( v == Vector3.Zero ) {
-				return NavRegion.Invalid;
+				return RegionHandle.Invalid;
 			}
 			// v.X starts [-8192..8192] becomes [0..128]
 			uint x = (uint)(Round((v.X + mapRadius) / regionScale));
 			uint y = (uint)(Round((v.Y + mapRadius) / regionScale));
 			uint z = (uint)(Round((v.Z + zDepth) / regionScale));
-			return (NavRegion)(
-				(x << (2 * regionShift)) |
-				(y << (1 * regionShift)) |
-				(z << (0 * regionShift))
-			);
+			return (RegionHandle)( (x << (regionShift << 1)) | (y << regionShift) | z );
 		}
 		private static readonly uint mapShiftMask = (1u << mapShift) - 1;
-		public static NavRegion Region(NodeHandle a) {
+		public static RegionHandle Region(NodeHandle a) {
 			ulong u = (ulong)a;
 			ulong z = u & mapShiftMask;
 			u >>= mapShift;
@@ -102,9 +98,7 @@ namespace Shiv {
 			x = (ulong)Round(x * scale);
 			y = (ulong)Round(y * scale);
 			z = (ulong)Round(z * zScale / regionScale);
-			return (NavRegion)((x << (2 * regionShift))
-				| (y << (1 * regionShift))
-				| z);
+			return (RegionHandle)((x << (regionShift << 1)) | (y << regionShift) | z);
 		}
 
 		// how to unpack a (reduced accuracy) Vector3 from inside a ulong
@@ -117,8 +111,8 @@ namespace Shiv {
 			ulong mask = (ulong)(1 << mapShift) - 1; // make a 15-bit mask
 			ulong h = (ulong)handle;
 			return new Vector3(
-				(gridScale * ((h >> (2 * mapShift)) & mask)) - mapRadius,
-				(gridScale * ((h >> (1 * mapShift)) & mask)) - mapRadius,
+				(gridScale * ((h >> (mapShift << 1)) & mask)) - mapRadius,
+				(gridScale * ((h >> mapShift) & mask)) - mapRadius,
 				(zScale * (h & mask)) - zDepth
 			);
 		}
@@ -131,7 +125,12 @@ namespace Shiv {
 		// how are edges (connections between nodes), defined
 		// each NodeHandle (ulong) maps to a NodeEdges (uint)
 		// a bit-field for which next NodeHandle we are connected to
-		[Flags] public enum NodeEdges : uint { Empty = 0 }
+		[Flags] public enum NodeEdges : ulong {
+			Empty = 0,
+			/* 0 - 29 used for connections to neighbors */
+			IsGrown = (1u << 30),
+			IsCover = (1u << 31),
+		}
 		private static readonly uint xStep = (uint)Pow(2, (2*mapShift)); // if you add X+1, how much does the NodeHandle change
 		private static readonly uint yStep = (uint)Pow(2, (1*mapShift)); // if you add Y+1, how much does the NodeHandle change
 		private static readonly uint zStep = (uint)Pow(2, (0*mapShift)); // if you add Z+1, how much does the NodeHandle change
@@ -177,25 +176,27 @@ namespace Shiv {
 			// bit 30 used for IsGrown
 			// bit 31 used for IsCover
 
-			// ----
-			// if I had a few spare bits, I could use them to do Clearance
-			// a buffer around sides of the mesh that would replace IsCover
-			// each new nodes gets either Clearance = 0 (IsCover)
-			// or Clearance = 1 + Edges().Select(Clearance).Min()
-			// if we had 3 bits to spare (assuming we cut out straight up and down)
-			// we could have Clearance = 0, 1, 2, 3
-			// any node with 3 has about 1.5m of space around it
-			// paths should prefer to follow higher
-			// if we changed NodeEdges to be ulong instead of uint
-			// a 25% increase in save/load times, and stored file size
-			// but we would have lots of bits (dont have to sacrifice up and down)
-			// and could store Clearance values large enough to use with vehicles
-
 		};
 
+		public static bool IsGrown(NodeHandle a) => AllEdges.TryGetValue(a, out var flags) && (flags & NodeEdges.IsGrown) > 0;
+		public static void IsGrown(NodeHandle a, bool value) {
+			if( value ) {
+				AllEdges.AddOrUpdate(a, NodeEdges.IsGrown, (key, oldValue) => oldValue | NodeEdges.IsGrown);
+			} else {
+				AllEdges.AddOrUpdate(a, 0, (key, oldValue) => oldValue & ~NodeEdges.IsGrown);
+			}
+			dirtyRegions.Add(Region(a));
+		}
 
-		private const int grownBit = 30;
-		private const int coverBit = 31;
+		public static bool IsCover(NodeHandle a) => AllEdges == null ? false : AllEdges.TryGetValue(a, out var flags) && (flags & NodeEdges.IsCover) > 0;
+		public static void IsCover(NodeHandle a, bool value) {
+			if( value ) {
+				AllEdges.AddOrUpdate(a, NodeEdges.IsCover, (key, oldValue) => oldValue | NodeEdges.IsCover);
+			} else {
+				AllEdges.AddOrUpdate(a, 0, (key, oldValue) => oldValue & ~NodeEdges.IsCover);
+			}
+			dirtyRegions.Add(Region(a));
+		}
 
 		// create a reverse mapping, given an edge bit index, return the NodeHandle delta
 		public static readonly long[] edgeOffsets = whichEdgeBit.Keys.OrderBy(k => whichEdgeBit[k]).ToArray();
@@ -208,7 +209,7 @@ namespace Shiv {
 		private static uint started = 0;
 		private static uint saved = 0;
 		private static uint aborted = 0;
-		public static ConcurrentDictionary<NodeHandle, uint> AllEdges = new ConcurrentDictionary<NodeHandle, uint>();
+		public static ConcurrentDictionary<NodeHandle, NodeEdges> AllEdges = new ConcurrentDictionary<NodeHandle, NodeEdges>();
 		public static bool IsLoaded => AllEdges != null && aborted == 0;
 		public static int Count => AllEdges == null ? 0 : AllEdges.Count;
 		public static bool ShowEdges { get; internal set; } = false;
@@ -222,7 +223,6 @@ namespace Shiv {
 		public static IEnumerable<NodeHandle> GroundEdges(NodeHandle node) => PossibleGrowthEdges(node).Each(n => StopAtWater(PutOnGround(Position(n), 1f), 0f));
 
 		private NodeHandle prevNode;
-		private uint prevNodeCount = 0;
 		public override void OnTick() {
 			if( (!Enabled) || aborted != 0 ) {
 				return;
@@ -253,18 +253,19 @@ namespace Shiv {
 				int msPerFrame = (int)(1000 / CurrentFPS);
 				uint msPerGrow = (uint)Max(15, 35 - msPerFrame);
 				DrawEdges(PlayerNode, 6);
+				NodeHandle handle = GetHandle(StopAtWater(PutOnGround(AimPosition(), 1f), 0f));
+				if( !IsGrown(handle) ) {
+					Ungrown.Enqueue(handle);
+				}
 				if( !IsGrown(PlayerNode) ) {
 					Grow(PlayerNode, msPerGrow);
+				} else if( Ungrown.TryDequeue(out var first) ) {
+					DrawLine(HeadPosition(Self), Position(first), Color.Orange);
+					Grow(first, msPerGrow);
 				} else {
-					if( Ungrown.TryDequeue(out var first) ) {
-						DrawLine(HeadPosition(Self), Position(first), Color.Orange);
-						Grow(first, msPerGrow);
-					} else {
-						NodeHandle handle = GetHandle(StopAtWater(PutOnGround(AimPosition(), 1f), 0f));
-						if( !IsGrown(handle) ) {
-							Grow(handle, msPerGrow);
-						}
-					}
+					Grow(Flood(PlayerNode, 20000, 20, default, Edges)
+						.Without(IsGrown)
+						.FirstOrDefault(), msPerGrow);
 				}
 			}
 		}
@@ -273,43 +274,39 @@ namespace Shiv {
 			if (!ShowEdges) {
 				return;
 			}
-
-			UI.DrawText($"PlayerNode: {PlayerNode} {Position(PlayerNode)}");
-			DrawLine(HeadPosition(Self), Position(node), Color.Pink);
-			DrawEdges(node, Position(node), depth, new HashSet<NodeHandle>(), new HashSet<NodeHandle>(), 0);
-		}
-		private void DrawEdges(NodeHandle node, Vector3 nodePos, uint depth, HashSet<NodeHandle> stack, HashSet<NodeHandle> seen, int count) {
-			if( ShowEdges == false
-				|| depth <= 0
-				|| stack.Contains(node)
-				) {
+			if( node == NodeHandle.Invalid ) {
 				return;
 			}
 
-			if( !seen.Contains(node) ) {
-				seen.Add(node); // prevent double visit
-				stack.Add(node); // prevent cycles
-				if( IsCover(node) ) {
-					DrawSphere(nodePos, .05f, Color.Blue);
+			var queue = new Queue<NodeHandle>();
+			var seen = new HashSet<NodeHandle>();
+			queue.Enqueue(node);
+			while( queue.Count > 0 && seen.Count < 80 ) {
+				NodeHandle cur = queue.Dequeue();
+				var pos = Position(cur);
+				seen.Add(cur);
+				foreach( NodeHandle e in Edges(cur) ) {
+					if( ! seen.Contains(e) ) {
+						var epos = Position(e);
+						DrawLine(pos, epos, Color.Yellow);
+						if( IsCover(e) ) {
+							DrawSphere(epos, .03f, Color.Blue);
+						} else if( !IsGrown(e) ) {
+							DrawSphere(epos, .03f, Color.Green);
+						}
+						queue.Enqueue(e);
+					}
 				}
-				// UI.DrawTextInWorld(nodePos, $"{node}");
-				// UI.DrawTextInWorldWithOffset(nodePos, 0f, -.005f * count, $"{count}");
-				foreach( NodeHandle e in Edges(node) ) {
-					Vector3 ePos = Position(e);
-					count += 1;
-					DrawLine(nodePos, ePos, Color.Yellow);
-					DrawEdges(e, ePos, depth - 1, stack, seen, count);
-				}
-				stack.Remove(node);
 			}
+
 		}
 
-		private static ConcurrentDictionary<NavRegion, Future<NavRegion>> loadedRegions = new ConcurrentDictionary<NavRegion, Future<NavRegion>>();
-		public static IFuture<NavRegion> RequestRegion(NavRegion r) {
-			if( r == NavRegion.Invalid ) {
-				return new Immediate<NavRegion>(r);
+		private static ConcurrentDictionary<RegionHandle, Future<RegionHandle>> loadedRegions = new ConcurrentDictionary<RegionHandle, Future<RegionHandle>>();
+		public static IFuture<RegionHandle> RequestRegion(RegionHandle r) {
+			if( r == RegionHandle.Invalid ) {
+				return new Immediate<RegionHandle>(r);
 			}
-			return loadedRegions.GetOrAdd(r, (region) => new Future<NavRegion>(() => {
+			return loadedRegions.GetOrAdd(r, (region) => new Future<RegionHandle>(() => {
 				Log($"Reading Region: {region} {loadedRegions.Count}");
 				try {
 					ReadFromFile($"scripts/Shiv.{region}.mesh");
@@ -349,15 +346,15 @@ namespace Shiv {
 			}
 		}
 
-		public static bool HasEdges(NodeHandle a) => AllEdges != null && AllEdges.TryGetValue(a, out uint flags) && flags != 0;
+		public static bool HasEdges(NodeHandle a) => AllEdges != null && AllEdges.TryGetValue(a, out var flags) && flags != 0;
 		public static IEnumerable<NodeHandle> Edges(NodeHandle a) {
 			if( AllEdges == null ) {
 				yield break;
 			}
 
-			if( AllEdges.TryGetValue(a, out uint flags) ) {
+			if( AllEdges.TryGetValue(a, out var flags) ) {
 				for( int i = 0; i < edgeOffsets.Length; i++ ) {
-					if( (flags & (1u << i)) > 0 ) {
+					if( (flags & (NodeEdges)(1u << i)) > 0 ) {
 						yield return (NodeHandle)((long)a + edgeOffsets[i]);
 					}
 				}
@@ -372,8 +369,8 @@ namespace Shiv {
 			}
 
 			// retrieve all the edges of a and check the bit for b
-			return AllEdges.TryGetValue(a, out uint edges)
-				? (edges & (0x1u << whichEdgeBit[d])) > 0
+			return AllEdges.TryGetValue(a, out var edges)
+				? (edges & (NodeEdges)(0x1u << whichEdgeBit[d])) > 0
 				: false;
 		}
 
@@ -383,26 +380,13 @@ namespace Shiv {
 			Text.Add(Position(n), "Blocked", 3000);
 		}
 
-		public static bool Remove(NodeHandle a) => AllEdges == null ? false : AllEdges.TryRemove(a, out uint edges);
-		private static uint GetRawEdges(NodeHandle a) {
-			if( AllEdges == null ) {
-				return 0;
-			}
-
-			AllEdges.TryGetValue(a, out uint edges);
-			uint mask = unchecked((0x1u << grownBit) | (0x1u << coverBit));
-			return edges & ~mask;
-		}
+		public static bool Remove(NodeHandle a) => AllEdges.TryRemove(a, out var edges);
 		public static bool SetEdge(NodeHandle a, NodeHandle b, bool value) {
-			if( AllEdges == null ) {
-				return false;
-			}
-
 			long d = (long)b - (long)a;
 			if( !whichEdgeBit.ContainsKey(d) ) {
 				return false;
 			}
-			uint mask = (1u << whichEdgeBit[d]);
+			var mask = (NodeEdges)(1u << whichEdgeBit[d]);
 			if( value ) {
 				AllEdges.AddOrUpdate(a, mask, (k, oldValue) => oldValue | mask);
 			} else {
@@ -414,35 +398,7 @@ namespace Shiv {
 		}
 		public static bool AddEdge(NodeHandle a, NodeHandle b) => SetEdge(a, b, true);
 		public static void RemoveEdge(NodeHandle a, NodeHandle b) => SetEdge(a, b, false);
-		public static bool IsGrown(NodeHandle a) => AllEdges == null ? false : AllEdges.TryGetValue(a, out uint flags) && (flags & (1u << grownBit)) > 0;
 
-		private const uint grownBitMask = (1u << grownBit);
-		public static void IsGrown(NodeHandle a, bool value) {
-			if( AllEdges == null ) {
-				return;
-			}
-
-			if( value ) {
-				AllEdges.AddOrUpdate(a, grownBitMask, (key, oldValue) => oldValue | grownBitMask);
-			} else {
-				AllEdges.AddOrUpdate(a, 0, (key, oldValue) => oldValue & ~grownBitMask);
-			}
-			dirtyRegions.Add(Region(a));
-		}
-		public static bool IsCover(NodeHandle a) => AllEdges == null ? false : AllEdges.TryGetValue(a, out uint flags) && (flags & (1u << coverBit)) > 0;
-		public static void IsCover(NodeHandle a, bool value) {
-			if( AllEdges == null ) {
-				return;
-			}
-
-			uint mask = (1u << coverBit);
-			if( value ) {
-				AllEdges.AddOrUpdate(a, mask, (key, oldValue) => oldValue | mask);
-			} else {
-				AllEdges.AddOrUpdate(a, 0, (key, oldValue) => oldValue & ~mask);
-			}
-			dirtyRegions.Add(Region(a));
-		}
 
 		public static void GetAllHandlesInBox(ModelBox box, ConcurrentSet<NodeHandle> output) => GetAllHandlesInBox(box.M, box.Back, box.Front, output);
 		public static void GetAllHandlesInBox(Matrix4x4 m, Vector3 backLeft, Vector3 frontRight, ConcurrentSet<NodeHandle> output) {
@@ -489,19 +445,6 @@ namespace Shiv {
 					}
 					// let EndOfStreamException tell us when to stop
 					while( true ) { Ungrown.Enqueue((NodeHandle)r.ReadInt64()); }
-					/*
-					int count = r.ReadInt32();
-					if( count <= 0 ) {
-						Log($"Invalid count: {count}");
-						return false;
-					}
-					ulong[] handles = new ulong[count];
-					byte[] buf = r.ReadBytes(count * sizeof(ulong));
-					Buffer.BlockCopy(buf, 0, handles, 0, buf.Length);
-					foreach(ulong h in handles) {
-						Ungrown.Enqueue((NodeHandle)h);
-					}
-					*/
 				}
 			} catch( EndOfStreamException ) {
 				return true;
@@ -513,32 +456,51 @@ namespace Shiv {
 		}
 
 		public static bool ReadFromFile(string filename) {
-			if( !LoadEnabled )
+			if( !LoadEnabled ) {
 				return false;
+			}
+
 			var s = new Stopwatch();
 			s.Start();
 			try {
 				using( BinaryReader r = Codec.Reader(filename) ) {
 					int magic = r.ReadInt32();
-					if( magic != magicBytes ) {
-						Log($"Wrong magic bytes {magic:X}");
+					if( magic == 0x000FEED6 ) { // upgrade this older version of mesh file
+						int count = r.ReadInt32();
+						if( count <= 0 ) {
+							Log($"Invalid count: {count}");
+							return false;
+						}
+						byte[] buf;
+						ulong[] handles = new ulong[count];
+						uint[] edges = new uint[count];
+						Log($"Reading {count} (old) nodes...");
+						buf = r.ReadBytes(count * sizeof(ulong));
+						Buffer.BlockCopy(buf, 0, handles, 0, buf.Length);
+						buf = r.ReadBytes(count * sizeof(uint));
+						Buffer.BlockCopy(buf, 0, edges, 0, buf.Length);
+						Parallel.For(0, count, (i) => AllEdges.TryAdd((NodeHandle)handles[i], (NodeEdges)edges[i]));
+						Log($"Finished loading {count} nodes, after {s.Elapsed}");
+					} else if ( magic == magicBytes ) {
+						int count = r.ReadInt32();
+						if( count <= 0 ) {
+							Log($"Invalid count: {count}");
+							return false;
+						}
+						byte[] buf;
+						ulong[] handles = new ulong[count];
+						ulong[] edges = new ulong[count];
+						Log($"Reading {count} nodes...");
+						buf = r.ReadBytes(count * sizeof(ulong));
+						Buffer.BlockCopy(buf, 0, handles, 0, buf.Length);
+						buf = r.ReadBytes(count * sizeof(ulong));
+						Buffer.BlockCopy(buf, 0, edges, 0, buf.Length);
+						Parallel.For(0, count, (i) => AllEdges.TryAdd((NodeHandle)handles[i], (NodeEdges)edges[i]));
+						Log($"Finished loading {count} nodes, after {s.Elapsed}");
+					} else {
+						Log($"Invalid magic bytes: {magic}");
 						return false;
 					}
-					int count = r.ReadInt32();
-					if( count <= 0 ) {
-						Log($"Invalid count: {count}");
-						return false;
-					}
-					byte[] buf;
-					ulong[] handles = new ulong[count];
-					uint[] edges = new uint[count];
-					Log($"Reading {count} nodes...");
-					buf = r.ReadBytes(count * sizeof(ulong));
-					Buffer.BlockCopy(buf, 0, handles, 0, buf.Length);
-					buf = r.ReadBytes(count * sizeof(uint));
-					Buffer.BlockCopy(buf, 0, edges, 0, buf.Length);
-					Parallel.For(0, count, (i) => AllEdges.TryAdd((NodeHandle)handles[i], edges[i]) );
-					Log($"Finished loading {count} nodes, after {s.Elapsed}");
 				}
 			} catch( FileNotFoundException ) {
 				Log($"File not found: {filename}");
@@ -546,18 +508,20 @@ namespace Shiv {
 			s.Stop();
 			return true;
 		}
-		private static ConcurrentSet<NavRegion> dirtyRegions = new ConcurrentSet<NavRegion>();
+		private static ConcurrentSet<RegionHandle> dirtyRegions = new ConcurrentSet<RegionHandle>();
 		public static void SaveToFile() {
-			if( !SaveEnabled )
+			if( !SaveEnabled ) {
 				return;
-			AllEdges.Keys.GroupBy(Region).Each(g => {
-				NavRegion region = g.Key;
+			}
+
+			AllEdges.Keys.GroupBy(Region).AsParallel().Each(g => {
+				RegionHandle region = g.Key;
 				if( dirtyRegions.TryRemove(region) ) {
 					var file = $"scripts/Shiv.{region}.mesh";
 					using( BinaryWriter w = Codec.Writer(file + ".tmp") ) {
 						w.Write(magicBytes);
 						ulong[] handles = g.Cast<ulong>().ToArray();
-						uint[] edges = handles.Select(h => AllEdges[(NodeHandle)h]).ToArray();
+						ulong[] edges = handles.Select(h => (ulong)AllEdges[(NodeHandle)h]).ToArray();
 						byte[] buf;
 						try {
 							Log($"Saving dirty region: {region} {handles.Length} nodes...");
@@ -570,7 +534,7 @@ namespace Shiv {
 							return;
 						}
 						try {
-							buf = new byte[edges.Length * sizeof(uint)];
+							buf = new byte[edges.Length * sizeof(ulong)];
 							Buffer.BlockCopy(edges, 0, buf, 0, buf.Length);
 							w.Write(buf);
 						} catch( Exception err ) {
@@ -592,16 +556,6 @@ namespace Shiv {
 					foreach( NodeHandle h in Ungrown ) {
 						w.Write((ulong)h);
 					}
-					/*
-					ulong[] ungrown;
-					lock( Ungrown ) {
-						ungrown = Ungrown.Cast<ulong>().ToArray();
-					}
-					w.Write(ungrown.Length);
-					byte[] buf = new byte[ungrown.Length * sizeof(NodeHandle)];
-					Buffer.BlockCopy(ungrown, 0, buf, 0, buf.Length);
-					w.Write(buf);
-					*/
 				} catch( Exception err ) {
 					Log("Failed: " + err.ToString());
 					return;
@@ -625,11 +579,11 @@ namespace Shiv {
 					yield break;
 				}
 				if( queue.Count == 0 ) {
-					Log($"Flood exhausted search area");
+					// Log($"Flood exhausted search area");
 					yield break;
 				}
 				if( seen.Count >= maxNodes ) {
-					Log($"Flood stopped at limit {maxNodes}");
+					// Log($"Flood stopped at limit {maxNodes}");
 					yield break;
 				}
 				cur = queue.Dequeue();
@@ -641,7 +595,7 @@ namespace Shiv {
 			}
 		}
 
-		public static IEnumerable<NodeHandle> GrowOne(NodeHandle node) {
+		public static IEnumerable<NodeHandle> GrowOne(NodeHandle node, HashSet<EntHandle> doors, bool debug=false) {
 			if( IsGrown(node) ) {
 				yield break;
 			}
@@ -653,37 +607,52 @@ namespace Shiv {
 			foreach( var i in possibleGrowthEdges ) {
 				var e = (NodeHandle)((long)node + edgeOffsets[i]);
 				NodeHandle g = GetHandle(StopAtWater(PutOnGround(Position(e), 1f), 0f));
-				Vector3 gPos = Position(g);
 				if( IsPossibleEdge(node, g) && !HasEdge(node, g) ) {
-					Vector3 delta = gPos - nodePos;
+					Vector3 delta = Position(g) - nodePos;
 					var len = delta.Length();
-					Vector3 end = nodePos + (Vector3.Normalize(delta) * (len - capsuleSize / 2));
+					Vector3 end = nodePos + ((delta / len) * (len - capsuleSize / 2));
 					RaycastResult result = Raycast(nodePos, end, capsuleSize, growRayOpts, Self);
-					if( result.DidHit ) {
+					if( (!result.DidHit) 
+						|| (Exists(result.Entity) && doors.Contains(result.Entity))  ) {
+						if( debug ) {
+							Line.Add(Position(node), Position(g), Color.Yellow, 3000);
+						}
+						AddEdge(node, g);
+						AddEdge(g, node);
+						if( ! IsGrown(g) ) {
+							yield return g;
+						}
+					} else if( result.DidHit ) {
 						Materials m = result.Material;
 						if( m != Materials.metal_railing
 							&& m != Materials.metal_garage_door
 							&& m != Materials.bushes
+							&& m != Materials.leaves
 							&& Abs(Vector3.Dot(result.SurfaceNormal, Up)) < .01f ) {
 							IsCover(node, true);
-						}
-					} else {
-						AddEdge(node, g);
-						AddEdge(g, node);
-						if( !IsGrown(g) ) {
-							yield return g;
+							if( debug ) {
+								Text.Add(Position(node), $"IsCover({m})", 5000, 0f, -.04f);
+							}
+						} else {
+							if( debug ) {
+								Text.Add(Position(node), $"IsBlocked({m})", 5000, 0f, -.06f);
+							}
 						}
 					}
 				}
 			}
 		}
 		public static MovingAverage grownPerSecond = new MovingAverage(20);
-		public static void Grow(NodeHandle start, uint maxMs) {
+		public static void Grow(NodeHandle start, uint maxMs, bool debug=false) {
+			if( start == NodeHandle.Invalid ) {
+				return;
+			}
 			var sw = new Stopwatch();
 			sw.Start();
 			int count = 0;
 			var queue = new Queue<NodeHandle>();
 			queue.Enqueue(start);
+			var doors = new HashSet<EntHandle>(NearbyObjects.Where(e => Pathfinder.checkDoorModels.Contains(GetModel(e))));
 			while( sw.ElapsedMilliseconds < maxMs ) {
 				NodeHandle next;
 				if( queue.Count > 0 ) {
@@ -692,7 +661,10 @@ namespace Shiv {
 					break;
 				}
 				RequestRegion(Region(next)).Wait(20);
-				GrowOne(next).Each(queue.Enqueue);
+				if( IsGrown(next) ) {
+					continue;
+				}
+				GrowOne(next, doors, debug).Each(queue.Enqueue);
 				count += 1;
 				LastGrown = next;
 			}
@@ -740,9 +712,9 @@ namespace Shiv {
 			Matrix4x4 m = Matrix(v);
 			VehicleHash model = GetModel(v);
 			GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
-			Stopwatch sw = new Stopwatch();
+			var sw = new Stopwatch();
 			sw.Start();
-			ConcurrentSet<NodeHandle> blocked = new ConcurrentSet<NodeHandle>();
+			var blocked = new ConcurrentSet<NodeHandle>();
 			GetAllHandlesInBox(m, backLeft, frontRight, blocked);
 			UI.DrawText($"GetAllHandlesInBox: {blocked.Count} in {sw.ElapsedTicks} ticks");
 
