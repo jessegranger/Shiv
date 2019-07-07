@@ -32,10 +32,23 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
+    <Compile Include="States\Combat.cs" />
+    <Compile Include="NavMesh\Edges.cs" />
+    <Compile Include="NavMesh\Growth.cs" />
+    <Compile Include="NavMesh\Region.cs" />
+    <Compile Include="NavMesh\SaveLoad.cs" />
+    <Compile Include="States\DebugPath.cs" />
+    <Compile Include="States\Explore.cs" />
+    <Compile Include="States\Teleport.cs" />
+    <Compile Include="States\Wander.cs" />
+    <Compile Include="States\FindCover.cs" />
+    <Compile Include="States\PressKey.cs" />
+    <Compile Include="States\MoveTo.cs" />
+    <Compile Include="Util\Producer.cs" />
     <Compile Include="Util\Future.cs" />
     <Compile Include="Global.cs" />
-    <Compile Include="Goals\TakeCover.cs" />
     <Compile Include="Shiv.cs" />
+    <Compile Include="Util\Heap.cs" />
     <Compile Include="Util\MovingAverage.cs" />
     <Compile Include="Scripts\Console.cs" />
     <Compile Include="Scripts\Menu.cs" />
@@ -48,11 +61,10 @@
     <Compile Include="Game\Player.cs" />
     <Compile Include="Game\World.cs" />
     <Compile Include="Goals\Driving.cs" />
-    <Compile Include="Goals\DirectMove.cs" />
-    <Compile Include="Goals\WalkTo.cs" />
+    <Compile Include="States\TaskWalk.cs" />
     <Compile Include="Missions\Mission01.cs" />
-    <Compile Include="NavMesh.cs" />
-    <Compile Include="NavMesh.Pathfinder.cs" />
+    <Compile Include="NavMesh\BaseMesh.cs" />
+    <Compile Include="NavMesh\Pathfinder.cs" />
     <Compile Include="Util\Codec.cs" />
     <Compile Include="Scripts\Goals.cs" />
     <Compile Include="Game\Imports.cs" />
@@ -63,11 +75,12 @@
     <Compile Include="Scripts\Compass.cs" />
     <Compile Include="Scripts\Hud.cs" />
     <Compile Include="Scripts\Persistent.cs" />
-    <Compile Include="Script.cs" />
+    <Compile Include="Scripts\BaseScript.cs" />
     <Compile Include="Game\Vehicle.cs" />
     <Compile Include="Scripts\Senses.cs" />
     <Compile Include="Scripts\UI.cs" />
     <Compile Include="Scripts\VehicleMesh.cs" />
+    <Compile Include="States\StateMachine.cs" />
     <Compile Include="Util\Throttle.cs" />
   </ItemGroup>
   <ItemGroup />
