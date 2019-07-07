@@ -17,7 +17,10 @@ namespace Shiv {
 			return new PointF(x, y);
 		} // TODO: measure the speed of this versus using CameraMatrix directly
 
-		public static Vector3 PutOnGround(Vector3 pos, float off = 0) => pos == Vector3.Zero ? pos : new Vector3(pos.X, pos.Y, off + GetGroundZ(pos));
+		public static Vector3 PutOnGround(Vector3 pos, float off = 0) =>
+			pos == Vector3.Zero ? pos 
+			: DistanceToSelf(pos) > (210f * 210f) ? pos
+			: new Vector3(pos.X, pos.Y, off + GetGroundZ(pos));
 		public static float GetGroundZ(Vector3 pos) {
 			float z = 0;
 			unsafe {
@@ -36,6 +39,19 @@ namespace Shiv {
 				pos, Vector3.Zero, Vector3.Zero,
 				new Vector3(radius, radius, radius),
 				color, false, false, 2, 0, 0, 0, 0);
+		}
+		public static void DrawBox(Matrix4x4 m, Vector3 backLeft, Vector3 frontRight) {
+			var w = West * (frontRight.X - backLeft.X);
+			var d = North * (frontRight.Y - backLeft.Y);
+			var h = Up * (frontRight.Z - backLeft.Z);
+			var tFront = Vector3.Transform(frontRight, m);
+			var tBack = Vector3.Transform(backLeft, m);
+			DrawLine(tFront, Vector3.Transform(frontRight + w, m), Color.Pink);
+			DrawLine(tFront, Vector3.Transform(frontRight - h, m), Color.Pink);
+			DrawLine(tFront, Vector3.Transform(frontRight - d, m), Color.Pink);
+			DrawLine(tBack, Vector3.Transform(backLeft - w, m), Color.Pink);
+			DrawLine(tBack, Vector3.Transform(backLeft + h, m), Color.Pink);
+			DrawLine(tBack, Vector3.Transform(backLeft + d, m), Color.Pink);
 		}
 
 		public static void PauseClock(bool value) => Call(PAUSE_CLOCK, value);
