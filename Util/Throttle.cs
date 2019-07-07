@@ -7,17 +7,17 @@ namespace Shiv {
 		/// <summary>
 		/// Only call the given function at most once per period.
 		/// </summary>
-		/// <param name="ms"></param>
-		/// <param name="function"></param>
-		/// <returns>A new Action that, if invoked too frequently, will not invoke your function.</returns>
-		public static Action Throttle(uint ms, Action function) {
+		/// <returns>A new Action that, if invoked too frequently, will return prior results.</returns>
+		public static Func<T> Throttle<T>(uint ms, Func<T> function) {
 			var s = new Stopwatch();
 			s.Start();
+			T prev = default;
 			return () => {
-				if( s.ElapsedMilliseconds >= ms ) {
-					function();
+				if( prev == default || s.ElapsedMilliseconds >= ms ) {
 					s.Restart();
+					return prev = function();
 				}
+				return prev;
 			};
 		}
 	}
