@@ -14,7 +14,8 @@ namespace Shiv {
 			Planter = 0xF415B43E,
 			WoodenDoor = 0x1F03C852,
 			GlassWoodDoubleDoor = 0x698459ED,
-			WoodenBathroomDoor = 0xDBA34D99
+			WoodenBathroomDoor = 0xDBA34D99,
+			WoodenFireDoor = 1438783233
 		}
 		public enum AssetStatus {
 			Invalid = 0,

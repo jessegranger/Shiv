@@ -7,11 +7,36 @@ using static GTA.Native.MemoryAccess;
 using static GTA.Native.Function;
 using static GTA.Native.Hash;
 using System.Collections;
+using static Shiv.Global;
+using static Shiv.Imports;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Diagnostics;
+using System.Drawing;
 
 namespace Shiv {
 
 	public static partial class Global {
-		public static VehicleHandle[] NearbyVehicles { get; internal set; } = new VehicleHandle[0];
+		private static int[] GetAllVehicles(uint max = 512) {
+			if( max == 0 ) {
+				throw new ArgumentException();
+			}
+			int[] ret;
+			unsafe {
+				fixed ( int* buf = new int[max] ) {
+					int count = WorldGetAllVehicles(buf, (int)max);
+					ret = new int[count];
+					Marshal.Copy(new IntPtr(buf), ret, 0, count);
+				}
+			}
+			return ret;
+		}
+		public static readonly Func<VehicleHandle[]> NearbyVehicles = Throttle(231, () =>
+			 GetAllVehicles().Cast<VehicleHandle>()
+				.Where(v => v != PlayerVehicle && Exists(v))
+				.OrderBy(DistanceToSelf)
+				.ToArray()
+		);
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool Exists(VehicleHandle ent) => Exists((EntHandle)ent);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static IntPtr Address(VehicleHandle v) => Address((EntHandle)v);
@@ -152,5 +177,54 @@ namespace Shiv {
 			return GetVehicleOffset(v, offset, m, frontRight, backLeft);
 		}
 		public static Vector3 GetVehicleOffset(VehicleHandle v, Vector3 offset, Matrix4x4 m, Vector3 frontRight, Vector3 backLeft) => Vector3.Transform(offset * (frontRight - backLeft), m);
+
+		private static readonly Vector3[] vehicleCoverOffset = new Vector3[6] {
+			VehicleOffsets.BackBumper,
+			VehicleOffsets.FrontLeftWheel,
+			VehicleOffsets.BackLeftWheel,
+			VehicleOffsets.FrontGrill,
+			VehicleOffsets.BackRightWheel,
+			VehicleOffsets.FrontRightWheel,
+		};
+		public static Vector3 FindCoverBehindVehicle(VehicleHandle v, Vector3 danger, bool debug=false) {
+			if( Call<bool>(IS_VEHICLE_SEAT_FREE, v, VehicleSeat.Driver) && Speed(v) == 0f ) {
+				Matrix4x4 m = Matrix(v);
+				Vector3 pos = Global.Position(m);
+				Vector3 delta = danger - pos;
+				float heading = AbsHeading(Heading(m) - Rad2Deg(Math.Atan2(delta.Y, delta.X)) - 45);
+				int slot = (int)(6 * (heading / 360f));
+				if( debug ) {
+					int line = 0;
+					DrawLine(pos, danger, Color.Red);
+					UI.DrawTextInWorldWithOffset(pos, 0f, (line++ * .02f), $"Heading: {heading:F2} Slot: {slot}");
+				}
+				if( slot >= 0 && slot < vehicleCoverOffset.Length ) {
+					return GetVehicleOffset(v, vehicleCoverOffset[slot], m);
+				}
+			}
+			return Vector3.Zero;
+		}
+
+		public static void DebugVehicle() {
+
+			VehicleHandle v = NearbyVehicles().FirstOrDefault();
+			if( Exists(v) ) {
+				Matrix4x4 m = Matrix(v);
+				VehicleHash model = GetModel(v);
+				GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
+				var sw = new Stopwatch();
+				sw.Start();
+				var blocked = new ConcurrentSet<NodeHandle>();
+				NavMesh.GetAllHandlesInBox(m, backLeft, frontRight, blocked);
+				DrawBox(m, backLeft, frontRight);
+				UI.DrawText($"GetAllHandlesInBox: {blocked.Count} in {sw.ElapsedTicks} ticks");
+				foreach( Vector3 n in blocked.Select(NavMesh.Position) ) {
+					if( random.NextDouble() < .2 ) {
+						DrawSphere(n, .05f, Color.Red);
+					}
+				}
+			}
+
+		}
 	}
 }

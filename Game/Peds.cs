@@ -9,6 +9,9 @@ using static GTA.Native.MemoryAccess;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
 using System.Drawing;
+using System.Runtime.InteropServices;
+using static Shiv.Imports;
+using System.Linq;
 
 namespace Shiv {
 
@@ -16,7 +19,25 @@ namespace Shiv {
 
 
 		public static PedHandle Self { get; internal set; } = 0;
-		public static PedHandle[] NearbyHumans { get; internal set; } = new PedHandle[0];
+
+		private static int[] GetAllPeds(int max = 512) {
+			int[] ret;
+			unsafe {
+				fixed ( int* buf = new int[max] ) {
+					int count = WorldGetAllPeds(buf, max);
+					ret = new int[count];
+					Marshal.Copy(new IntPtr(buf), ret, 0, count);
+				}
+			}
+			return ret;
+		}
+
+		public static readonly Func<PedHandle[]> NearbyHumans = Throttle(101, () =>
+			GetAllPeds().Cast<PedHandle>()
+				.Where(h => h != Self && IsAlive(h) && IsHuman(h))
+				.OrderBy(DistanceToSelf)
+				.ToArray()
+		);
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool Exists(PedHandle ent) => Exists((EntHandle)ent);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static IntPtr Address(PedHandle p) => Address((EntHandle)p);
@@ -104,14 +125,20 @@ namespace Shiv {
 			return result.DidHit ? (start - result.HitPosition).Length() / len > .99f : false;
 		}
 
+		/// <summary>
+		/// A partial CanSee(). eg NearbyHumans().Where(CanSee(Self, opts));
+		/// </summary>
+		public static Func<PedHandle, bool> CanSee(PedHandle self, IntersectOptions opts) => (PedHandle p) => CanSee(self, p, opts);
+
 		public static void TaskClearAll() => Call(CLEAR_PED_TASKS, Self);
 		public static void TaskClearAll(PedHandle ped) => Call(CLEAR_PED_TASKS, ped);
 
 		public static bool IsSprinting(PedHandle ped) => ped == PedHandle.Invalid ? false : Call<bool>(IS_PED_SPRINTING, ped);
 		public static bool IsRunning(PedHandle ped) => ped == PedHandle.Invalid ? false : Call<bool>(IS_PED_RUNNING, ped);
 
-		public static Action ToggleSprint = Throttle(2000, () => {
+		public static Func<bool> ToggleSprint = Throttle(2000, () => {
 			SetControlValue(0, Control.Sprint, 1.0f);
+			return true;
 		});
 
 		public static bool IsTaskActive(PedHandle p, TaskID taskId) => Call<bool>(GET_IS_TASK_ACTIVE, p, taskId);
@@ -168,6 +195,8 @@ namespace Shiv {
 		public static bool IsShooting(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_SHOOTING, ped);
 		public static bool IsMale(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_MALE, ped);
 		public static bool IsOnVehicle(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_ON_VEHICLE, ped);
+		public static bool IsInvincible(PedHandle ent) => IsInvincible((EntHandle)ent);
+		public static void IsInvincible(PedHandle ent, bool value) => IsInvincible((EntHandle)ent, value);
 	}
 
 

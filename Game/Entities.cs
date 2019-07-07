@@ -11,13 +11,50 @@ using System.Numerics;
 using static GTA.Native.MemoryAccess;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
+using static Shiv.Imports;
+using System.Runtime.InteropServices;
 
 namespace Shiv {
 
 	public static partial class Global {
 
-		public static EntHandle[] NearbyObjects { get; internal set; } = new EntHandle[0];
-		public static EntHandle[] NearbyPickups { get; internal set; } = new EntHandle[0];
+		private static int[] GetAllObjects(int max = 512) {
+			int[] ret;
+			unsafe {
+				fixed ( int* buf = new int[max] ) {
+					int count = WorldGetAllObjects(buf, max);
+					ret = new int[count];
+					Marshal.Copy(new IntPtr(buf), ret, 0, count);
+				}
+			}
+			return ret;
+		}
+		public static readonly Func<EntHandle[]> NearbyObjects = Throttle(307, () =>
+			GetAllObjects()
+				.Cast<EntHandle>()
+				.Where(Exists)
+				.OrderBy(DistanceToSelf)
+				.ToArray()
+		);
+		private static int[] GetAllPickups(uint max = 512) {
+			int[] ret;
+			unsafe {
+				fixed ( int* buf = new int[max] ) {
+					int count = WorldGetAllPickups(buf, (int)max);
+					ret = new int[count];
+					Marshal.Copy(new IntPtr(buf), ret, 0, count);
+				}
+			}
+			return ret;
+		}
+		public static readonly Func<EntHandle[]> NearbyPickups = Throttle(709, () =>
+			GetAllPickups()
+				.Cast<EntHandle>()
+				.Where(Exists)
+				.OrderBy(DistanceToSelf)
+				.ToArray()
+		);
+
 
 		public static bool Exists(EntHandle ent) => ent == 0 ? false : Call<bool>(DOES_ENTITY_EXIST, ent);
 		public static bool IsAlive(EntHandle ent) => ent == 0 ? false : Exists(ent) && !Call<bool>(IS_ENTITY_DEAD, ent);
@@ -45,7 +82,6 @@ namespace Shiv {
 		public static Vector3 Position(EntHandle ent, BoneIndex bone) => Call<Vector3>(GET_WORLD_POSITION_OF_ENTITY_BONE, ent, bone);
 		public static Matrix4x4 Pose(EntHandle ent, BoneIndex bone) => Read<Matrix4x4>(GetEntityBonePoseAddress((int)ent, (uint)bone), 0x0);
 		public static void Pose(EntHandle ent, BoneIndex bone, Matrix4x4 value) => Write(GetEntityBonePoseAddress((int)ent, (uint)bone), 0x0, value);
-
 
 		public static float DistanceToSelf(EntHandle ent) => DistanceToSelf(Position(ent));
 		public static float Heading(EntHandle ent) => ent == 0 ? 0 : Call<float>(GET_ENTITY_HEADING, ent);
@@ -181,6 +217,30 @@ namespace Shiv {
 				default: return Color.White;
 			}
 		}
+		public static IEnumerable<EntHandle> Where(this IEnumerable<EntHandle> list, Color blipColor) => list.Where(x => GetColor(GetBlip(x)) == blipColor);
+		public static IEnumerable<PedHandle> Where(this IEnumerable<PedHandle> list, Color blipColor) => list.Where(x => GetColor(GetBlip(x)) == blipColor);
+		public static IEnumerable<VehicleHandle> Where(this IEnumerable<VehicleHandle> list, Color blipColor) => list.Where(x => GetColor(GetBlip(x)) == blipColor);
+		public static IEnumerable<EntHandle> Where(this IEnumerable<EntHandle> list, BlipHUDColor blipColor) => list.Where(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
+		public static IEnumerable<PedHandle> Where(this IEnumerable<PedHandle> list, BlipHUDColor blipColor) => list.Where(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
+		public static IEnumerable<VehicleHandle> Where(this IEnumerable<VehicleHandle> list, BlipHUDColor blipColor) => list.Where(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
+		public static IEnumerable<BlipHandle> Where(this IEnumerable<BlipHandle> list, BlipHUDColor blipColor) => list.Where(x => GetBlipHUDColor(x) == blipColor);
+
+		public static bool Any(this IEnumerable<EntHandle> list, Color blipColor) => list.Any(x => GetColor(GetBlip(x)) == blipColor);
+		public static bool Any(this IEnumerable<PedHandle> list, Color blipColor) => list.Any(x => GetColor(GetBlip(x)) == blipColor);
+		public static bool Any(this IEnumerable<VehicleHandle> list, Color blipColor) => list.Any(x => GetColor(GetBlip(x)) == blipColor);
+		public static bool Any(this IEnumerable<EntHandle> list, BlipHUDColor blipColor) => list.Any(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
+		public static bool Any(this IEnumerable<PedHandle> list, BlipHUDColor blipColor) => list.Any(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
+		public static bool Any(this IEnumerable<VehicleHandle> list, BlipHUDColor blipColor) => list.Any(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
+		public static bool Any(this IEnumerable<BlipHandle> list, BlipHUDColor blipColor) => list.Any(x => GetBlipHUDColor(x) == blipColor);
+
+		public static EntHandle FirstOrDefault(this IEnumerable<EntHandle> list, Color blipColor) => list.FirstOrDefault(x => GetColor(GetBlip(x)) == blipColor);
+		public static PedHandle FirstOrDefault(this IEnumerable<PedHandle> list, Color blipColor) => list.FirstOrDefault(x => GetColor(GetBlip(x)) == blipColor);
+		public static VehicleHandle FirstOrDefault(this IEnumerable<VehicleHandle> list, Color blipColor) => list.FirstOrDefault(x => GetColor(GetBlip(x)) == blipColor);
+		public static EntHandle FirstOrDefault(this IEnumerable<EntHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
+		public static PedHandle FirstOrDefault(this IEnumerable<PedHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
+		public static VehicleHandle FirstOrDefault(this IEnumerable<VehicleHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
+		public static BlipHandle FirstOrDefault(this IEnumerable<BlipHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(x) == blipColor);
+
 		public static IEnumerable<BlipHandle> GetAllBlips() => GetAllBlips(BlipSprite.Standard);
 		public static IEnumerable<BlipHandle> GetAllBlips(BlipSprite type) {
 			BlipHandle h = Call<BlipHandle>(GET_FIRST_BLIP_INFO_ID, type);
