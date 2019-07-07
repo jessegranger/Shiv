@@ -96,6 +96,86 @@ namespace Shiv {
 		}
 	}
 
+	public class Driving : State {
+		public Func<Vector3> Target;
+		public VehicleDrivingFlags DrivingFlags = (VehicleDrivingFlags)DrivingStyle.Normal;
+		public float StoppingRange = 4f;
+		public float Speed = 1f;
+		private uint Started = 0;
+		public Driving(Func<Vector3> target, State next):base(next) => Target = target;
+		public Driving(Vector3 target, State next) : this(() => target, next) { }
+
+		private State Start() {
+			if( Started == 0 ) {
+				Started = GameTime;
+				TaskClearAll();
+				Call(SET_DRIVER_RACING_MODIFIER, Self, 1f);
+				Call(SET_DRIVER_ABILITY, Self, 1f);
+				Call(SET_DRIVER_AGGRESSIVENESS, Self, .5f);
+				Call(TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE,
+					Self, PlayerVehicle, Target(),
+					Speed,
+					DrivingFlags,
+					StoppingRange
+				);
+			}
+			return this;
+		}
+		public override State OnTick() {
+			if( Started == 0 ) {
+				return Start();
+			}
+			int status = GetScriptTaskStatus(Self, TaskStatusHash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE);
+			UI.DrawText($"Drive: (started {Started}) (status {status})");
+			switch( status ) {
+				case 1: return this;
+				// TODO: case 2: AddBlockingBox(); return Restart();
+				case 7: return Next;
+			}
+			return this;
+		}
+	}
+
+	public class WanderDrive : State {
+		public VehicleDrivingFlags DrivingFlags = (VehicleDrivingFlags)DrivingStyle.Normal;
+		public float StoppingRange = 4f;
+		public float Speed = 1f;
+		private uint Started = 0;
+		public WanderDrive(State next):base(next) { }
+
+		private State Start() {
+			if( Started == 0 ) {
+				Started = GameTime;
+				TaskClearAll();
+				Call(SET_DRIVER_RACING_MODIFIER, Self, 1f);
+				Call(SET_DRIVER_ABILITY, Self, 1f);
+				Call(SET_DRIVER_AGGRESSIVENESS, Self, .5f);
+				Call(TASK_VEHICLE_DRIVE_WANDER,
+					Self, PlayerVehicle,
+					Speed,
+					DrivingFlags
+				);
+			}
+			return this;
+		}
+		public override State OnTick() {
+			if( Started == 0 ) {
+				return Start();
+			}
+			if( NavMesh.Ungrown.Count > 0 ) {
+				Call(SET_DRIVE_TASK_CRUISE_SPEED, Self, 5f);
+			} else {
+				Call(SET_DRIVE_TASK_CRUISE_SPEED, Self, 10f);
+			}
+			int status = GetScriptTaskStatus(Self, TaskStatusHash.TASK_VEHICLE_DRIVE_WANDER);
+			UI.DrawText($"Drive: status {status}");
+			switch( status ) {
+				case 1: return this;
+				case 7: return Next;
+			}
+			return this;
+		}
+	}
 	public class TaskDrive : Goal {
 		public Func<Vector3> Target;
 		public VehicleDrivingFlags DrivingFlags = (VehicleDrivingFlags)DrivingStyle.Normal;
