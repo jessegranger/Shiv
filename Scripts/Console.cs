@@ -13,34 +13,40 @@ namespace Shiv {
 	public class Console : Script {
 
 		public static Keys Toggle = Keys.F5;
-		public static Color Background = Color.Blue;
+		public static Color Background = Color.FromArgb(64, 0, 0, 128);
 		public static Color Foreground = Color.White;
 		public static int StickyLines = 5;
 
 		const float lineHeight = .019f;
-		const float panelHeight = .5f;
-		const float panelWidth = .6f;
-		const float closedX = .25f;
-		const int visibleLines = (int)(panelHeight / lineHeight) - 1;
+		const float top = 0.1f;
+		const float height = (1f - top) - lineHeight;
+		const float width = .5f;
+		const float left = .25f;
+		const float padding = .002f;
+		const int visibleLines = (int)(height / lineHeight) - 1;
+
 		static ConcurrentQueue<string> output = new ConcurrentQueue<string>();
 		static int outputScrollback = 0;
 		static string inputLine = "";
 		static int cursor = 0;
 		static List<string> inputHistory = new List<string>();
 		static int inputIndex = 0;
-		private static readonly float stickyLineOffset = 2 * lineHeight;
+		static readonly float stickyLineOffset = 2 * lineHeight;
 
 		public static bool IsOpen { get; internal set; } = false;
 		public static void Open() => IsOpen = true;
 		public static void Close() => IsOpen = false;
 
-		public static void Log(params string[] msgs) => Log(string.Join(" ", msgs));
 		public static void Log(string msg) {
-			while( msg.Length > 100 ) {
-				Log(msg.Substring(0, 99));
-				msg = msg.Substring(99);
+			string[] lines = msg.Split('\n');
+			foreach(string line in lines) {
+				int i = 0;
+				while( i < line.Length ) {
+					int len = Math.Min(99, line.Length - i);
+					output.Enqueue(line.Substring(i, len));
+					i += len;
+				}
 			}
-			output.Enqueue(msg);
 			while( output.Count > 1000 ) {
 				output.TryDequeue(out string discard);
 			}
@@ -50,19 +56,20 @@ namespace Shiv {
 			int lineNum = 0;
 			if( IsOpen ) {
 				Controls.DisableAllThisFrame(this.GetType());
-				UI.DrawRect(0f, 0f, panelWidth, panelHeight, Background);
+				UI.DrawRect(left, top, width, height, Background);
 				foreach( string line in output.Skip(output.Count - (visibleLines + outputScrollback)).Take(visibleLines) ) {
-					UI.DrawText(0f, (lineNum++) * lineHeight, line, .4f, 4, Foreground);
+					UI.DrawText(left, top + (lineNum++) * lineHeight, line, .4f, 4, Foreground);
 				}
 				string a = inputLine.Substring(0, cursor);
 				string b = inputLine.Substring(cursor);
-				UI.DrawText(0f, (visibleLines) * lineHeight, $"[{inputIndex}]> {a}|{b}", .4f, 4, Foreground);
+				UI.DrawText(left, top + (visibleLines) * lineHeight, $"[{inputIndex}]> {a}|{b}", .4f, 4, Foreground);
 			} else {
+				UI.DrawRect(left, .99f - stickyLineOffset - (StickyLines * lineHeight) - padding, width, height, Background);
 				foreach( string line in output.Skip(output.Count - StickyLines).Take(StickyLines) ) {
-					UI.DrawText(closedX, .99f - stickyLineOffset - (StickyLines * lineHeight) + (lineNum++) * lineHeight, line, .4f, 4, Foreground);
+					UI.DrawText(left, .99f - stickyLineOffset - (StickyLines * lineHeight) + (lineNum++) * lineHeight, line, .4f, 4, Foreground);
 				}
-				UI.DrawText(closedX, .99f - stickyLineOffset, 
-					$"{TotalTime.Elapsed.ToString().Substring(0,8)} FPS:{CurrentFPS:F0} {PlayerPosition} (H:{NearbyHumans.Length} V:{NearbyVehicles.Length} E:{NearbyObjects.Length})");
+				UI.DrawText(left, .99f - stickyLineOffset, 
+					$"{TotalTime.Elapsed.ToString().Substring(0,8)} FPS:{CurrentFPS:F0} {Round(PlayerPosition, 2)}");
 			}
 		}
 
@@ -81,7 +88,6 @@ namespace Shiv {
 			if (shiftDown) {
 				keyboardState[(int)Keys.ShiftKey] = 0xff;
 			}
-
 			if (ctrlDown) {
 				keyboardState[(int)Keys.ControlKey] = 0xff;
 				keyboardState[(int)Keys.Menu] = 0xff;
@@ -91,9 +97,7 @@ namespace Shiv {
 		}
 		private void AddKey(Keys key) => AddString(GetChar(key));
 		private void AddString(string c) {
-			string a = inputLine.Substring(0, cursor);
-			string b = inputLine.Substring(cursor);
-			inputLine = a + c + b;
+			inputLine = inputLine.Substring(0, cursor) + c + inputLine.Substring(cursor);
 			cursor += c.Length;
 		}
 
