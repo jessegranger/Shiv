@@ -7,235 +7,198 @@ using System.Threading.Tasks;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
 using static Shiv.Global;
+using static Shiv.NavMesh;
 using System.Drawing;
+using System.Diagnostics;
 
 namespace Shiv {
+
+	class Mission01_Detonate : State { // use the phone to detonate bomb
+		public override string Name => "Detonate";
+		public override State OnTick() {
+			return new PressKey(1, Control.Phone, 300,
+				new Delay(2000,
+				new PressKey(1, Control.PhoneSelect, 300,
+				new Delay(2000,
+				new PressKey(1, Control.PhoneSelect, 300,
+				new WaitForCutscene(
+				new WaitForBlip(BlipHUDColor.Yellow,
+				new Mission01_GotoVault())
+				))))));
+		}
+	}
+
+	class Mission01_GotoVault : State {
+		public override string Name => "Goto Vault";
+		public override State OnTick() {
+			Vector3 vault = Position(GetAllBlips().FirstOrDefault(b => GetBlipHUDColor(b) == BlipHUDColor.Yellow));
+			return retryCount++ > 10
+				? new Mission01_GetMoney()
+				: vault == Vector3.Zero
+				? new Delay(500, this)
+				: (State)new MoveTo(vault, new Mission01_GetMoney());
+		}
+		private uint retryCount = 0;
+	}
+
+	class Mission01_GetMoney : State {
+		public override string Name => "Get Money";
+		// todo, could enumerate pickups
+		public override State OnTick() {
+			if( !CanControlCharacter() ) {
+				return new WaitForControl(new Mission01_WalkOut());
+			}
+			Vector3 money = Position(GetAllBlips().FirstOrDefault(b => GetBlipColor(b) == BlipColor.MissionGreen));
+			if( retryCount++ > 10 ) {
+				return new Mission01_WalkOut();
+			}
+			if( money == Vector3.Zero ) {
+				return new Delay(500, this);
+			}
+			MoveToward(money);
+			return this;
+		}
+		private uint retryCount = 0;
+	}
+
+	class Mission01_WalkOut : State {
+		public override string Name => "Walk Out";
+		public override State OnTick() {
+			if( CanControlCharacter() ) {
+				return new MoveTo(Position(NearbyHumans().FirstOrDefault()), this);
+			}
+			return new WaitForControl(true, new Mission01_SelectTrevor());
+		}
+	}
+
+	class Mission01_SelectTrevor : State {
+		public override string Name => "Select Trevor";
+		public override State OnTick() {
+			return GetModel(Self) != PedHash.Trevor
+				? new PressKey(1, Control.SelectCharacterTrevor, 300, new Delay(500, this))
+				: (State)new Mission01_ShootGuard();
+		}
+	}
+
+	class Mission01_ShootGuard : State {
+		public override string Name => "Shoot Guard";
+		public override State OnTick() {
+			PedHandle ped = NearbyHumans().FirstOrDefault(p => GetModel(p) == PedHash.PrologueSec01Cutscene);
+			if( Exists(ped) && IsAlive(ped) ) {
+				KillTarget = ped;
+				return this;
+			} else {
+				return new WaitForControl(new WaitForBlip(BlipHUDColor.Yellow, new Mission01_MoveToCover()));
+			}
+		}
+	}
+	class Mission01_Complete : State { } // wrap up
+	class Mission01_MoveToCover : State {
+		public override string Name => "Move To Cover";
+		public override State OnTick() {
+			if( CanControlCharacter() && !IsInCover(Self) && !IsGoingIntoCover(Self) ) {
+				var pos = Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Yellow));
+				if( pos != Vector3.Zero ) {
+					return new MoveTo(pos, new EnterCover(pos, 2000, this) { Fail = this });
+				}
+			}
+			return new WaitForControl(new WaitForBlip(BlipHUDColor.Green, new Mission01_MoveToButton()));
+		}
+	}
+	class Mission01_MoveToButton : State {
+		public override string Name => "Move To Button";
+		public override State OnTick() {
+			if( CanControlCharacter() ) {
+				if( IsInCover(Self) ) {
+					return new PressKey(1, Control.Cover, 200, this);
+				}
+				var pos = Position(GetAllBlips().FirstOrDefault(b => GetColor(b) == Color.Green));
+				var dist = DistanceToSelf(pos);
+				if( dist < 2f ) {
+					MoveToward(pos, stoppingRange: 0f);
+					return this;
+				}
+				if( pos != Vector3.Zero ) {
+					return new MoveTo(pos, this);
+				}
+			}
+			return new WaitForControl(
+				new WaitForBlip(BlipHUDColor.Red,
+				new Mission01_KillAllCops()
+			));
+		}
+	}
+
+	class Mission01_KillAllCops : State {
+		public override string Name => "Kill Cops";
+		readonly Blacklist blacklist = new Blacklist("Cops");
+		public override State OnTick() {
+			if( CanControlCharacter() ) {
+				var hostile = NearbyHumans().Where(BlipHUDColor.Red);
+				if( Call<int>(GET_PLAYER_WANTED_LEVEL, CurrentPlayer) > 0 ) {
+					hostile = hostile.Concat(GetAllBlips(BlipSprite.PoliceOfficer).Select(GetEntity).Cast<PedHandle>());
+				}
+				var getaway = NearbyVehicles().Where(BlipHUDColor.Blue).FirstOrDefault();
+				if( hostile.Count() > 0 ) {
+					KillTarget = hostile.Without(p => IsInCover(p) && !IsAimingFromCover(p)).Min(DistanceToSelf);
+					if( KillTarget == PedHandle.Invalid && !IsInCover(Self) ) {
+						return new FindCover(Position(hostile.FirstOrDefault()), this);
+					}
+					WalkTarget = Position(KillTarget);
+				} else if( getaway != VehicleHandle.Invalid ) {
+					return new MoveTo(Position(getaway), this);
+				}
+			}
+			return new Mission01_Complete();
+		}
+	}
+
+	class Mission01_Threaten : State {
+		public override string Name => "Threaten Hostages";
+		public uint LastShift = 0;
+		public override State OnTick() {
+			IEnumerable<PedHandle> targets = NearbyHumans().Where(BlipHUDColor.Red).Where(p => CanSee(Self, p, IntersectOptions.Map));
+			if( targets.Count() > 0 ) {
+				if( GameTime - LastShift > 3000 ) {
+					LastShift = GameTime;
+					AimTarget = Vector3.Zero;
+					AimAtHead = targets.ToArray().Random<PedHandle>();
+				}
+				if( AimAtHead != PedHandle.Invalid ) {
+					return this;
+				}
+			}
+			AimAtHead = PedHandle.Invalid;
+			return new Delay(2000, new Mission01_Detonate());
+		}
+	}
+
+	class Mission01_Approach : State {
+		public override string Name => "Approach Hostages";
+		public override State OnTick() {
+			if( !CanControlCharacter() ) {
+				AimTarget = Vector3.Zero;
+				return new Mission01_Threaten();
+			}
+			PedHandle ped = DangerSense.NearbyDanger.FirstOrDefault();
+			AimTarget = HeadPosition(ped);
+			if( AimTarget != Vector3.Zero ) {
+				if( DistanceToSelf(AimTarget) > 2f ) {
+					return new MoveTo(PutOnGround(Position(ped), 1f), this);
+				}
+			}
+			return this;
+		}
+	}
+	/*
 	abstract class Mission : Goal {
 		public override string ToString() => "Mission";
 		public static bool IsInMission() => Call<bool>(GET_MISSION_FLAG);
+		public override GoalStatus OnTick() => !IsInMission() ? (Status = GoalStatus.Complete) : Status;
 	}
 	class Mission01 : Mission {
 		public static int InteriorID = 8706;
 		public static readonly Vector3 StartLocation = new Vector3(5310.5f, -5211.87f, 83.52f);
-		public enum Phase {
-			Approach, // walk into back room
-			Threaten, // scare everyone into vault
-			Detonate, // use the phone to detonate bomb
-			GotoMoney, // walk through the door, toward yellow dot money pickup
-			GetMoney, // pick up green dots inside the vault
-			WalkOut, // walk out of the vault
-			SelectTrevor,
-			ShootGuard, // shoot the guard in the head
-			Complete, // wrap up
-			MoveToCover,
-			MoveToButton,
-			KillAllCops,
-			TakeCover,
-		}
-		public static Menu ToMenu() {
-			var menu = new Menu(.4f, .4f, .2f);
-			Enum.GetValues(typeof(Phase)).Each<Phase>(p => menu.Item(p.ToString(), () => Goals.Immediate(new Mission01() { CurrentPhase = p })));
-			return menu;
-		}
-		public Phase CurrentPhase = Phase.Approach;
-		bool WaitForControl = true;
-		uint PauseStarted = 0;
-		uint LastShift = 0;
-		BlipHUDColor WaitForBlip = BlipHUDColor.Invalid;
-		private static Blacklist blacklist = new Blacklist("combat");
-		private GoalStatus NextPhase(Phase p, BlipHUDColor waitFor=BlipHUDColor.Invalid) {
-			Log($"Going to next phase: {p}");
-			WalkTarget = Vector3.Zero;
-			AimTarget = Vector3.Zero;
-			AimAtHead = PedHandle.Invalid;
-			CurrentPhase = p;
-			WaitForControl = true;
-			WaitForBlip = waitFor;
-			PauseStarted = 0;
-			return Status;
-		}
-		private float Threat(PedHandle ped) {
-			if( blacklist.Contains(ped) ) {
-				return 0f;
-			}
-
-			if( GetColor(GetBlip(ped)) != Color.Red ) {
-				return 0f;
-			}
-
-			float threat = 1 / DistanceToSelf(ped);
-			threat += IsAiming(ped) ? .1f : 0f;
-			threat += IsAimingFromCover(ped) ? .1f : 0f;
-			UI.DrawTextInWorldWithOffset(Position(ped),0f, 0.02f, $"Threat:{threat}");
-			return threat;
-		}
-		public override GoalStatus OnTick() {
-			if (!IsInMission()) {
-				return Status = GoalStatus.Complete;
-			}
-
-			UI.DrawText($"[Mission01] Phase: {CurrentPhase}");
-
-			bool HasControl = CanControlCharacter();
-			if( WaitForControl ) {
-				if( HasControl ) {
-					WaitForControl = false;
-				}
-
-				return Status;
-			}
-			IEnumerable<BlipHandle> blips = GetAllBlips(BlipSprite.Standard);
-			if( WaitForBlip != BlipHUDColor.Invalid ) {
-				if( blips.Any(b => GetBlipHUDColor(b) == WaitForBlip) ) {
-					WaitForBlip = BlipHUDColor.Invalid;
-				} else {
-					UI.DrawText(.5f, .5f, $"Waiting for blip {WaitForBlip}");
-					return Status;
-				}
-			}
-			PedHandle ped;
-			Vector3 pos;
-			if( PauseStarted == 0 ) {
-				PauseStarted = GameTime;
-			} else if( GameTime - PauseStarted > 200 ) {
-				switch( CurrentPhase ) {
-					case Phase.Approach:
-						if( HasControl ) {
-							if( NearbyVehicles.FirstOrDefault(v => GetColor(GetBlip(v)) == Color.Blue) != VehicleHandle.Invalid ) {
-								return NextPhase(Phase.KillAllCops);
-							}
-							ped = DangerSense.NearbyDanger.FirstOrDefault();
-							PedHash model = GetModel(ped);
-							if( model == PedHash.PrologueSec01Cutscene ) {
-								return NextPhase(Phase.ShootGuard); // skip ahead, we must be restarting mid-mission
-							} else if( model == PedHash.Snowcop01SMM ) {
-								return NextPhase(Phase.KillAllCops);
-							}
-							AimTarget = HeadPosition(ped);
-							if( AimTarget != Vector3.Zero ) {
-								if( DistanceToSelf(AimTarget) > 2f ) {
-									Goals.Immediate(new WalkTo(PutOnGround(Position(ped), 1f)));
-								}
-								return Status;
-							}
-						}
-						return NextPhase(Phase.Threaten);
-					case Phase.Threaten:
-						if( HasControl ) {
-							IEnumerable<PedHandle> targets = NearbyHumans.Where(p => GetBlipHUDColor(GetBlip(p)) == BlipHUDColor.Red);
-							if( targets.Count() > 0 ) {
-								if( GameTime - LastShift > 3000 ) {
-									LastShift = GameTime;
-									AimAtHead = targets.ToArray().Random<PedHandle>();
-								}
-								if( AimAtHead != PedHandle.Invalid ) {
-									return Status;
-								}
-							}
-						}
-						return NextPhase(Phase.Detonate);
-					case Phase.Detonate:
-						if( HasControl ) {
-							Goals.Immediate(new KeySequence() { Spacing = 100 }
-								.Add(1, Control.Phone, 300)
-								.Add(1, Control.PhoneSelect, 300)
-								.Add(1, Control.PhoneSelect, 300));
-						}
-						return NextPhase(Phase.GotoMoney);
-					case Phase.GotoMoney:
-						Goals.Immediate(new TaskWalk(Position(blips.FirstOrDefault(b => GetBlipHUDColor(b) == BlipHUDColor.Yellow))));
-						return NextPhase(Phase.GetMoney);
-					case Phase.GetMoney:
-						if( HasControl ) {
-							// Log("Blip Colors: ", String.Join(" ", GetAllBlips(BlipSprite.Standard).Select(b => GetBlipColor(b).ToString())));
-							Vector3 money = PutOnGround(Position(blips.FirstOrDefault(b => GetBlipColor(b) == BlipColor.MissionGreen)), 1.5f);
-							if( money != Vector3.Zero ) {
-								if( DistanceToSelf(money) < 10f ) {
-									MoveToward(money);
-								} else {
-									Goals.Immediate(new WalkTo(money));
-								}
-								return Status;
-							}
-						}
-						return NextPhase(Phase.WalkOut);
-					case Phase.WalkOut:
-						if( HasControl ) {
-							if( blips.FirstOrDefault(b => GetColor(b) == Color.Yellow) == BlipHandle.Invalid ) {
-								if( MoveResult.Continue == MoveToward(Position(NearbyHumans.FirstOrDefault())) ) {
-									return Status;
-								}
-							}
-						}
-						return NextPhase(Phase.SelectTrevor);
-					case Phase.SelectTrevor:
-						ped = NearbyHumans.FirstOrDefault(p => GetModel(p) == PedHash.PrologueSec01Cutscene);
-						if( ped != PedHandle.Invalid ) {
-							Goals.Immediate(new KeySequence() { Spacing = 100 }.Add(1, Control.SelectCharacterTrevor, 500));
-						}
-						return NextPhase(Phase.ShootGuard);
-					case Phase.ShootGuard:
-						if( HasControl ) {
-							ped = NearbyHumans.FirstOrDefault(p => GetModel(p) == PedHash.PrologueSec01Cutscene);
-							if( ped != PedHandle.Invalid ) {
-								UI.DrawText($"IS_PLAYER_TARGETING_ENTITY: {Call<bool>(IS_PLAYER_TARGETTING_ENTITY, CurrentPlayer, ped)}");
-								UI.DrawText($"AimingAtEntity(): {AimingAtEntity()}");
-								UI.DrawText($"IsFreeAiming(): {IsFreeAiming(CurrentPlayer)}");
-								UI.DrawText($"IsFreeAimingAtEntity(ped): {IsFreeAimingAt(CurrentPlayer, ped)}");
-								UI.DrawText($"IsAimingAtEntity(ped): {IsAimingAtEntity(ped)}");
-								KillTarget = ped;
-								return Status;
-							}
-						}
-						Goals.Immediate(new Wait(12000, () => GetAllBlips(BlipSprite.Standard).Any(b => GetColor(b) == Color.Yellow)));
-						return NextPhase(Phase.MoveToCover);
-					case Phase.MoveToCover:
-						if( HasControl && !IsInCover(Self) ) {
-							pos = Position(blips.FirstOrDefault(b => GetColor(b) == Color.Yellow));
-							if( pos != Vector3.Zero ) {
-								// Goals.Immediate(new TakeCover(pos));
-								return Status;
-							}
-						}
-						Goals.Immediate(new Wait(20000, () => GetAllBlips(BlipSprite.Standard).Any(b => GetColor(b) == Color.Green)));
-						return NextPhase(Phase.MoveToButton);
-					case Phase.MoveToButton:
-						pos = Position(blips.FirstOrDefault(b => GetColor(b) == Color.Green));
-						if( pos != Vector3.Zero ) {
-							Goals.Immediate(new TaskWalk(pos));
-							return Status;
-						}
-						Goals.Immediate(new Wait(20000, () => GetAllBlips(BlipSprite.Standard).Any(b => GetColor(b) == Color.Red)));
-						return NextPhase(Phase.KillAllCops);
-					case Phase.TakeCover:
-						if( ! IsInCover(Self) ) {
-							// Goals.Immediate(new TakeCover());
-							return Status;
-						}
-						return NextPhase(Phase.KillAllCops);
-					case Phase.KillAllCops:
-						if( HasControl ) {
-							IEnumerable<PedHandle> cops = NearbyHumans.Where(p => GetColor(GetBlip(p)) == Color.Red);
-							int count = cops.Count();
-							if( count > 0 ) {
-								KillTarget = cops.OrderByDescending(Threat).FirstOrDefault();
-								WalkTarget = Position(KillTarget);
-							} else {
-								KillTarget = PedHandle.Invalid;
-								WalkTarget = GetVehicleOffset(NearbyVehicles.FirstOrDefault(v => GetColor(GetBlip(v)) == Color.Blue), VehicleOffsets.DriverDoor);
-								// in this case, once we get close to WalkTarget, we lose control, and WalkTarget clears itself
-							}
-							return Status;
-						}
-						return NextPhase(Phase.Complete);
-					case Phase.Complete:
-						WalkTarget = Vector3.Zero;
-						KillTarget = PedHandle.Invalid;
-						return Status = GoalStatus.Complete;
-				}
-			}
-
-			return Status;
-		}
 	}
+	*/
 }
