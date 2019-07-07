@@ -53,7 +53,7 @@ namespace Shiv {
 
 		public static bool LooksDangerous(PedHandle ped) => GetColor(GetBlip(ped)) == Color.Red;
 		public override void OnTick() {
-			NearbyDanger = NearbyHumans.Where(LooksDangerous).ToArray();
+			NearbyDanger = NearbyHumans().Where(LooksDangerous).ToArray();
 			// NearbyHumans.Each(ped => { DrawSphere(HeadPosition(ped), .1f, Color.Beige); });
 			foreach( PedHandle ped in NearbyDanger ) {
 				UI.DrawTextInWorld(Position(ped), $"Danger: {GetModel(ped)}");
@@ -95,7 +95,9 @@ namespace Shiv {
 			foreach( var blip in GetAllBlips(BlipSprite.Safehouse) ) {
 				UI.DrawText($"Safehouse: {DistanceToSelf(Position(blip))}");
 			}
-			UI.DrawText($"Blips({blipCount}): {msg}");
+			Items(BlipSprite.Standard, BlipSprite.PoliceOfficer).Each(s =>
+				UI.DrawText($"Blips({s}): {string.Join(" ", GetAllBlips(s).Select(GetBlipColor))}")
+			);
 		}
 	}
 
