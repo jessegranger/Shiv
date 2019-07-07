@@ -27,15 +27,13 @@ namespace Shiv {
 			Failed,
 			Complete
 		}
-		public static MoveResult MoveToward(EntHandle ent) => MoveToward(Position(ent));
-		public static MoveResult MoveToward(PedHandle ent) => MoveToward(Position(ent));
-		public static MoveResult MoveToward(Vector3 pos, bool debug=false) {
+		public static MoveResult MoveToward(Vector3 pos, float stoppingRange=.25f, bool debug=false) {
 			if( pos == Vector3.Zero ) { return MoveResult.Complete; }
 			ObstructionFlags result = CheckObstruction(PlayerPosition, (pos - PlayerPosition), debug);
 			if( ! IsWalkable(result ) ) {
 				if( IsClimbable(result) ) {
 					SetControlValue(0, Control.Jump, 1.0f); // Attempt to jump over a positive obstruction
-				} else {
+				} else if( Speed(Self) < .01f ) {
 					return MoveResult.Failed;
 				}
 			}
@@ -54,14 +52,38 @@ namespace Shiv {
 				UI.DrawTextInWorld(pos, $"dX:{dX:F2} dY:{dY:F2} dist:{DistanceToSelf(pos):F2}");
 			}
 
-			return dist < .25f ? MoveResult.Complete : MoveResult.Continue;
+			return dist < stoppingRange ? MoveResult.Complete : MoveResult.Continue;
 		}
-		public static MoveResult FollowPath(IEnumerable<Vector3> path) => path == null ? MoveResult.Complete : MoveToward(Bezier(.5f, path.Take(4).ToArray()));
+
+		/*
+		private static Vector3 GetFirstStep(IEnumerable<Vector3> path) {
+			if( path == null || path.Count() < 1 )
+				return Vector3.Zero;
+			var a = path.First();
+			if( path.Count() > 1 ) {
+				var steps = Items(PlayerPosition).Concat(path.Take(5)).ToArray();
+				a = Vector3.Lerp(a, 
+					Bezier(1f / 5f, steps), 
+					Clamp(0.9f / (PlayerPosition - a).Length(), 0f, 1f)
+				);
+			}
+			return a;
+		}
+		*/
+		public static Vector3 FirstStep(IEnumerable<NodeHandle> path) => FirstStep(path.Take(5).Select(NavMesh.Position));
+		// public static Vector3 FirstStep(IEnumerable<Vector3> path) => Bezier(.25f, Items(PlayerPosition).Concat(path.Take(5)).ToArray());
+		public static Vector3 FirstStep(IEnumerable<Vector3> path) {
+			var first = path.First();
+			var second = path.Skip(1).First();
+			return Vector3.Lerp(first, second, Clamp(2f * (float)Pow(1f - DistanceToSelf(first), 2), 0f, 1f));
+		}
+		public static MoveResult FollowPath(IEnumerable<NodeHandle> path, float steppingRange=0.2f) => FollowPath(path.Take(5).Select(NavMesh.Position));
+		public static MoveResult FollowPath(IEnumerable<Vector3> path, float steppingRange=0.2f) => path == null || path.Count() < 2 ? MoveResult.Complete : MoveToward(FirstStep(path), steppingRange);
 
 		private static float LookActivation(float x, float factor) => (float)(x * CurrentFPS * Sqrt(Abs(CurrentFPS * x * factor)));
-		public static bool LookToward(Vector3 pos) {
+		public static bool LookToward(Vector3 pos, bool debug=false) {
 			pos = pos - Velocity(Self) / CurrentFPS;
-			DrawSphere(pos, .05f, Color.Yellow);
+			DrawSphere(pos, .02f, Color.Yellow);
 			Vector3 forward = Forward(CameraMatrix);
 			Vector3 cam = Position(CameraMatrix);
 			Vector3 delta = Vector3.Normalize(pos - cam) - forward;
@@ -77,10 +99,11 @@ namespace Shiv {
 			SetControlValue(1, Control.LookLeftRight, dX);
 			SetControlValue(1, Control.LookUpDown, -dY);
 			// UI.DrawText(.5f, .5f, $"Look Controls: {Round(delta.X,2)} {Round(delta.Z,2)} -> {Round(dX,1)} {Round(dY,1)} (len {delta.LengthSquared()})");
-			UI.DrawText(.5f, .5f, $"Aim delta: {delta.LengthSquared():F5}");
+			if( debug ) { UI.DrawText(.5f, .5f, $"Aim delta: {delta.LengthSquared():F5}"); }
 			return delta.LengthSquared() < .0001f;
 		}
 
+		public static Vector3 LookTarget = Vector3.Zero;
 		public static Vector3 AimTarget = Vector3.Zero;
 		public static PedHandle AimAtHead = PedHandle.Invalid;
 		public static PedHandle KillTarget = PedHandle.Invalid;
@@ -92,12 +115,12 @@ namespace Shiv {
 			set {
 				walkTarget = value;
 				NodeHandle startNode = PlayerNode;
-				NodeHandle targetNode = GetHandle(PutOnGround(value, 1f));
+				NodeHandle targetNode = Handle(PutOnGround(value, 1f));
 				if( targetNode == NodeHandle.Invalid ) {
 					walkTarget = Vector3.Zero;
 					return;
 				}
-				WalkPath = new PathRequest(PlayerNode, targetNode, 1000, false, true, true);
+				WalkPath = new PathRequest(PlayerNode, targetNode, 50, false, true, true, 1);
 			}
 		}
 
@@ -117,12 +140,15 @@ namespace Shiv {
 			Ankle =  1024
 		}
 		public static bool IsClimbable(ObstructionFlags flags) => (flags & ObstructionFlags.CannotClimb) == 0;
-		public static bool IsWalkable(ObstructionFlags flags) => (0 == (flags &
-			(ObstructionFlags.Waist | ObstructionFlags.Stomach | ObstructionFlags.Chest | ObstructionFlags.Shoulder | ObstructionFlags.Head)));
+		public static bool IsWalkable(ObstructionFlags flags) => 0 == (flags &
+			(ObstructionFlags.Waist | ObstructionFlags.Stomach | ObstructionFlags.Chest | ObstructionFlags.Shoulder | ObstructionFlags.Head));
 
 		public static ObstructionFlags CheckObstruction(Vector3 start, Vector3 heading, bool debug = false) {
 
 			ObstructionFlags ret = ObstructionFlags.None;
+			if( Call<bool>(IS_PED_RAGDOLL, Self) ) {
+				return ret;
+			}
 
 			heading = new Vector3(heading.X, heading.Y, 0f);
 
@@ -145,7 +171,7 @@ namespace Shiv {
 				head.Z -= stepSize;
 			}
 			if( debug ) {
-				string str = IsWalkable(ret) ? "Walkable" : IsClimbable(ret) ? "Climbable" : "Impassable";
+				string str = IsWalkable(ret) ? "Walkable" : IsClimbable(ret) ? "Climbable" : "Blocked";
 				UI.DrawTextInWorld(HeadPosition(Self) + heading, $"{str}");
 			}
 			return ret;
@@ -200,22 +226,26 @@ namespace Shiv {
 				ForcedAim(CurrentPlayer, true);
 			} else if( Exists(KillTarget) && IsAlive(KillTarget) ) {
 				ForcedAim(CurrentPlayer, true);
-				if( LookToward(HeadPosition(KillTarget) + Velocity(KillTarget) * 3 / CurrentFPS)
+				if( LookToward(HeadPosition(KillTarget) + Velocity(KillTarget) / CurrentFPS)
 					|| IsAimingAtEntity(KillTarget) ) {
 					SetControlValue(1, Control.Attack, 1f);
 				}
+			} else if( LookTarget != Vector3.Zero ) {
+				LookToward(LookTarget);
 			} else {
 				KillTarget = PedHandle.Invalid;
 				AimAtHead = PedHandle.Invalid;
 				ForcedAim(CurrentPlayer, false);
 			}
 			if( WalkTarget != Vector3.Zero ) {
-				UI.DrawText($"WalkTarget: {WalkTarget}");
-				if( DistanceToSelf(WalkTarget) < 2f
-					|| WalkPath.IsFailed() ) {
+				if( WalkPath.IsFailed() ) {
+					Log($"WalkPath Failed: {WalkPath.GetError()}");
+					WalkTarget = Vector3.Zero;
+				} else if( DistanceToSelf(WalkTarget) < 2f ) {
+					Log($"WalkPath Complete.");
 					WalkTarget = Vector3.Zero;
 				} else if( WalkPath.IsReady() ) {
-					if( FollowPath(WalkPath.GetResult().Take(4).Select(Position)) == MoveResult.Failed ) {
+					if( FollowPath(WalkPath.GetResult()) == MoveResult.Failed ) {
 						MoveToward(WalkTarget);
 					}
 				}
