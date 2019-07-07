@@ -11,10 +11,10 @@ using static GTA.Native.Function;
 using static GTA.Native.Hash;
 using static Shiv.Global;
 using static Shiv.Imports;
+using static Shiv.NavMesh;
 using Keys = System.Windows.Forms.Keys;
 
 namespace Shiv {
-
 
 	/// <summary>
 	/// Shiv is the special root class, searched for by the Loader (Shiv.asi).
@@ -28,83 +28,6 @@ namespace Shiv {
 	/// - Main.shiv (this project, class Shiv)
 	/// </remarks>
 	public static class Shiv {
-		private static int[] GetAllObjects(int max = 512) {
-			int[] ret;
-			unsafe {
-				fixed ( int* buf = new int[max] ) {
-					int count = WorldGetAllObjects(buf, max);
-					ret = new int[count];
-					Marshal.Copy(new IntPtr(buf), ret, 0, count);
-				}
-			}
-			return ret;
-		}
-		private static readonly Action RefreshObjects = Throttle(304, () => {
-			NearbyObjects = GetAllObjects()
-				.Cast<EntHandle>()
-				.Where(Exists)
-				.OrderBy(DistanceToSelf)
-				.ToArray();
-		});
-
-		private static int[] GetAllPeds(int max = 512) {
-			int[] ret;
-			unsafe {
-				fixed ( int* buf = new int[max] ) {
-					int count = WorldGetAllPeds(buf, max);
-					ret = new int[count];
-					Marshal.Copy(new IntPtr(buf), ret, 0, count);
-				}
-			}
-			return ret;
-		}
-		private static readonly Action RefreshHumans = Throttle(201, () => {
-			NearbyHumans = GetAllPeds().Cast<PedHandle>()
-				.Where(h => h != Self && IsAlive(h) && IsHuman(h))
-				.OrderBy(DistanceToSelf)
-				.ToArray();
-		});
-
-		private static int[] GetAllPickups(uint max = 512) {
-			int[] ret;
-			unsafe {
-				fixed ( int* buf = new int[max] ) {
-					int count = WorldGetAllPickups(buf, (int)max);
-					ret = new int[count];
-					Marshal.Copy(new IntPtr(buf), ret, 0, count);
-				}
-			}
-			return ret;
-		}
-		private static readonly Action RefreshPickups = Throttle(1003, () => {
-			NearbyPickups = GetAllPickups()
-				.Cast<EntHandle>()
-				.Where(Exists)
-				.OrderBy(DistanceToSelf)
-				.ToArray();
-		});
-
-		private static int[] GetAllVehicles(uint max = 512) {
-			if( max == 0 ) {
-				throw new ArgumentException();
-			}
-			int[] ret;
-			unsafe {
-				fixed ( int* buf = new int[max] ) {
-					int count = WorldGetAllVehicles(buf, (int)max);
-					ret = new int[count];
-					Marshal.Copy(new IntPtr(buf), ret, 0, count);
-				}
-			}
-			return ret;
-		}
-		private static readonly Action RefreshVehicles = Throttle(302, () => {
-			NearbyVehicles = GetAllVehicles().Cast<VehicleHandle>()
-				.Where(v => v != PlayerVehicle && Exists(v))
-				.OrderBy(DistanceToSelf)
-				.ToArray();
-		});
-
 		private static TextWriter LogFile;
 		public static void Log(string s) {
 			string msg = $"{TotalTime.Elapsed} " + s;
@@ -156,6 +79,7 @@ namespace Shiv {
 				} catch( Exception err ) {
 					Log($"Failed to init {cur.Value.GetType().Name}: {err.Message}");
 					Log(err.StackTrace);
+					Log(err.InnerException?.ToString());
 					cur = Script.Order.RemoveAndContinue(cur);
 				}
 			}
@@ -180,12 +104,6 @@ namespace Shiv {
 				PlayerMatrix = Matrix(Self);
 				PlayerPosition = Position(PlayerMatrix);
 				PlayerVehicle = CurrentVehicle(Self);
-
-				// throttled state refreshers
-				RefreshHumans(); // scripts should use the static NearbyHumans, NearbyVehicles, etc
-				RefreshVehicles();
-				RefreshObjects();
-				RefreshPickups();
 
 				int dt = (int)GameTime - (int)LastGameTime;
 				LastGameTime = GameTime;
