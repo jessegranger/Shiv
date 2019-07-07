@@ -34,6 +34,13 @@ namespace Shiv {
 			return minItem;
 		}
 
+		public static IEnumerable<T> Without<T>(this IEnumerable<T> list, T item) {
+			foreach( T x in list ) {
+				if( ! x.Equals(item) ) {
+					yield return x;
+				}
+			}
+		}
 		public static IEnumerable<T> Without<T>(this IEnumerable<T> list, Predicate<T> pred) {
 			foreach( T x in list ) {
 				if( !pred(x) ) {
