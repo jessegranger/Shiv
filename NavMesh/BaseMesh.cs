@@ -37,27 +37,29 @@ namespace Shiv {
 	public partial class NavMesh : Script {
 
 		public static bool Enabled = true;
-		public static bool SaveEnabled = false;
-		public static bool LoadEnabled = false;
+		public static bool SaveEnabled = true;
+		public static bool LoadEnabled = true;
 
-		private const int magicBytes = 0x000FEED8; // if any constants/structure below should change, increment the magic bytes and update Save/Read methods
+		private const int magicBytes = 0x000FEED9; // if any constants/structure below should change, increment the magic bytes and update Save/Read methods
 
 		private const ulong mapRadius = 8192; // in the world, the map goes from -8192 to 8192
 		private const float gridScale = .5f; // how big are the X,Y steps of the mesh
 		private const float zScale = .25f; // how big are the Z steps of the mesh
-		private const float zDepth = 1000f; // how deep underwater can the mesh go
+		private const float zDepth = 200f; // how deep underwater can the mesh go
 																				// zDepth can be at most mapRadius*zScale (==1024), because zScale changes vertical node density
-																				// which makes mapShift too small, which corrupts NodeHandles
-		private const int mapShift = 15; //  (int)Math.Log(mapRadius * 2 / gridScale, 2);
-		private static readonly uint mapShiftMask = (1u << mapShift) - 1;
+		internal const ulong handleMask = (1ul << worldBits) - 1;
 
 
 		// how to pack Vector3 into a long:
-		// add the mapRadius (so strictly positive)
-		// divide X,Y,Z by their scales
-		// round to a grid center and cast to ulong
-		// knowing that all values will be in [0..mapRadius*2/scale] = 32k = 15 bits per coord
-		// storing X,Y,Z this way uses 3 * 15 bits = 45 bits = 1 ulong with 19 bits to spare
+		private const int regionShift = 7;
+		private const int regionXBits = 8;
+		private const int regionYBits = 8;
+		private const int regionZBits = 5;
+		private const int regionBits = regionXBits + regionYBits + regionZBits;
+		private const int worldXBits = 15;
+		private const int worldYBits = 15;
+		private const int worldZBits = 13;
+		private const int worldBits = worldXBits + worldYBits + worldZBits;
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static NodeHandle Handle(Vector3 v) {
 			if( v == Vector3.Zero ) {
@@ -65,23 +67,29 @@ namespace Shiv {
 			}
 			GetHandleTimer.Start();
 			GetHandleCount += 1;
-			// v.X starts [-8192..8192] becomes [0..32k]
-			ulong x1 = (ulong)(v.X + mapRadius);
-			ulong y1 = (ulong)(v.Y + mapRadius);
-			ulong z1 = (ulong)((v.Z + zDepth) / zScale);
-			ulong nx = (ulong)(x1 << 1); // << 1 equivalent to / gridScale (/.5f) == (*2) == (<<1)
-			ulong ny = (ulong)(y1 << 1);
-			ulong nz = (ulong)(z1); // << 2 equivalent to / zScale (/.25f) == (* 4) or (<< 2)
-			uint rx = (uint)(x1 >> regionShift); // Round((v.X + mapRadius) / regionScale)); // (/128) == (>>7)
-			uint ry = (uint)(y1 >> regionShift);
-			uint rz = (uint)(z1 >> regionShift);
-			ulong r = ((rx << (regionShift << 1)) | (ry << regionShift) | rz);
-			var node = (NodeHandle)(
-				(r << (mapShift * 3)) |
-				(nx << (mapShift << 1)) |
-				(ny << mapShift) |
-				nz
-			);
+
+			// shift to absolute positions (move 0,0 to southwest corner of the world)
+			float x1 = (float)(v.X + mapRadius); // from [-8192..8192] to [0..16k]
+			float y1 = (float)(v.Y + mapRadius); // from [-8192..8192] to [0..16k]
+			float z1 = (float)(Clamp(v.Z,-zDepth,1024-zDepth) + zDepth); // from [-200..800] to [0..1k]
+
+			ulong nx = (ulong)Round(x1 / gridScale); // from [0..16k] to [0..32k] = 15 bits per X coord
+			ulong ny = (ulong)Round(y1 / gridScale); // from [0..16k] to [0..32k] = 15 bits per Y coord
+			ulong nz = (ulong)Round(z1 / zScale); // from [0..1k] to [0..4k] = 13 bits per Z coord
+
+			uint rx = (uint)(nx >> regionShift); // from [0..32k] to [0..256] = 8 bits per region x
+			uint ry = (uint)(ny >> regionShift); // from [0..32k] to [0..256] = 8 bits per region y
+			uint rz = (uint)(nz >> regionShift); // from [0..4k] to [0..32] = 5 bits per region z
+
+			// total bits: 15 + 15 + 13 + 8 + 8 + 5 = 64
+
+			ulong r = (rx << (regionYBits + regionZBits)) | (ry << regionZBits) | rz; // 21 bits of region coords
+			ulong n = (nx << (worldYBits + worldZBits)) | (ny << worldZBits) | nz; // 43 bits of world coords
+			NodeHandle node = (NodeHandle)( (r << worldBits) | n );
+			// final output handle:
+			// 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+			// |<-rx->| |<-ry->| | rz||<-    nx     ->||<-    ny     ->||<-   nz   ->|
+
 			GetHandleTimer.Stop();
 			return node;
 		}
@@ -94,13 +102,12 @@ namespace Shiv {
 			if( handle == NodeHandle.Invalid ) {
 				return Vector3.Zero;
 			}
-			ulong mask = (ulong)(1 << mapShift) - 1; // make a 15-bit mask
 			ulong h = (ulong)handle;
-			ulong nz = h & mask;
-			h >>= mapShift;
-			ulong ny = h & mask;
-			h >>= mapShift;
-			ulong nx = h & mask;
+			ulong nz = h & ((1 << 13) - 1); // extract bottom 13 bits for nz
+			h >>= 13;
+			ulong ny = h & ((1 << 15) - 1); // next 15 bits are ny
+			h >>= 15;
+			ulong nx = h & ((1 << 15) - 1); // next 15 bits are nx
 			float x = (nx * gridScale) - mapRadius;
 			float y = (ny * gridScale) - mapRadius;
 			float z = (nz * zScale) - zDepth;
@@ -116,9 +123,35 @@ namespace Shiv {
 		private static uint started = 0;
 		private static uint saved = 0;
 		private static uint aborted = 0;
-		public static ConcurrentDictionary<NodeHandle, NodeEdges> AllEdges = new ConcurrentDictionary<NodeHandle, NodeEdges>();
+
+		public class NodeSet {
+
+			internal ConcurrentDictionary<RegionHandle, Future<ConcurrentDictionary<NodeHandle, NodeEdges>>> Regions = new ConcurrentDictionary<RegionHandle, Future<ConcurrentDictionary<NodeHandle, NodeEdges>>>();
+
+			public int Count() => Regions.Values.Select(f => f.WaitResult()).Sum(d => d.Count);
+
+			internal ConcurrentSet<RegionHandle> dirtyRegions = new ConcurrentSet<RegionHandle>();
+			private static Future<ConcurrentDictionary<NodeHandle, NodeEdges>> regionFactory(RegionHandle region) => new Future<ConcurrentDictionary<NodeHandle, NodeEdges>>(() => ReadFromFile(region));
+			public NodeEdges Get(NodeHandle n) {
+				if( Regions.GetOrAdd(Region(n), regionFactory).WaitResult().TryGetValue(n, out var edges) ) {
+					return edges;
+				}
+				return NodeEdges.Empty;
+			}
+			public void Set(NodeHandle n, NodeEdges e) {
+				Regions
+					.GetOrAdd(Region(n), regionFactory)
+					.WaitResult()
+					.AddOrUpdate(n, e, (k, o) => e);
+			}
+			public void SetDirty(NodeHandle n) => dirtyRegions.Add(Region(n));
+			public void SetDirty(RegionHandle r) => dirtyRegions.Add(r);
+			public NodeEdges AddOrUpdate(NodeHandle n, NodeEdges newValue, Func<NodeHandle, NodeEdges, NodeEdges> valueFactory) =>
+				Regions.GetOrAdd(Region(n), regionFactory).WaitResult().AddOrUpdate(n, newValue, valueFactory);
+		}
+		public static NodeSet AllNodes = new NodeSet();
+		// public static ConcurrentDictionary<NodeHandle, NodeEdges> AllEdges = new ConcurrentDictionary<NodeHandle, NodeEdges>();
 		public static bool IsLoaded => aborted == 0;
-		public static int Count => AllEdges.Count;
 		public static bool ShowEdges { get; internal set; } = false;
 
 		private NodeHandle prevNode;
@@ -135,17 +168,13 @@ namespace Shiv {
 			prevNode = PlayerNode;
 			PlayerRegion = Region(PlayerNode);
 			DrawStatus();
-			if( !RequestRegion(PlayerRegion).IsDone() ) {
-				UI.DrawText("Loading player region...");
-				return;
-			}
 				
 			if( started == 0 ) {
 				started = GameTime;
 				saved = GameTime;
 			} else if( GameTime - started < 100 || !CanControlCharacter() ) {
 				UI.DrawText(.45f, .65f, $"Cutscene...");
-			} else if( AllEdges != null ) {
+			} else {
 				if( SaveEnabled && GameTime - saved > 60000 ) {
 					saved = GameTime;
 					Task.Run(() => { SaveToFile(); });
@@ -231,9 +260,9 @@ namespace Shiv {
 			float left = 0f;
 			float top = .75f;
 			int line = 0;
-			UI.DrawText(left, top + (line++ * lineHeight), $"NavMesh: {PlayerNode} {Position(PlayerNode)} {Region(PlayerNode)}");
+			UI.DrawText(left, top + (line++ * lineHeight), $"NavMesh: {PlayerNode} {Region(PlayerNode)} {Round(Position(PlayerNode),2)}");
 			UI.DrawText(left, top + (line++ * lineHeight), $"Growth: (growth {grownPerSecond.Value:F2}/s GetHandle {(ulong)GetHandleTimer.ElapsedTicks / GetHandleCount} ticks/op)");
-			UI.DrawText(left, top + (line++ * lineHeight), $"{Ungrown.Count}/{AllEdges.Count} nodes in {loadedRegions.Count} regions ({dirtyRegions.Count} dirty)");
+			UI.DrawText(left, top + (line++ * lineHeight), $"{Ungrown.Count} ungrown in {AllNodes.Regions.Count} regions ({AllNodes.dirtyRegions.Count} dirty)");
 		}
 
 		public static void Block(NodeHandle n) {
@@ -243,7 +272,7 @@ namespace Shiv {
 			Text.Add(Position(n), "Blocked", 3000);
 		}
 
-		public static bool Remove(NodeHandle a) => AllEdges.TryRemove(a, out var edges);
+		public static bool Remove(NodeHandle a) => AllNodes.Regions.TryGetValue(Region(a), out var nodes) && nodes.WaitResult().TryRemove(a, out var edges);
 
 		public static void GetAllHandlesInBox(ModelBox box, ConcurrentSet<NodeHandle> output) => GetAllHandlesInBox(box.M, box.Back, box.Front, output);
 		public static void GetAllHandlesInBox(Matrix4x4 m, Vector3 backLeft, Vector3 frontRight, ConcurrentSet<NodeHandle> output) {
@@ -277,26 +306,13 @@ namespace Shiv {
 		}
 
 		public override void OnInit() {
-			if( CurrentPlayer != PlayerHandle.Invalid ) {
-				var self = Call<PedHandle>(GET_PLAYER_PED, CurrentPlayer);
-				if( self != PedHandle.Invalid ) {
-					var pos = Global.Position(self);
-					if( pos != Vector3.Zero ) {
-						var r = Region(pos);
-						Log($"OnInit: requesting region {r}");
-						RequestRegion(r);
-					}
-				}
-			}
 			ReadFrontierFile();
 			base.OnInit();
 		}
 
 		public override void OnAbort() {
 			aborted = GameTime;
-			if( AllEdges != null ) {
-				AllEdges.Clear();
-			}
+			AllNodes.Regions.Clear();
 		}
 
 		public static IEnumerable<NodeHandle> Flood(NodeHandle cur, int maxNodes, int maxDepth, CancellationToken cancel, Func<NodeHandle, IEnumerable<NodeHandle>> edges) {

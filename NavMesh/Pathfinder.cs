@@ -52,8 +52,6 @@ namespace Shiv {
 			Log($"[{Target}] Pre-blocked {Blocked.Count} nodes.");
 			Running.Start();
 			ThreadPool.QueueUserWorkItem((object arg) => {
-				RequestRegion(Region(Target)).Wait(500);
-				RequestRegion(Region(Start)).Wait(500);
 				if( Blocked.Contains(Target) ) {
 					Log($"[{Target}] target node is blocked, groping for nearest unblocked...");
 					var originalPosition = Position(Target);
@@ -134,6 +132,63 @@ namespace Shiv {
 			}
 		}
 	}
+	public class SmoothPath {
+		Vector3[] steps;
+		int cursor = 0;
+		public SmoothPath(IEnumerable<NodeHandle> path) => steps = path.Select(Position).ToArray();
+		public SmoothPath(IEnumerable<Vector3> path) => steps = path.ToArray();
+		public void UpdateCursor(float steppingRange) {
+			float dot =0f;
+			while( cursor < steps.Length - 1 ) {
+				Vector3 forward = PlayerPosition - steps[cursor];
+				if( forward.Length() < steppingRange
+					|| Vector3.Dot(forward, (steps[cursor + 1] - steps[cursor])) > 0 ) {
+					cursor += 1;
+					Log($"Advancing cursor to {cursor} {forward.Length():F2}");
+				} else {
+					break;
+				}
+			}
+			while( cursor > 0 ) {
+				Vector3 back = PlayerPosition - steps[cursor - 1];
+				dot = 0f;
+				if( (dot = Vector3.Dot(back, (steps[cursor] - steps[cursor - 1]))) < 0 ) {
+					cursor -= 1;
+					Log($"Retreating cursor back to {cursor}, dot: {dot:F2}");
+				} else {
+					break;
+				}
+			}
+		}
+		public int Length => steps.Length;
+		public bool IsComplete() => cursor >= steps.Length - 1;
+		public Vector3 NextStep(float steppingRange=0.25f) {
+			UpdateCursor(steppingRange);
+			int line = 0;
+			var x = (steps[cursor] - PlayerPosition);
+			var norm_x = Vector3.Normalize(x);
+			return steps[cursor] + (norm_x * Max(0f, .5f - x.Length()));
+			/*
+			var x = (float)Sqrt(DistanceToSelf(steps[cursor]));
+			var c = (1f - steppingRange);
+			var y = Clamp(.33f + (.33f * (c - x) / (c - steppingRange)), .33f, .66f); // should vary from .33 to .66 (smoothly tracking across the mid arc of the lagrange curve, I hope)
+			UI.DrawTextInWorldWithOffset(steps[cursor], 0f, (line++ * .02f), $"x {x:F2} c {c:F2} y {y:F2}");
+			var slice = Items(PlayerPosition).Concat(steps.Skip(cursor).Take(4)).ToArray();
+			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.1f, slice), 0f, 0f, $".1f");
+			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.2f, slice), 0f, 0f, $".2f");
+			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.3f, slice), 0f, 0f, $".3f");
+			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.4f, slice), 0f, 0f, $".4f");
+			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.5f, slice), 0f, 0f, $".5f");
+			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.6f, slice), 0f, 0f, $".6f");
+			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.7f, slice), 0f, 0f, $".7f");
+			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.8f, slice), 0f, 0f, $".8f");
+			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.9f, slice), 0f, 0f, $".9f");
+			return Interp.Lagrange(y, slice);
+			// return steps[cursor];
+			*/
+		}
+
+	}
 	public class Path : IEnumerable<NodeHandle> {
 		// Path is a type alias for a lazy list of NodeHandles
 		// iter comes from UnrollPath inside FindPath
@@ -143,8 +198,16 @@ namespace Shiv {
 		public IEnumerator<NodeHandle> GetEnumerator() => iter.GetEnumerator();
 		IEnumerator IEnumerable.GetEnumerator() => iter.GetEnumerator();
 		public void Draw() => this.Take(20).Select(Position)
-				.Each(DrawSphere(.06f, Color.Yellow));
+				.Each(DrawSphere(.03f, Color.Yellow));
 		public override string ToString() => $"({this.Count()} steps)";
+
+		public static IEnumerable<Vector3> Smooth(Path path, Func<float, Vector3[], Vector3> interp) {
+			Vector3[] src = path.Select(Position).ToArray();
+			for(int i = 0; i < src.Length; i++ ) {
+				yield return interp((float)i / src.Length, src);
+			}
+		}
+		public static IEnumerable<Vector3> Smooth(Path path) => Smooth(path, Interp.Bezier);
 	}
 
 	public static partial class Global {
@@ -181,7 +244,7 @@ namespace Shiv {
 		private static Stopwatch fScoreTimer = new Stopwatch();
 		public static string Timers() {
 			long ticks = findPathTimer.ElapsedTicks + 1; // no divide by zero
-			return $"C:{100 * closedSetTimer.ElapsedTicks / ticks}% R:{100 * regionTimer.ElapsedTicks/ticks}% g:{100 * gScoreTimer.ElapsedTicks / ticks} f:{100 * fScoreTimer.ElapsedTicks / ticks}";
+			return $"C:{100 * closedSetTimer.ElapsedTicks / ticks}% R:{100 * regionTimer.ElapsedTicks/ticks}% g:{100 * gScoreTimer.ElapsedTicks / ticks}% f:{100 * fScoreTimer.ElapsedTicks / ticks}%";
 		}
 
 		private static Path Fail(string msg) {
@@ -248,14 +311,12 @@ namespace Shiv {
 					}
 					*/
 
-					regionTimer.Start();
-					RequestRegion(Region(best)).Wait(100);
-					regionTimer.Stop();
 
 					Vector3 curPos = Position(best);
 					float dist = (curPos - targetNodePos).LengthSquared();
 					// Log($"dist = {dist:F2}");
 					if( dist <= .5f ) {
+						Log($"[{targetNode}] Found a path, unrolling...");
 						var ret = new Path(UnrollPath(cameFrom, best, debug));
 						Log($"[{targetNode}] Found a path of {ret.Count()} steps ({closedSet.Count} searched in {s.ElapsedMilliseconds}ms)");
 						return ret;
@@ -265,9 +326,6 @@ namespace Shiv {
 						closedSetTimer.Start();
 						bool closed = closedSet.Contains(e);
 						closedSetTimer.Stop();
-						regionTimer.Start();
-						RequestRegion(Region(e)).Wait(100);
-						regionTimer.Stop();
 
 						if( !closed && Clearance(e) >= clearance ) {
 

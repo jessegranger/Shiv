@@ -10,6 +10,8 @@ namespace Shiv {
 	public static partial class Global {
 		public interface IFuture<T> {
 			T GetResult();
+			T WaitResult();
+			T WaitResult(int timeout);
 			Exception GetError();
 			bool IsDone();
 			bool IsReady();
@@ -96,6 +98,14 @@ namespace Shiv {
 			public void Reject(Exception err) => error = err;
 			public void Wait() => ready.Wait(cancel.Token);
 			public void Wait(int timeout) => ready.Wait(timeout, cancel.Token);
+			public T WaitResult() {
+				ready.Wait(cancel.Token);
+				return GetResult();
+			}
+			public T WaitResult(int timeout) {
+				ready.Wait(timeout, cancel.Token);
+				return GetResult();
+			}
 			public void Cancel() { try { cancel.Cancel(); } catch( Exception ) { } }
 			public bool IsCanceled() => cancel.IsCancellationRequested;
 		}
@@ -112,6 +122,8 @@ namespace Shiv {
 			public IFuture<T> Resolve(T item) => this;
 			public void Wait() { }
 			public void Wait(int timeout) { }
+			public T WaitResult() => result;
+			public T WaitResult(int timeout) => result;
 			public void Cancel() { }
 		}
 		public class ConcurrentSet<T> : IEnumerable<T> {
@@ -120,10 +132,8 @@ namespace Shiv {
 			public virtual void Remove(T k) => data.TryRemove(k, out var ignore);
 			public virtual void Add(T k) => data.TryAdd(k, true);
 			public virtual bool TryRemove(T k) => data.TryRemove(k, out var ignore);
-
 			public virtual IEnumerator<T> GetEnumerator() => data.Keys.GetEnumerator();
 			IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
 			public uint Count => (uint)data.Count;
 		}
 	}

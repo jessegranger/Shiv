@@ -14,7 +14,7 @@ namespace Shiv {
 			if( !LoadEnabled ) {
 				return false;
 			}
-			var filename = "scripts/Shiv.Frontier.mesh";
+			var filename = "scripts/NavMesh/Frontier.mesh";
 			try {
 				using( BinaryReader r = Codec.Reader(filename) ) {
 					int magic = r.ReadInt32();
@@ -37,88 +37,33 @@ namespace Shiv {
 		static Stopwatch totalReadTimer = new Stopwatch();
 		static Stopwatch readBytesTimer = new Stopwatch();
 		static Stopwatch applyBytesTimer = new Stopwatch();
-		public static bool ReadFromFile(RegionHandle region, string filename) {
+		public static ConcurrentDictionary<NodeHandle, NodeEdges> ReadFromFile(RegionHandle region) {
+			try {
+				totalReadTimer.Start();
+				uint r = (uint)region >> 7;
+				Directory.CreateDirectory($"scripts/NavMesh/{r}/");
+				return ReadFromFile(region, $"scripts/NavMesh/{r}/{region}.mesh");
+			} finally {
+				totalReadTimer.Stop();
+			}
+		}
+		public static ConcurrentDictionary<NodeHandle, NodeEdges> ReadFromFile(RegionHandle region, string filename) {
+			var ret = new ConcurrentDictionary<NodeHandle, NodeEdges>();
 			if( !LoadEnabled ) {
-				return false;
+				return ret;
 			}
 
 			var s = new Stopwatch();
 			s.Start();
 			try {
-				totalReadTimer.Start();
 				using( BinaryReader r = Codec.Reader(filename) ) {
 					readBytesTimer.Start();
 					int magic = r.ReadInt32();
-					if( magic == 0x000FEED6 ) { // upgrade this older version of mesh file
+					if( magic == 0x000FEED9 ) {
 						int count = r.ReadInt32();
 						if( count <= 0 ) {
 							Log($"Invalid count: {count}");
-							return false;
-						}
-						byte[] buf;
-						ulong[] handles = new ulong[count];
-						uint[] edges = new uint[count];
-						buf = r.ReadBytes(count * sizeof(ulong));
-						Buffer.BlockCopy(buf, 0, handles, 0, buf.Length);
-						buf = r.ReadBytes(count * sizeof(uint));
-						Buffer.BlockCopy(buf, 0, edges, 0, buf.Length);
-						readBytesTimer.Stop();
-						applyBytesTimer.Start();
-						var queue = new ConcurrentQueue<NodeHandle>();
-						Parallel.For(0, count, (i) => {
-							var e = (NodeEdges)edges[i];
-							// old (small) edges never have (room for) clearance
-							if( e.HasFlag(NodeEdges.IsCover) ) {
-								e |= (NodeEdges)((ulong)1 << 32); // set clearance to 1 for cover nodes
-								queue.Enqueue((NodeHandle)handles[i]);
-							} else {
-								e |= NodeEdges.ClearanceMask; // set unknown clearance to max clear 15
-							}
-							AllEdges.TryAdd((NodeHandle)handles[i], (NodeEdges)e);
-						});
-						Log($"Propagating clearance from {queue.Count} cover nodes...");
-						PropagateClearance(queue);
-						Log($"[{region}] Loaded {count} (ver. 6) nodes in {s.ElapsedMilliseconds}ms");
-						dirtyRegions.Add(region);
-						applyBytesTimer.Stop();
-					} else if( magic == 0x000FEED7 ) {
-						int count = r.ReadInt32();
-						if( count <= 0 ) {
-							Log($"Invalid count: {count}");
-							return false;
-						}
-						byte[] buf;
-						ulong[] handles = new ulong[count];
-						ulong[] edges = new ulong[count];
-						buf = r.ReadBytes(count * sizeof(ulong));
-						Buffer.BlockCopy(buf, 0, handles, 0, buf.Length);
-						buf = r.ReadBytes(count * sizeof(ulong));
-						Buffer.BlockCopy(buf, 0, edges, 0, buf.Length);
-						readBytesTimer.Stop();
-						applyBytesTimer.Start();
-						var queue = new ConcurrentQueue<NodeHandle>();
-						Parallel.For(0, count, (i) => {
-							var e = (NodeEdges)edges[i];
-							if( ((ulong)(e & NodeEdges.ClearanceMask) >> 32) == 0 ) { // if has empty clearance bits
-								if( e.HasFlag(NodeEdges.IsCover) ) {
-									e |= (NodeEdges)((ulong)1 << 32); // set clearance to 1 for cover nodes
-									queue.Enqueue((NodeHandle)handles[i]);
-								} else {
-									e |= NodeEdges.ClearanceMask; // set unknown clearance to max clear 15
-								}
-							}
-							AllEdges.TryAdd((NodeHandle)handles[i], e);
-						});
-						Log($"Propagating clearance from {queue.Count} cover nodes...");
-						PropagateClearance(queue);
-						Log($"[{region}] Loaded {count} (ver. 7) nodes in {s.ElapsedMilliseconds}ms");
-						dirtyRegions.Add(region);
-						applyBytesTimer.Stop();
-					} else if( magic == 0x000FEED8 ) { // after FEED8, nodes have existing clearance counts
-						int count = r.ReadInt32();
-						if( count <= 0 ) {
-							Log($"Invalid count: {count}");
-							return false;
+							return ret;
 						}
 						byte[] buf;
 						ulong[] handles = new ulong[count];
@@ -130,22 +75,20 @@ namespace Shiv {
 						readBytesTimer.Stop();
 						applyBytesTimer.Start();
 						Parallel.For(0, count, (i) => {
-							AllEdges.TryAdd((NodeHandle)handles[i], (NodeEdges)edges[i]);
+							ret.TryAdd((NodeHandle)handles[i], (NodeEdges)edges[i]);
 						});
-						Log($"[{region}] Loaded {count} nodes in {s.ElapsedMilliseconds}ms");
+						Log($"[{region}] Loaded {count} (ver. 9) nodes in {s.ElapsedMilliseconds}ms");
 						applyBytesTimer.Stop();
 					} else {
 						Log($"Invalid magic bytes: {magic}");
-						return false;
+						return ret;
 					}
 				}
 			} catch( FileNotFoundException ) {
 				Log($"[{region}] Loaded 0 nodes ({filename} not found) in {s.ElapsedMilliseconds}ms");
-			} finally {
-				totalReadTimer.Stop();
 			}
 			s.Stop();
-			return true;
+			return ret;
 		}
 
 		public static void SaveToFile() {
@@ -155,14 +98,19 @@ namespace Shiv {
 
 			var sw = new Stopwatch();
 			sw.Start();
-			AllEdges.Keys.AsParallel().GroupBy(Region).Each(g => {
-				RegionHandle region = g.Key;
-				if( dirtyRegions.TryRemove(region) ) {
-					var file = $"scripts/Shiv.{region}.mesh";
+			AllNodes.dirtyRegions.Each(region => { 
+			// AllEdges.Keys.AsParallel().GroupBy(Region).Each(g => {
+				// RegionHandle region = g.Key;
+				if( AllNodes.dirtyRegions.TryRemove(region) ) {
+					Log($"Saving dirty region {region}");
+					uint r = (uint)region >> 7;
+					Directory.CreateDirectory($"scripts/NavMesh/{r}/");
+					var file = $"scripts/NavMesh/{r}/{region}.mesh";
 					using( BinaryWriter w = Codec.Writer(file + ".tmp") ) {
 						w.Write(magicBytes);
-						ulong[] handles = g.Cast<ulong>().ToArray();
-						ulong[] edges = handles.Select(h => (ulong)AllEdges[(NodeHandle)h]).ToArray();
+						var result = AllNodes.Regions[region].WaitResult();
+						ulong[] handles = result.Keys.Cast<ulong>().ToArray();
+						ulong[] edges = handles.Select(h => (ulong)result[(NodeHandle)h]).ToArray(); // use Select this way to guarantee they match the order of handles
 						byte[] buf;
 						try {
 							w.Write(handles.Length);
@@ -188,7 +136,7 @@ namespace Shiv {
 					}
 				}
 			});
-			var filename = "scripts/Shiv.Frontier.mesh";
+			var filename = "scripts/NavMesh/Frontier.mesh";
 			using( BinaryWriter w = Codec.Writer(filename + ".tmp") ) {
 				w.Write(magicBytes);
 				try {

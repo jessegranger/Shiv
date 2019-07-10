@@ -21,7 +21,7 @@ namespace Shiv {
 		internal static ConcurrentQueue<NodeHandle> Ungrown = new ConcurrentQueue<NodeHandle>();
 		// only a subset of edges are used by Grow() to expand the mesh
 		private static int[] possibleGrowthEdges = new int[] { 0, 1, 2, 3, 4, 6, 10, 12 };
-		private static IEnumerable<NodeHandle> PossibleGrowthEdges(NodeHandle node) => possibleGrowthEdges.Select(i => (NodeHandle)((long)node + edgeOffsets[i]));
+		internal static IEnumerable<NodeHandle> PossibleGrowthEdges(NodeHandle node) => possibleGrowthEdges.Select(i => AddEdgeOffset(node, i)); // (NodeHandle)((long)node + edgeOffsets[i]));
 		private static IEnumerable<NodeHandle> GroundEdges(NodeHandle node) => PossibleGrowthEdges(node).Select(n => Handle(PutOnGround(Position(n), 1f)));
 
 		/// <summary>
@@ -29,6 +29,7 @@ namespace Shiv {
 		/// </summary>
 		public static NodeHandle LastGrown { get; private set; } = NodeHandle.Invalid;
 
+		internal static NodeHandle AddEdgeOffset(NodeHandle n, int i) => Handle(Position((NodeHandle)((long)((ulong)n & handleMask) + edgeOffsets[i]))); // extract position, use to add region back in to handle
 		public static IEnumerable<NodeHandle> GrowOne(NodeHandle node, HashSet<EntHandle> doors, bool debug=false) {
 			if( IsGrown(node) ) {
 				yield break;
@@ -39,7 +40,7 @@ namespace Shiv {
 			}
 			IsGrown(node, true);
 			foreach( var i in possibleGrowthEdges ) {
-				var e = (NodeHandle)((long)node + edgeOffsets[i]);
+				var e = AddEdgeOffset(node, i);
 				NodeHandle g = Handle(PutOnGround(Position(e), 1f));
 				if( IsPossibleEdge(node, g) && !HasEdge(node, g) ) {
 					Vector3 delta = Position(g) - nodePos;
@@ -102,10 +103,6 @@ namespace Shiv {
 					next = queue.Dequeue();
 				} else if( ! Ungrown.TryDequeue(out next) ) {
 					break;
-				}
-				if( ! RequestRegion(Region(next)).IsReady() ) {
-					queue.Enqueue(next);
-					continue;
 				}
 				if( IsGrown(next) ) {
 					continue;

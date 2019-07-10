@@ -26,9 +26,9 @@ namespace Shiv {
 		}
 
 		// because node positions (and thus NodeHandles) are at fixed intervals, you can compute the next NodeHandle by adding special offsets
-		private static readonly uint xStep = (uint)Pow(2, 2*mapShift); // if you add X+1, how much does the NodeHandle change
-		private static readonly uint yStep = (uint)Pow(2, 1*mapShift); // if you add Y+1, how much does the NodeHandle change
-		private static readonly uint zStep = (uint)Pow(2, 0*mapShift); // if you add Z+1, how much does the NodeHandle change
+		private static readonly uint xStep = (uint)Pow(2, 15+13); // if you add X+1, how much does the NodeHandle change
+		private static readonly uint yStep = (uint)Pow(2, 13); // if you add Y+1, how much does the NodeHandle change
+		private static readonly uint zStep = (uint)Pow(2, 0); // if you add Z+1, how much does the NodeHandle change
 
 		// for each of the 0-29 bits, specify the correct X+Y+Z offset
 		// we will create a bi-directional map to answer both questions:
@@ -91,7 +91,7 @@ namespace Shiv {
 		public static IEnumerable<NodeHandle> PossibleEdges(NodeHandle node) {
 			var a = new NodeHandle[30];
 			for( int i = 0; i < 30; i++ ) {
-				a[i] = (NodeHandle)((long)node + edgeOffsets[i]);
+				a[i] = AddEdgeOffset(node, i);// (NodeHandle)((long)node + edgeOffsets[i]);
 			}
 			return a;
 		}
@@ -99,80 +99,79 @@ namespace Shiv {
 		/// <summary>
 		/// Given two nodes, are they at an offset that matches a valid edge bit.
 		/// </summary>
-		public static bool IsPossibleEdge(NodeHandle a, NodeHandle b) => whichEdgeBit.ContainsKey((int)b - (int)a);
+		public static bool IsPossibleEdge(NodeHandle a, NodeHandle b) => whichEdgeBit.ContainsKey(
+			(long)((ulong)b & handleMask) -
+			(long)((ulong)a & handleMask));
+
+
+		public static bool HasFlag(NodeHandle n, NodeEdges flag) => (AllNodes.Get(n) & flag) != 0;
 
 		/// <summary>
 		/// Does this node have at least one connection to a neighbor.
 		/// </summary>
-		public static bool HasEdges(NodeHandle a) => AllEdges.TryGetValue(a, out var flags) && (flags & NodeEdges.EdgeMask) != 0;
-
+		public static bool HasEdges(NodeHandle a) => HasFlag(a, NodeEdges.EdgeMask);
 
 		/// <summary>
-		/// All neighbors connected to the given node.
+		/// Yield all neighbors connected to the given node.
 		/// </summary>
 		public static IEnumerable<NodeHandle> Edges(NodeHandle a) {
-			if( AllEdges.TryGetValue(a, out var flags) ) {
-				long node = (long)a;
-				for( int i = 0; i < edgeOffsets.Length; i++ ) {
-					if( (flags & (NodeEdges)(1ul << i)) > 0 ) {
-						yield return (NodeHandle)(node + edgeOffsets[i]);
-					}
+			var edges = AllNodes.Get(a);
+			for( int i = 0; i < edgeOffsets.Length; i++ ) {
+				if( (edges & (NodeEdges)(1ul << i)) > 0 ) {
+					yield return AddEdgeOffset(a, i); // (NodeHandle)(node + edgeOffsets[i]);
 				}
 			}
 		}
 		public static bool HasEdge(NodeHandle a, NodeHandle b) {
-			long d = (long)b - (long)a;
+			long d = (long)((ulong)b & handleMask) - (long)((ulong)a & handleMask);
 			if( !whichEdgeBit.ContainsKey(d) ) {
 				return false;
 			}
-			// retrieve all the edges of a and check the bit for b
-			return AllEdges.TryGetValue(a, out var edges)
-				? (edges & (NodeEdges)(1ul << whichEdgeBit[d])) > 0
-				: false;
+			return HasFlag(a, (NodeEdges)(1ul << whichEdgeBit[d]));
 		}
 		public static bool SetEdge(NodeHandle a, NodeHandle b, bool value) {
-			long d = (long)b - (long)a;
+			long d = (long)((ulong)b & handleMask) - (long)((ulong)a & handleMask);
 			if( !whichEdgeBit.ContainsKey(d) ) {
 				return false;
 			}
 			var mask = (NodeEdges)(1ul << whichEdgeBit[d]);
 			if( value ) {
-				AllEdges.AddOrUpdate(a, mask, (k, oldValue) => oldValue | mask);
+				AllNodes.AddOrUpdate(a, mask, (k, oldValue) => oldValue | mask);
 			} else {
-				AllEdges.AddOrUpdate(a, 0, (k, oldValue) => oldValue & ~mask);
+				AllNodes.AddOrUpdate(a, 0, (k, oldValue) => oldValue & ~mask);
 			}
-			dirtyRegions.Add(Region(a));
-			dirtyRegions.Add(Region(b));
+			AllNodes.SetDirty(a);
+			AllNodes.SetDirty(b);
 			return true;
 		}
 		public static bool AddEdge(NodeHandle a, NodeHandle b) => SetEdge(a, b, true);
 		public static void RemoveEdge(NodeHandle a, NodeHandle b) => SetEdge(a, b, false);
 
-		public static bool IsGrown(NodeHandle a) => AllEdges.TryGetValue(a, out var flags) && (flags & NodeEdges.IsGrown) > 0;
+		public static bool IsGrown(NodeHandle a) => HasFlag(a, NodeEdges.IsGrown); //  AllNodes.TryGetValue(a, out var flags) && (flags & NodeEdges.IsGrown) > 0;
 		public static void IsGrown(NodeHandle a, bool value) {
 			if( value ) {
-				AllEdges.AddOrUpdate(a, NodeEdges.IsGrown, (key, oldValue) => oldValue | NodeEdges.IsGrown);
+				AllNodes.AddOrUpdate(a, NodeEdges.IsGrown, (key, oldValue) => oldValue | NodeEdges.IsGrown);
 			} else {
-				AllEdges.AddOrUpdate(a, 0, (key, oldValue) => oldValue & ~NodeEdges.IsGrown);
+				AllNodes.AddOrUpdate(a, 0, (key, oldValue) => oldValue & ~NodeEdges.IsGrown);
 			}
-			dirtyRegions.Add(Region(a));
+			AllNodes.SetDirty(a);
 		}
 
-		public static bool IsCover(NodeHandle a) => AllEdges.TryGetValue(a, out var flags) && (flags & NodeEdges.IsCover) > 0;
+		public static bool IsCover(NodeHandle a) => HasFlag(a, NodeEdges.IsCover); // AllEdges.TryGetValue(a, out var flags) && (flags & NodeEdges.IsCover) > 0;
 		public static void IsCover(NodeHandle a, bool value) {
 			if( value ) {
-				AllEdges.AddOrUpdate(a, NodeEdges.IsCover, (key, oldValue) => oldValue | NodeEdges.IsCover);
+				AllNodes.AddOrUpdate(a, NodeEdges.IsCover, (key, oldValue) => oldValue | NodeEdges.IsCover);
 			} else {
-				AllEdges.AddOrUpdate(a, 0, (key, oldValue) => oldValue & ~NodeEdges.IsCover);
+				AllNodes.AddOrUpdate(a, 0, (key, oldValue) => oldValue & ~NodeEdges.IsCover);
 			}
-			dirtyRegions.Add(Region(a));
+			AllNodes.SetDirty(a);
 		}
 
-		public static uint Clearance(NodeHandle a) => AllEdges.TryGetValue(a, out NodeEdges value) ? (uint)((ulong)(value & NodeEdges.ClearanceMask) >> 32) : 0;
+		public static uint Clearance(NodeHandle a) => (uint)((ulong)(AllNodes.Get(a) & NodeEdges.ClearanceMask) >> 32);
 		public static void Clearance(NodeHandle a, uint value) {
 			value = Min(15, value);
 			var mask = (NodeEdges)((ulong)value << 32);
-			AllEdges.AddOrUpdate(a, mask, (key, oldValue) => (oldValue & ~NodeEdges.ClearanceMask) | mask);
+			AllNodes.AddOrUpdate(a, mask, (key, oldValue) => (oldValue & ~NodeEdges.ClearanceMask) | mask);
 		}
 		public static void PropagateClearance(ConcurrentQueue<NodeHandle> queue) {
 			while( queue.TryDequeue(out var a) ) {
