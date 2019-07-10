@@ -927,7 +927,7 @@ namespace Shiv {
 			SometimesOvertakeTraffic = 5,
 			Rushed = 1074528293,
 			AvoidTraffic = 786468,
-			AvoidTrafficExtremely = 6
+			AvoidTrafficExtremely = 6,
 		}
 
 		[Flags] public enum VehicleDrivingFlags : uint {
@@ -963,7 +963,8 @@ namespace Shiv {
 			Unknown28 = (1u << 28),
 			TryToAvoidHighways = (1u << 29),
 			Unknown30 = (1u << 30),
-			StopAtDestination = (1u << 31)
+			StopAtDestination = (1u << 31),
+			Human = AllowGoingWrongWay | AllowMedianCrossing | AvoidEmptyVehicles | AvoidObjects | AvoidVehicles | UseBlinkers
 		}
 
 		public enum HelmetType : uint {
@@ -3008,7 +3009,8 @@ namespace Shiv {
 			TrevorOrange,
 			MissionBlue = 49,
 			MissionYellow = 66,
-			MissionGreen = 69
+			MissionGreen = 69,
+			WaypointPurple = 84
 		}
 
 		public enum BlipSprite {
