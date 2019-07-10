@@ -89,10 +89,8 @@ namespace Shiv {
 
 		public static bool IsFacing(PedHandle ent, Vector3 pos) => IsFacing((EntHandle)ent, pos);
 		public static bool IsFacing(VehicleHandle ent, Vector3 pos) => IsFacing((EntHandle)ent, pos);
-		public static bool IsFacing(EntHandle ent, Vector3 pos) {
-			Matrix4x4 m = Matrix(ent);
-			return Vector3.Dot(pos - Position(m), Forward(m)) > 0.2f;
-		}
+		public static bool IsFacing(EntHandle ent, Vector3 pos) => IsFacing(Matrix(ent), pos);
+		public static bool IsFacing(Matrix4x4 m, Vector3 pos) => Vector3.Dot(pos - Position(m), Forward(m)) > 0.0f;
 
 		public static ModelHash GetModel(EntHandle ent) => ent == 0 ? 0 : Call<ModelHash>(GET_ENTITY_MODEL, ent);
 		public static bool IsValid(ModelHash model) => model == ModelHash.Invalid ? false : Call<bool>(IS_MODEL_VALID, model);
