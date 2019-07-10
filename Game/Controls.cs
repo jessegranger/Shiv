@@ -70,20 +70,24 @@ namespace Shiv {
 			return a;
 		}
 		*/
-		public static Vector3 FirstStep(IEnumerable<NodeHandle> path) => FirstStep(path.Take(5).Select(NavMesh.Position));
+		public static Vector3 FirstStep(IEnumerable<NodeHandle> path) => FirstStep(path.Take(3).Select(NavMesh.Position));
 		// public static Vector3 FirstStep(IEnumerable<Vector3> path) => Bezier(.25f, Items(PlayerPosition).Concat(path.Take(5)).ToArray());
 		public static Vector3 FirstStep(IEnumerable<Vector3> path) {
-			var first = path.First();
-			var second = path.Skip(1).First();
-			return Vector3.Lerp(first, second, Clamp(2f * (float)Pow(1f - DistanceToSelf(first), 2), 0f, 1f));
+			var factor = (float)Pow(Math.Max(0f, 1f - DistanceToSelf(path.First())), 2);
+			return Interp.Bezier(factor, path.Take(3).ToArray());
+			// var first = path.First();
+			// var second = path.Skip(1).First();
+			// return Vector3.Lerp(first, second, Clamp(2f * (float)Pow(1f - DistanceToSelf(first), 2), 0f, 1f));
 		}
-		public static MoveResult FollowPath(IEnumerable<NodeHandle> path, float steppingRange=0.2f) => FollowPath(path.Take(5).Select(NavMesh.Position));
+		public static MoveResult FollowPath(IEnumerable<NodeHandle> path, float steppingRange=0.2f) => FollowPath(path.Take(3).Select(NavMesh.Position));
 		public static MoveResult FollowPath(IEnumerable<Vector3> path, float steppingRange=0.2f) => path == null || path.Count() < 2 ? MoveResult.Complete : MoveToward(FirstStep(path), steppingRange);
 
-		private static float LookActivation(float x, float factor) => (float)(x * CurrentFPS * Sqrt(Abs(CurrentFPS * x * factor)));
+		private static float LookActivation(float x) => (float)(1f * ((Sigmoid(50f * x) * 2f) - 1f));
+		// private static float LookActivation(float x) => (float)(x * CurrentFPS * .2f);
+		// private static float LookActivation(float x) => (float)(x * CurrentFPS * Sqrt(Abs(CurrentFPS * x * .2f)));
+		// private static float LookActivation(float x) => (float)(x * CurrentFPS * Sqrt(Abs(x * .8f)));
 		public static bool LookToward(Vector3 pos, bool debug=false) {
-			pos = pos - Velocity(Self) / CurrentFPS;
-			DrawSphere(pos, .02f, Color.Yellow);
+			pos = pos - (Velocity(Self) * 7f / CurrentFPS);
 			Vector3 forward = Forward(CameraMatrix);
 			Vector3 cam = Position(CameraMatrix);
 			Vector3 delta = Vector3.Normalize(pos - cam) - forward;
@@ -93,13 +97,14 @@ namespace Shiv {
 			// Vector3 delta = Vector3.Normalize(pos - Position(CameraMatrix)) - Forward(CameraMatrix);
 			DrawLine(end, end + delta, Color.White);
 			// probably a way to do all this with one quaternion multiply or something
-			float dX = Clamp(LookActivation(right,.2f), -1f, 1f);
-			float dY = Clamp(LookActivation(up,.2f), -1f, 1f);
+			if( debug ) { UI.DrawText(.45f, .43f, $"Look: activating: {right:F4} {up:F4}"); }
+			float dX = Clamp(LookActivation(right), -10f, 10f);
+			float dY = Clamp(LookActivation(up), -10f, 10f);
 			// Shiv.Log($"{Round(delta.X,2)} {Round(delta.Y,2)} = {Round(dX,2)} {Round(-dY,2)}");
 			SetControlValue(1, Control.LookLeftRight, dX);
 			SetControlValue(1, Control.LookUpDown, -dY);
 			// UI.DrawText(.5f, .5f, $"Look Controls: {Round(delta.X,2)} {Round(delta.Z,2)} -> {Round(dX,1)} {Round(dY,1)} (len {delta.LengthSquared()})");
-			if( debug ) { UI.DrawText(.5f, .5f, $"Aim delta: {delta.LengthSquared():F5}"); }
+			if( debug ) { UI.DrawText(.45f, .45f, $"Look: dx:{dX:F4} dy:{dY:F4} (err {delta.LengthSquared():F5})"); }
 			return delta.LengthSquared() < .0001f;
 		}
 
@@ -211,6 +216,7 @@ namespace Shiv {
 		}
 		private static List<ControlEvent> active = new List<ControlEvent>();
 		public static void PressControl(int g, Global.Control c, uint dur) => active.Add(new ControlEvent() { group = g, control = c, expires = GameTime + dur });
+		public static bool DebugAim = true;
 		public override void OnTick() {
 			active.RemoveAll(e => e.expires < GameTime);
 			foreach( ControlEvent e in active ) {
@@ -218,15 +224,15 @@ namespace Shiv {
 			}
 			if( AimTarget != Vector3.Zero ) {
 				UI.DrawText($"AimTarget: {AimTarget}");
-				LookToward(AimTarget);
-				ForcedAim(CurrentPlayer, true);
+				LookToward(AimTarget, DebugAim);
+				ForcedAim(CurrentPlayer, IsFacing(CameraMatrix, AimTarget));
 			} else if( Exists(AimAtHead) && IsAlive(AimAtHead) ) {
 				UI.DrawText($"AimAtHead: {AimAtHead}");
-				LookToward(HeadPosition(AimAtHead) + Velocity(AimAtHead) / CurrentFPS);
-				ForcedAim(CurrentPlayer, true);
+				LookToward(HeadPosition(AimAtHead) + Velocity(AimAtHead) / CurrentFPS, DebugAim);
+				ForcedAim(CurrentPlayer, IsFacing(CameraMatrix, Position(AimAtHead)));
 			} else if( Exists(KillTarget) && IsAlive(KillTarget) ) {
-				ForcedAim(CurrentPlayer, true);
-				if( LookToward(HeadPosition(KillTarget) + Velocity(KillTarget) / CurrentFPS)
+				ForcedAim(CurrentPlayer, IsFacing(CameraMatrix, Position(AimAtHead)));
+				if( LookToward(HeadPosition(KillTarget) + Velocity(KillTarget) / CurrentFPS, DebugAim)
 					|| IsAimingAtEntity(KillTarget) ) {
 					SetControlValue(1, Control.Attack, 1f);
 				}
