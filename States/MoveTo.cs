@@ -20,22 +20,23 @@ namespace Shiv {
 			if( ! CanControlCharacter() ) {
 				return Next;
 			}
-			if( request.IsCanceled() ) {
-				return null;
-			}
-			if( request.IsFailed() ) {
-				return Fail;
-			}
 			if( request.IsReady() ) {
 				path = request.GetResult();
 			}
 			if( path == null ) {
+				if( request.IsCanceled() ) {
+					return null;
+				}
+				if( request.IsFailed() ) {
+					return Fail;
+				}
 				return this;
 			}
 			if( path.Count() < 2 ) {
 				return Next;
 			}
 			path.Draw();
+			
 			switch( FollowPath(path, 0.3f) ) {
 				case MoveResult.Continue:
 					if( !sw.IsRunning ) {
@@ -49,7 +50,7 @@ namespace Shiv {
 					var expected = Vector3.Normalize(step - PlayerPosition);
 					var overlap = Vector3.Dot(vel, expected);
 					// UI.DrawTextInWorld(step, $"Overlap: {overlap}");
-					if( sw.ElapsedMilliseconds > 3200 && overlap <= 0 && !IsClimbing(Self) && !IsJumping(Self) && !Call<bool>(IS_PED_RAGDOLL, Self) ) {
+					if( sw.ElapsedMilliseconds > 3200 && overlap <= 0.01f && !IsClimbing(Self) && !IsJumping(Self) && !Call<bool>(IS_PED_RAGDOLL, Self) ) {
 						Log($"STUCK at {sw.ElapsedMilliseconds} overlap {overlap}");
 						Stuck();
 					}
