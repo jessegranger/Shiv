@@ -44,6 +44,7 @@
     <Compile Include="States\FindCover.cs" />
     <Compile Include="States\PressKey.cs" />
     <Compile Include="States\MoveTo.cs" />
+    <Compile Include="Util\Interpolation.cs" />
     <Compile Include="Util\Producer.cs" />
     <Compile Include="Util\Future.cs" />
     <Compile Include="Global.cs" />
@@ -60,7 +61,7 @@
     <Compile Include="Game\Entities.cs" />
     <Compile Include="Game\Player.cs" />
     <Compile Include="Game\World.cs" />
-    <Compile Include="Goals\Driving.cs" />
+    <Compile Include="States\Driving.cs" />
     <Compile Include="States\TaskWalk.cs" />
     <Compile Include="Missions\Mission01.cs" />
     <Compile Include="NavMesh\BaseMesh.cs" />
