@@ -45,8 +45,9 @@ namespace Shiv {
 		public static float Heading(Matrix4x4 m) => Rad2Deg(Math.Atan2(m.M21, m.M22));
 		public static float RadHeading(Matrix4x4 m) => (float)Math.Atan2(m.M21, m.M22);
 
-		public static bool Between(float min, float max, float value) => (value >= min) && (value <= max);
+		public static bool IsBetween(float min, float max, float value) => (value >= min) && (value <= max);
 
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static float Clamp(float x, float min, float max) => Math.Max(min, Math.Min(max, x));
 
 		public static float Sigmoid(float x) => (float)(1 / (1 + Math.Pow(Math.E, -x)));
@@ -79,27 +80,10 @@ namespace Shiv {
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static float DistanceToSelf(Vector3 pos) => (pos - PlayerPosition).LengthSquared();
 
-		public static Vector3 GetOffsetPosition(Matrix4x4 m, Vector3 offset) => Vector3.Transform(offset, m); // m.TransformPoint(offset);
+		public static Vector3 GetOffsetPosition(Matrix4x4 m, Vector3 offset) => Vector3.Transform(offset, m);
 
 		/// <summary>  Expensive. </summary>
 		public static Vector3 GetPositionOffset(Matrix4x4 m, Vector3 pos) => Matrix4x4.Invert(m, out Matrix4x4 inv) ? Vector3.Transform(pos, inv) : Vector3.Zero;
 
-		private static Vector3[] BezierOnce(float f, Vector3[] points) {
-			var n = points.Length;
-			var s = 1.0f - f;
-			var Q = new Vector3[n]; // TODO: can I re-use the points array, is it for sure on the heap as a params?
-			for( int i = 0; i < n - 1; i++ ) {
-				Q[i] = (points[i] * s) + (points[i + 1] * f);
-			}
-			return Q;
-		}
-		public static Vector3 Bezier(float percent, params Vector3[] points) {
-			if( points.Length < 1 )
-				return Vector3.Zero;
-			for( int i = 0; i < points.Length - 1; i++ ) {
-				points = BezierOnce(percent, points);
-			}
-			return points[0];
-		}
 	}
 }
