@@ -32,7 +32,7 @@ namespace Shiv {
 		public static void Clear() => CurrentState = State.Idle;
 
 		public static void Run(State state) {
-			Shiv.Log($"[StateScript] Run {state}");
+			Shiv.Log($"[StateScript] Start {state}");
 			PreviousState = CurrentState = state;
 		}
 		public static void Run(Func<State, State> func) => Run(new Runner(func));
