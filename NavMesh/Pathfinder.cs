@@ -26,6 +26,7 @@ namespace Shiv {
 	public class PathRequest : Future<Path> {
 		public NodeHandle Start;
 		public NodeHandle Target;
+		private NodeHandle Best;
 		public uint Timeout = 100;
 		public bool AvoidObjects = true;
 		public bool AvoidPeds = false;
@@ -80,7 +81,7 @@ namespace Shiv {
 					return;
 				}
 				PathStatus.Queue.Enqueue(this);
-				try { Resolve(Pathfinder.FindPath(Start, Target, Blocked, Timeout, cancel.Token, clearance)); }
+				try { Resolve(Pathfinder.FindPath(Start, Target, Blocked, Timeout, cancel.Token, clearance, (best) => Best = best)); }
 				catch( Exception err ) { Reject(err); }
 				finally {
 					PathStatus.Guard.Release();
@@ -89,9 +90,16 @@ namespace Shiv {
 				}
 			});
 		}
+		private float bestBest = 0f;
 		public override string ToString() {
 			var elapsed = Running.ElapsedMilliseconds;
-			return $"{Blocked.Count} in {elapsed}ms "
+			var total = (Position(Target) - Position(Start)).Length();
+			var dist = (Position(Target) - Position(Best)).Length();
+			var pct = (1f - (dist / total));
+			if( pct > bestBest ) {
+				bestBest = pct;
+			}
+			return $"{Blocked.Count} {100f*bestBest:F0}% in {elapsed}ms "
 				+ (IsReady() ? GetResult().ToString() : "")
 				+ (IsFailed() ? GetError().ToString() : "")
 				+ (IsCanceled() ? "Canceled" : "");
@@ -253,7 +261,7 @@ namespace Shiv {
 			UI.DrawText(.3f, .3f, msg);
 			return new Path(Enumerable.Empty<NodeHandle>());
 		}
-		internal static Path FindPath(NodeHandle startNode, NodeHandle targetNode, ConcurrentSet<NodeHandle> closedSet, uint maxMs, CancellationToken cancelToken, uint clearance, bool debug=false) {
+		internal static Path FindPath(NodeHandle startNode, NodeHandle targetNode, ConcurrentSet<NodeHandle> closedSet, uint maxMs, CancellationToken cancelToken, uint clearance, Action<NodeHandle> progress, bool debug=false) {
 			var s = new Stopwatch();
 			findPathTimer.Start();
 			try {
@@ -305,6 +313,7 @@ namespace Shiv {
 					closedSetTimer.Start();
 					closedSet.Add(best);
 					closedSetTimer.Stop();
+					progress(best);
 					/*
 					if( closedSet.Count > 100 ) {
 						return Fail($"[{targetNode}] Searching too many nodes {closedSet.Count}");
