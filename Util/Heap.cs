@@ -21,6 +21,14 @@ namespace Shiv {
 			scoreOf = new float[capacity];
 			Capacity = capacity;
 		}
+		public void Clear() {
+			for(int i = 0; i < Count; i++ ) {
+				heap[i] = default;
+				scoreOf[i] = float.MaxValue;
+			}
+			index.Clear();
+			Count = 0;
+		}
 		public bool Contains(T item) => index.ContainsKey(item);
 		public void AddOrUpdate(T item, float score) {
 			if( Contains(item) ) {
@@ -68,6 +76,11 @@ namespace Shiv {
 
 		}
 		public T Peek() => Count == 0 ? (default) : heap[1];
+		public bool TryPeek(out T value) {
+			value = Peek();
+			return Count != 0;
+		}
+		public float PeekScore() => Count == 0 ? float.MaxValue : scoreOf[1];
 		public bool TryPop(out T value) {
 			value = default;
 			if( Count <= 0 ) {
