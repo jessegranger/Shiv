@@ -126,28 +126,53 @@ namespace Shiv {
 
 		public class NodeSet {
 
-			internal ConcurrentDictionary<RegionHandle, Future<ConcurrentDictionary<NodeHandle, NodeEdges>>> Regions = new ConcurrentDictionary<RegionHandle, Future<ConcurrentDictionary<NodeHandle, NodeEdges>>>();
+			internal ConcurrentDictionary<RegionHandle, ConcurrentDictionary<NodeHandle, NodeEdges>> Regions = new ConcurrentDictionary<RegionHandle, ConcurrentDictionary<NodeHandle, NodeEdges>>();
 
-			public int Count() => Regions.Values.Select(f => f.WaitResult()).Sum(d => d.Count);
+			public int Count() => Regions.Values.Sum(d => d.Count);
 
+			internal Heap<RegionHandle> recentRegions = new Heap<RegionHandle>(1024);
 			internal ConcurrentSet<RegionHandle> dirtyRegions = new ConcurrentSet<RegionHandle>();
-			private static Future<ConcurrentDictionary<NodeHandle, NodeEdges>> regionFactory(RegionHandle region) => new Future<ConcurrentDictionary<NodeHandle, NodeEdges>>(() => ReadFromFile(region));
+			private static ConcurrentDictionary<NodeHandle, NodeEdges> regionFactory(RegionHandle region) {
+				var ret = new ConcurrentDictionary<NodeHandle, NodeEdges>(); // allocate the dictionary on this thread's heap
+				ReadFromFile(region, ret);
+				return ret;
+			}
 			public NodeEdges Get(NodeHandle n) {
-				if( Regions.GetOrAdd(Region(n), regionFactory).WaitResult().TryGetValue(n, out var edges) ) {
+				RegionHandle r = Region(n);
+				if( Regions.GetOrAdd(r, regionFactory).TryGetValue(n, out var edges) ) {
+					recentRegions.AddOrUpdate(r, TotalTime.ElapsedMilliseconds);
 					return edges;
 				}
 				return NodeEdges.Empty;
 			}
 			public void Set(NodeHandle n, NodeEdges e) {
+				RegionHandle r = Region(n);
 				Regions
-					.GetOrAdd(Region(n), regionFactory)
-					.WaitResult()
+					.GetOrAdd(r, regionFactory)
 					.AddOrUpdate(n, e, (k, o) => e);
+				recentRegions.AddOrUpdate(r, TotalTime.ElapsedMilliseconds);
 			}
 			public void SetDirty(NodeHandle n) => dirtyRegions.Add(Region(n));
 			public void SetDirty(RegionHandle r) => dirtyRegions.Add(r);
-			public NodeEdges AddOrUpdate(NodeHandle n, NodeEdges newValue, Func<NodeHandle, NodeEdges, NodeEdges> valueFactory) =>
-				Regions.GetOrAdd(Region(n), regionFactory).WaitResult().AddOrUpdate(n, newValue, valueFactory);
+			public NodeEdges AddOrUpdate(NodeHandle n, NodeEdges newValue, Func<NodeHandle, NodeEdges, NodeEdges> valueFactory) {
+				RegionHandle r = Region(n);
+				recentRegions.AddOrUpdate(r, TotalTime.ElapsedMilliseconds);
+				return Regions.GetOrAdd(r, regionFactory).AddOrUpdate(n, newValue, valueFactory);
+			}
+
+			internal void PageOut(uint itemLimit, uint timeLimit) {
+				while( Regions.Count > itemLimit || recentRegions.PeekScore() < timeLimit ) {
+					if( (!dirtyRegions.Contains(recentRegions.Peek())) && recentRegions.TryPop(out var r) ) {
+						Regions.TryRemove(r, out var ignore);
+						Log($"Paged out region {r}, {ignore.Count} nodes.");
+					}
+				}
+			}
+			internal void Clear() {
+				Regions.Clear();
+				dirtyRegions.Each(dirtyRegions.Remove);
+				recentRegions.Clear();
+			}
 		}
 		public static NodeSet AllNodes = new NodeSet();
 		// public static ConcurrentDictionary<NodeHandle, NodeEdges> AllEdges = new ConcurrentDictionary<NodeHandle, NodeEdges>();
@@ -200,6 +225,7 @@ namespace Shiv {
 						*/
 				}
 			}
+			AllNodes.PageOut(100, (uint)Max(0, TotalTime.ElapsedMilliseconds - 60000));
 		}
 		private static readonly Color[] clearanceColors = new Color[] {
 			Color.FromArgb(255, 255, 255, 255), // 0, unknown clearance
@@ -272,7 +298,7 @@ namespace Shiv {
 			Text.Add(Position(n), "Blocked", 3000);
 		}
 
-		public static bool Remove(NodeHandle a) => AllNodes.Regions.TryGetValue(Region(a), out var nodes) && nodes.WaitResult().TryRemove(a, out var edges);
+		public static bool Remove(NodeHandle a) => AllNodes.Regions.TryGetValue(Region(a), out var nodes) && nodes.TryRemove(a, out var edges);
 
 		public static void GetAllHandlesInBox(ModelBox box, ConcurrentSet<NodeHandle> output) => GetAllHandlesInBox(box.M, box.Back, box.Front, output);
 		public static void GetAllHandlesInBox(Matrix4x4 m, Vector3 backLeft, Vector3 frontRight, ConcurrentSet<NodeHandle> output) {
@@ -312,7 +338,7 @@ namespace Shiv {
 
 		public override void OnAbort() {
 			aborted = GameTime;
-			AllNodes.Regions.Clear();
+			AllNodes.Clear();
 		}
 
 		public static IEnumerable<NodeHandle> Flood(NodeHandle cur, int maxNodes, int maxDepth, CancellationToken cancel, Func<NodeHandle, IEnumerable<NodeHandle>> edges) {
