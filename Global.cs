@@ -29,12 +29,17 @@ namespace Shiv {
 		/// <summary> Number of milliseconds since the game launched. </summary>
 		public static uint GameTime { get; internal set; } = 0;
 
-		public static bool GamePaused { get; private set; } = false;
 		/// <summary>
 		/// Pauses the game. Does not show the Pause menu.
 		/// Script OnTick functions continue to be called.
 		/// </summary>
-		public static void TogglePause() => Call(SET_GAME_PAUSED, GamePaused = !GamePaused);
+		public static bool GamePaused {
+			get => gamePaused;
+			set {
+				Call(SET_GAME_PAUSED, gamePaused = value);
+			}
+		}
+		private static bool gamePaused = false;
 
 		/// <summary> A moving average (over 10 samples) of the current framerate. </summary>
 		public static float CurrentFPS { get; internal set; } = 0f;
