@@ -155,7 +155,7 @@ namespace Shiv {
 							menu.Back();
 							return true;
 						case Keys.End:
-							Hide();
+							menu.Back();
 							return true;
 					}
 				}
@@ -179,6 +179,7 @@ namespace Shiv {
 			if( rootMenu == null ) {
 				rootMenu = menu;
 				rootMenu.Closed += Detach;
+				GamePaused = true;
 			}
 		}
 
@@ -186,6 +187,7 @@ namespace Shiv {
 			if( rootMenu != null ) {
 				rootMenu.Close();
 				Detach(null, null);
+				GamePaused = false;
 			}
 		}
 
@@ -193,14 +195,18 @@ namespace Shiv {
 			if( rootMenu != null ) {
 				rootMenu.Closed -= Detach;
 				rootMenu = null;
+				GamePaused = false;
 			}
 		}
 
+		public static float menuLeft = .6f;
+		public static float menuTop = .5f;
+		public static float menuWidth = .2f;
 		public override void OnInit() {
-			Controls.Bind(Keys.Pause, () => TogglePause());
+			Controls.Bind(Keys.Pause, () => GamePaused = !GamePaused);
 			Controls.Bind(Keys.Right, (Action)(() => {
-				MenuScript.Show(new Menu(.4f, .4f, .2f)
-					.Item("Trainer", new Menu(.4f, .4f, .2f)
+				MenuScript.Show(new Menu(menuLeft, menuTop, menuWidth)
+					.Item("Trainer", new Menu(menuLeft, menuTop, menuWidth)
 						.Item(new InvincibleToggle()) // "Set Invincible", () => Call(SET_PLAYER_INVINCIBLE, true))
 						.Item(new ClearWanted())
 						.Item("Give Weapons", () => GiveWeapons(Self,
@@ -212,8 +218,8 @@ namespace Shiv {
 						)
 						.Item(new CarRepair())
 					)
-					.Item("Missions", new Menu(.4f, .4f, .2f)
-						.Item("Mission01", new Menu(.4f, .4f, .2f)
+					.Item("Missions", new Menu(menuLeft, menuTop, menuWidth)
+						.Item("Mission01", new Menu(menuLeft, menuTop, menuWidth)
 							.Item("Start", () => StateMachine.Run(new WaitForControl(new Mission01_Approach())))
 							.Item("GotoVault", () => StateMachine.Run(new Mission01_GotoVault()))
 							.Item("MoveToCover", () => StateMachine.Run(new Mission01_MoveToCover()))
@@ -221,7 +227,7 @@ namespace Shiv {
 							.Item("KillAllCops", () => StateMachine.Run(new Mission01_KillAllCops()))
 						)
 					)
-					.Item("Show Path To", new Menu(.4f, .4f, .2f)
+					.Item("Show Path To", new Menu(menuLeft, menuTop, menuWidth)
 						.Item("Trevor's House", () => StateMachine.Run(new DebugPath(new Vector3(1937.5f, 3814.5f, 33.4f))))
 						.Item("Safehouse", () => StateMachine.Run(new DebugPath(Position(GetAllBlips(BlipSprite.Safehouse).FirstOrDefault()))))
 						.Item("Red Blip", () => StateMachine.Run(new DebugPath(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Red)))))
@@ -236,7 +242,7 @@ namespace Shiv {
 							StateMachine.Run(new DebugPath(node));
 						})
 					)
-					.Item("Walk To", new Menu(.4f, .4f, .2f)
+					.Item("Walk To", new Menu(menuLeft, menuTop, menuWidth)
 						.Item("Trevor's House", () => StateMachine.Run(new MoveTo(new Vector3(1937.5f, 3814.5f, 33.4f))))
 						.Item("Safehouse", () => StateMachine.Run(new MoveTo(Position(GetAllBlips(BlipSprite.Safehouse).FirstOrDefault()))))
 						.Item("Wander", () => StateMachine.Run(new Wander()))
@@ -246,7 +252,7 @@ namespace Shiv {
 						.Item("Green Blip", () => StateMachine.Run(new MoveTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Green)))))
 						.Item("Red Blip", () => StateMachine.Run(new MoveTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Red)))))
 					)
-					.Item("Drive To", new Menu(.4f, .4f, .2f)
+					.Item("Drive To", new Menu(menuLeft, menuTop, menuWidth)
 						.Item("Wander", (Action)(() => StateMachine.Run(new DriveWander(State.Idle) { Speed = 10f, DrivingFlags = VehicleDrivingFlags.Human })))
 						.Item("Trevor's House", () => StateMachine.Run(new DriveTo(new Vector3(1983f, 3829f, 32f), State.Idle) { Speed = 10f }))
 						.Item("Safehouse", () => StateMachine.Run(new DriveTo(Position(GetAllBlips(BlipSprite.Safehouse).FirstOrDefault()), State.Idle) { Speed = 15f }))
@@ -259,7 +265,7 @@ namespace Shiv {
 						AllNodes.Regions.TryRemove(Region(PlayerNode), out var ignore);
 					})
 					.Item("Save NavMesh", () => NavMesh.SaveToFile())
-					.Item("Press Key", new Menu(.4f, .4f, .2f)
+					.Item("Press Key", new Menu(menuLeft, menuTop, menuWidth)
 						.Item("Context", () => PressControl(2, Control.Context, 200))
 						.Item("ScriptRUp", () => PressControl(2, Control.ScriptRUp, 200))
 						.Item("ScriptRLeft", () => PressControl(2, Control.ScriptRLeft, 200))
