@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using static System.Math;
 
@@ -114,13 +115,20 @@ namespace Shiv {
 		/// <summary>
 		/// Yield all neighbors connected to the given node.
 		/// </summary>
-		public static IEnumerable<NodeHandle> Edges(NodeHandle a) {
-			var edges = AllNodes.Get(a);
+		public static IEnumerable<NodeHandle> Edges(NodeHandle a) => Edges(a, AllNodes.Get(a));
+		public static IEnumerable<NodeHandle> Edges(NodeHandle a, NodeEdges e) {
 			for( int i = 0; i < edgeOffsets.Length; i++ ) {
-				if( (edges & (NodeEdges)(1ul << i)) > 0 ) {
-					yield return AddEdgeOffset(a, i); // (NodeHandle)(node + edgeOffsets[i]);
+				if( e.HasFlag((NodeEdges)(1ul << i)) ) {
+					yield return AddEdgeOffset(a, i);
 				}
 			}
+		}
+		public static bool HasEdge(NodeEdges e, NodeHandle a, NodeHandle b) {
+			long d = (long)((ulong)b & handleMask) - (long)((ulong)a & handleMask);
+			if( !whichEdgeBit.ContainsKey(d) ) {
+				return false;
+			}
+			return e.HasFlag((NodeEdges)(1ul << whichEdgeBit[d]));
 		}
 		public static bool HasEdge(NodeHandle a, NodeHandle b) {
 			long d = (long)((ulong)b & handleMask) - (long)((ulong)a & handleMask);
@@ -144,55 +152,70 @@ namespace Shiv {
 			AllNodes.SetDirty(b);
 			return true;
 		}
+		public static NodeEdges AddEdge(NodeEdges e, NodeHandle a, NodeHandle b) {
+			long d = (long)((ulong)b & handleMask) - (long)((ulong)a & handleMask);
+			return !whichEdgeBit.ContainsKey(d) ? e : e | (NodeEdges)(1ul << whichEdgeBit[d]);
+		}
 		public static bool AddEdge(NodeHandle a, NodeHandle b) => SetEdge(a, b, true);
 		public static void RemoveEdge(NodeHandle a, NodeHandle b) => SetEdge(a, b, false);
+		public static NodeEdges GetEdges(NodeHandle a) => AllNodes.Get(a);
+		public static void SetEdges(NodeHandle a, NodeEdges e) => AllNodes.Set(a, e);
+		
 
-		public static bool IsGrown(NodeHandle a) => HasFlag(a, NodeEdges.IsGrown); //  AllNodes.TryGetValue(a, out var flags) && (flags & NodeEdges.IsGrown) > 0;
+		public static bool IsGrown(NodeEdges e) => e.HasFlag(NodeEdges.IsGrown);
+		public static bool IsGrown(NodeHandle a) => HasFlag(a, NodeEdges.IsGrown);
+		public static NodeEdges IsGrown(NodeEdges e, bool value) => value ? e | NodeEdges.IsGrown : e & ~NodeEdges.IsGrown;
 		public static void IsGrown(NodeHandle a, bool value) {
-			if( value ) {
-				AllNodes.AddOrUpdate(a, NodeEdges.IsGrown, (key, oldValue) => oldValue | NodeEdges.IsGrown);
-			} else {
-				AllNodes.AddOrUpdate(a, 0, (key, oldValue) => oldValue & ~NodeEdges.IsGrown);
-			}
+			AllNodes.AddOrUpdate(a, value ? NodeEdges.IsGrown : 0, (key, e) => IsGrown(e, value));
 			AllNodes.SetDirty(a);
 		}
 
 		public static bool IsCover(NodeHandle a) => HasFlag(a, NodeEdges.IsCover); // AllEdges.TryGetValue(a, out var flags) && (flags & NodeEdges.IsCover) > 0;
+		public static NodeEdges IsCover(NodeEdges e, bool value) => value ? e | NodeEdges.IsCover : e & ~NodeEdges.IsCover;
 		public static void IsCover(NodeHandle a, bool value) {
-			if( value ) {
-				AllNodes.AddOrUpdate(a, NodeEdges.IsCover, (key, oldValue) => oldValue | NodeEdges.IsCover);
-			} else {
-				AllNodes.AddOrUpdate(a, 0, (key, oldValue) => oldValue & ~NodeEdges.IsCover);
-			}
+			AllNodes.AddOrUpdate(a, value ? NodeEdges.IsCover : 0, (key, e) => IsCover(e, value));
 			AllNodes.SetDirty(a);
 		}
 
-		public static uint Clearance(NodeHandle a) => (uint)((ulong)(AllNodes.Get(a) & NodeEdges.ClearanceMask) >> 32);
+		public static uint Clearance(NodeEdges e) => (uint)((ulong)(e & NodeEdges.ClearanceMask) >> 32);
+		public static uint Clearance(NodeHandle a) => Clearance(AllNodes.Get(a));
+		public static NodeEdges Clearance(NodeEdges e, uint value) {
+			var mask = (NodeEdges)((ulong)value << 32);
+			return (e & ~NodeEdges.ClearanceMask) | mask;
+		}
 		public static void Clearance(NodeHandle a, uint value) {
 			value = Min(15, value);
 			var mask = (NodeEdges)((ulong)value << 32);
-			AllNodes.AddOrUpdate(a, mask, (key, oldValue) => (oldValue & ~NodeEdges.ClearanceMask) | mask);
+			AllNodes.AddOrUpdate(a, mask, (key, e) => Clearance(e, value));
 		}
-		public static void PropagateClearance(ConcurrentQueue<NodeHandle> queue) {
-			while( queue.TryDequeue(out var a) ) {
-				var c = Clearance(a);
-				foreach(var e in Edges(a) ) {
+
+		public static void PropagateClearance(NodeHandle a, uint value) {
+			Clearance(a, value);
+			PropagateClearance(a);
+		}
+
+		public static void PropagateClearance(NodeHandle a) {
+			var q = new Queue<NodeHandle>();
+			q.Enqueue(a);
+			PropagateClearance(q);
+		}
+
+		public static void PropagateClearance(Queue<NodeHandle> queue) {
+			while( queue.TryDequeue(out NodeHandle n) ) {
+				var nEdges = GetEdges(n);
+				var c = Clearance(nEdges);
+				foreach( var e in Edges(n, nEdges) ) {
 					var d = Clearance(e);
 					if( d == 0 || d > c + 1 ) {
 						Clearance(e, c + 1);
 						queue.Enqueue(e);
 					} else if( d < c - 1 ) {
-						Clearance(a, d + 1);
-						queue.Enqueue(a);
+						Clearance(n, d + 1);
+						queue.Enqueue(n);
 					}
 				}
 			}
 		}
-		public static void PropagateClearance(NodeHandle a, uint value) {
-			Clearance(a, value);
-			var queue = new ConcurrentQueue<NodeHandle>();
-			queue.Enqueue(a);
-			PropagateClearance(queue);
-		}
+
 	}
 }

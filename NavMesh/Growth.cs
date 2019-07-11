@@ -29,7 +29,7 @@ namespace Shiv {
 		/// </summary>
 		public static NodeHandle LastGrown { get; private set; } = NodeHandle.Invalid;
 
-		internal static NodeHandle AddEdgeOffset(NodeHandle n, int i) => Handle(Position((NodeHandle)((long)((ulong)n & handleMask) + edgeOffsets[i]))); // extract position, use to add region back in to handle
+		internal static NodeHandle AddEdgeOffset(NodeHandle n, int i) => Handle(Position((NodeHandle)((long)((ulong)n & handleMask) + edgeOffsets[i]))); // extract position, then add (maybe new) region back in to handle
 		public static IEnumerable<NodeHandle> GrowOne(NodeHandle node, HashSet<EntHandle> doors, bool debug=false) {
 			if( IsGrown(node) ) {
 				yield break;
@@ -38,31 +38,43 @@ namespace Shiv {
 			if( DistanceToSelf(nodePos) > maxGrowRange * maxGrowRange) {
 				yield break;
 			}
-			IsGrown(node, true);
+			NodeHandle g, e;
+			Vector3 delta, end;
+			RaycastResult result;
+			NodeEdges nEdges, gEdges;
+			nEdges = GetEdges(node);
+			nEdges = IsGrown(nEdges, true);
+			var queue = new Queue<NodeHandle>();
+			queue.Enqueue(node);
 			foreach( var i in possibleGrowthEdges ) {
-				var e = AddEdgeOffset(node, i);
-				NodeHandle g = Handle(PutOnGround(Position(e), 1f));
-				if( IsPossibleEdge(node, g) && !HasEdge(node, g) ) {
-					Vector3 delta = Position(g) - nodePos;
+				e = AddEdgeOffset(node, i);
+				g = Handle(PutOnGround(Position(e), 1f));
+				gEdges = GetEdges(g);
+				if( IsPossibleEdge(node, g) && !HasEdge(nEdges, node, g) ) {
+					delta = Position(g) - nodePos;
 					var len = delta.Length();
-					Vector3 end = nodePos + ((delta / len) * (len - capsuleSize / 2));
-					RaycastResult result = Raycast(nodePos, end, capsuleSize, growRayOpts, Self);
+					end = nodePos + ((delta / len) * (len - capsuleSize / 2));
+					result = Raycast(nodePos, end, capsuleSize, growRayOpts, Self);
 					if( (!result.DidHit) 
 						|| (Exists(result.Entity) && doors.Contains(result.Entity))  ) {
 						if( debug ) {
 							Line.Add(Position(node), Position(g), Color.Yellow, 3000);
 						}
-						AddEdge(node, g);
-						AddEdge(g, node);
-						var nClear = Clearance(node);
+						nEdges = AddEdge(nEdges, node, g);
+						gEdges = AddEdge(gEdges, g, node);
+						var nClear = Clearance(nEdges);
 						if( nClear == 0 ) {
-							PropagateClearance(node, nClear = 15);
+							nEdges = Clearance(nEdges, nClear = 15);
 						}
-						var gClear = Clearance(g);
+						var gClear = Clearance(gEdges);
 						if( gClear == 0 || gClear > nClear + 1) {
-							Clearance(g, nClear + 1);
+							gEdges = Clearance(gEdges, nClear + 1);
+						} else if( gClear != 0 && gClear < nClear - 1 ) {
+							nEdges = Clearance(nEdges, gClear + 1);
 						}
-						if( ! IsGrown(g) ) {
+						SetEdges(g, gEdges);
+						queue.Enqueue(g);
+						if( ! IsGrown(gEdges) ) {
 							yield return g;
 						}
 					} else if( result.DidHit ) {
@@ -72,8 +84,8 @@ namespace Shiv {
 							&& m != Materials.bushes
 							&& m != Materials.leaves
 							&& Abs(Vector3.Dot(result.SurfaceNormal, Up)) < .01f ) {
-							IsCover(node, true);
-							PropagateClearance(node, 1);
+							nEdges = IsCover(nEdges, true);
+							nEdges = Clearance(nEdges, 1);
 							if( debug ) {
 								Text.Add(Position(node), $"IsCover({m})", 5000, 0f, -.04f);
 							}
@@ -85,6 +97,8 @@ namespace Shiv {
 					}
 				}
 			}
+			SetEdges(node, nEdges);
+			PropagateClearance(queue);
 		}
 		public static MovingAverage grownPerSecond = new MovingAverage(20);
 		public static void Grow(NodeHandle start, uint maxMs, bool debug=false) {

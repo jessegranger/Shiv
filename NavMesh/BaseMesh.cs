@@ -123,6 +123,17 @@ namespace Shiv {
 		private static uint started = 0;
 		private static uint saved = 0;
 		private static uint aborted = 0;
+		public override void OnInit() {
+			ReadFrontierFile();
+			base.OnInit();
+		}
+
+
+		public override void OnAbort() {
+			aborted = GameTime;
+			AllNodes.Clear();
+		}
+
 
 		public class NodeSet {
 
@@ -253,7 +264,7 @@ namespace Shiv {
 			if( node == NodeHandle.Invalid ) {
 				return;
 			}
-			DrawLine(HeadPosition(Self), Position(node), Color.Blue);
+			DrawLine(HeadPosition(Self), Position(node), Color.LightBlue);
 
 			var queue = new Queue<NodeHandle>();
 			var seen = new HashSet<NodeHandle>();
@@ -263,7 +274,7 @@ namespace Shiv {
 				NodeHandle cur = queue.Dequeue();
 				var pos = Position(cur);
 				var c = Clearance(cur);
-				// UI.DrawTextInWorldWithOffset(pos, 0f, -.01f * Clearance(cur), $"{Clearance(cur)}");
+				UI.DrawTextInWorldWithOffset(pos, 0f, -.01f * c, $"{c}");
 				foreach( NodeHandle e in Edges(cur) ) {
 					var epos = Position(e);
 					DrawLine(pos, epos, clearanceColors[c]);
@@ -278,13 +289,12 @@ namespace Shiv {
 					}
 				}
 			}
-
 		}
 
 		public void DrawStatus() {
 			float lineHeight = .02f;
 			float left = 0f;
-			float top = .75f;
+			float top = .73f;
 			int line = 0;
 			UI.DrawText(left, top + (line++ * lineHeight), $"NavMesh: {PlayerNode} {Region(PlayerNode)} {Round(Position(PlayerNode),2)}");
 			UI.DrawText(left, top + (line++ * lineHeight), $"Growth: (growth {grownPerSecond.Value:F2}/s GetHandle {(ulong)GetHandleTimer.ElapsedTicks / GetHandleCount} ticks/op)");
@@ -329,16 +339,6 @@ namespace Shiv {
 			return (IsCover(a) ? Color.Blue :
 				IsGrown(a) ? Color.Gray :
 				Color.White);
-		}
-
-		public override void OnInit() {
-			ReadFrontierFile();
-			base.OnInit();
-		}
-
-		public override void OnAbort() {
-			aborted = GameTime;
-			AllNodes.Clear();
 		}
 
 		public static IEnumerable<NodeHandle> Flood(NodeHandle cur, int maxNodes, int maxDepth, CancellationToken cancel, Func<NodeHandle, IEnumerable<NodeHandle>> edges) {

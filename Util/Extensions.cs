@@ -21,6 +21,16 @@ namespace Shiv {
 			return list;
 		}
 
+		public static bool TryDequeue<T>(this Queue<T> queue, out T item) {
+			if( queue.Count == 0 ) {
+				item = default;
+				return false;
+			} else {
+				item = queue.Dequeue();
+				return true;
+			}
+		}
+
 		public static T Min<T>(this IEnumerable<T> list, Func<T,float> score) {
 			T minItem = default;
 			float minScore = float.MaxValue;

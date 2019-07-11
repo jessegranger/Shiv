@@ -44,6 +44,7 @@
     <Compile Include="States\FindCover.cs" />
     <Compile Include="States\PressKey.cs" />
     <Compile Include="States\MoveTo.cs" />
+    <Compile Include="Util\Consumer.cs" />
     <Compile Include="Util\Interpolation.cs" />
     <Compile Include="Util\Producer.cs" />
     <Compile Include="Util\Future.cs" />

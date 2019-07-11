@@ -37,20 +37,18 @@ namespace Shiv {
 		static Stopwatch totalReadTimer = new Stopwatch();
 		static Stopwatch readBytesTimer = new Stopwatch();
 		static Stopwatch applyBytesTimer = new Stopwatch();
-		public static ConcurrentDictionary<NodeHandle, NodeEdges> ReadFromFile(RegionHandle region) {
+		public static void ReadFromFile(RegionHandle region, ConcurrentDictionary<NodeHandle, NodeEdges> output) {
 			try {
 				totalReadTimer.Start();
 				uint r = (uint)region >> 7;
-				Directory.CreateDirectory($"scripts/NavMesh/{r}/");
-				return ReadFromFile(region, $"scripts/NavMesh/{r}/{region}.mesh");
+				ReadFromFile(region, $"scripts/NavMesh/{r}/{region}.mesh", output);
 			} finally {
 				totalReadTimer.Stop();
 			}
 		}
-		public static ConcurrentDictionary<NodeHandle, NodeEdges> ReadFromFile(RegionHandle region, string filename) {
-			var ret = new ConcurrentDictionary<NodeHandle, NodeEdges>();
+		public static void ReadFromFile(RegionHandle region, string filename, ConcurrentDictionary<NodeHandle, NodeEdges> output) {
 			if( !LoadEnabled ) {
-				return ret;
+				return;
 			}
 
 			var s = new Stopwatch();
@@ -63,7 +61,7 @@ namespace Shiv {
 						int count = r.ReadInt32();
 						if( count <= 0 ) {
 							Log($"Invalid count: {count}");
-							return ret;
+							return;
 						}
 						byte[] buf;
 						ulong[] handles = new ulong[count];
@@ -75,20 +73,20 @@ namespace Shiv {
 						readBytesTimer.Stop();
 						applyBytesTimer.Start();
 						Parallel.For(0, count, (i) => {
-							ret.TryAdd((NodeHandle)handles[i], (NodeEdges)edges[i]);
+							output.TryAdd((NodeHandle)handles[i], (NodeEdges)edges[i]);
 						});
 						Log($"[{region}] Loaded {count} (ver. 9) nodes in {s.ElapsedMilliseconds}ms");
 						applyBytesTimer.Stop();
 					} else {
 						Log($"Invalid magic bytes: {magic}");
-						return ret;
+						return;
 					}
 				}
 			} catch( FileNotFoundException ) {
 				Log($"[{region}] Loaded 0 nodes ({filename} not found) in {s.ElapsedMilliseconds}ms");
 			}
 			s.Stop();
-			return ret;
+			return;
 		}
 
 		public static void SaveToFile() {
@@ -108,7 +106,7 @@ namespace Shiv {
 					var file = $"scripts/NavMesh/{r}/{region}.mesh";
 					using( BinaryWriter w = Codec.Writer(file + ".tmp") ) {
 						w.Write(magicBytes);
-						var result = AllNodes.Regions[region].WaitResult();
+						var result = AllNodes.Regions[region]; // we know it's there bc it's dirty
 						ulong[] handles = result.Keys.Cast<ulong>().ToArray();
 						ulong[] edges = handles.Select(h => (ulong)result[(NodeHandle)h]).ToArray(); // use Select this way to guarantee they match the order of handles
 						byte[] buf;
