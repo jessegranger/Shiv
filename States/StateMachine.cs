@@ -26,14 +26,13 @@ namespace Shiv {
 	public class StateMachine: Script {
 
 		public static State CurrentState;
-		private static State PreviousState;
 		public StateMachine() { }
 
 		public static void Clear() => CurrentState = State.Idle;
 
 		public static void Run(State state) {
 			Shiv.Log($"[StateScript] Start {state}");
-			PreviousState = CurrentState = state;
+			CurrentState = state;
 		}
 		public static void Run(Func<State, State> func) => Run(new Runner(func));
 		public static void Run(string name, Func<State, State> func) => Run(new Runner(name, func));
@@ -47,15 +46,17 @@ namespace Shiv {
 			public override State OnTick() => F(CurrentState);
 		}
 
-		public override void OnInit() => PreviousState = CurrentState = State.Idle;
-		public override void OnAbort() => PreviousState = CurrentState = null;
+		public override void OnInit() => CurrentState = State.Idle;
+		public override void OnAbort() => CurrentState = null;
 		public override void OnTick() {
 			if( CurrentState != null ) {
 				UI.DrawTextInWorldWithOffset(HeadPosition(Self), 0f, .02f, $"State: {CurrentState}");
-				CurrentState = CurrentState.OnTick();
-				if( CurrentState != PreviousState ) {
-					Shiv.Log($"[StateScript] -> {CurrentState}");
-					PreviousState = CurrentState;
+				if( !GamePaused ) {
+					State nextState = CurrentState.OnTick();
+					if( CurrentState != nextState ) {
+						Shiv.Log($"[StateScript] -> {nextState}");
+						CurrentState = nextState;
+					}
 				}
 			}
 		}
