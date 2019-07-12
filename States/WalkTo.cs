@@ -56,6 +56,10 @@ namespace Shiv {
 				return Next;
 			}
 			if( request != null ) {
+
+				if( IsInCover(Self) ) {
+					return new PressKey(Control.Cover, 200, new Delay(100, this));
+				}
 				if( request.IsReady() ) {
 					path = request.GetResult();
 					request = null;
