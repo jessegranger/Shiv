@@ -112,7 +112,7 @@ namespace Shiv {
 				}
 				CurrentFPS = fps.Value;
 
-				// run any actions in response to key strokes
+				// consume key strokes, dispatch them to scripts and key bindings
 				Controls.OnTick();
 
 				// run all Script instances in order

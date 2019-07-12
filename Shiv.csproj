@@ -39,11 +39,12 @@
     <Compile Include="NavMesh\SaveLoad.cs" />
     <Compile Include="States\DebugPath.cs" />
     <Compile Include="States\Explore.cs" />
+    <Compile Include="States\LookAimShoot.cs" />
     <Compile Include="States\Teleport.cs" />
     <Compile Include="States\Wander.cs" />
     <Compile Include="States\FindCover.cs" />
     <Compile Include="States\PressKey.cs" />
-    <Compile Include="States\MoveTo.cs" />
+    <Compile Include="States\WalkTo.cs" />
     <Compile Include="Util\Consumer.cs" />
     <Compile Include="Util\Interpolation.cs" />
     <Compile Include="Util\Producer.cs" />
@@ -54,7 +55,6 @@
     <Compile Include="Util\MovingAverage.cs" />
     <Compile Include="Scripts\Console.cs" />
     <Compile Include="Scripts\Menu.cs" />
-    <Compile Include="Goals\TaskWander.cs" />
     <Compile Include="Util\Blacklist.cs" />
     <Compile Include="Game\Controls.cs" />
     <Compile Include="Game\Enums.cs" />
@@ -82,7 +82,7 @@
     <Compile Include="Scripts\Senses.cs" />
     <Compile Include="Scripts\UI.cs" />
     <Compile Include="Scripts\VehicleMesh.cs" />
-    <Compile Include="States\StateMachine.cs" />
+    <Compile Include="States\BaseMachine.cs" />
     <Compile Include="Util\Throttle.cs" />
   </ItemGroup>
   <ItemGroup />
