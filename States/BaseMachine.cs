@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using static Shiv.Global;
+using System.Numerics;
 
 namespace Shiv {
 
@@ -65,7 +66,7 @@ namespace Shiv {
 
 	class WaitForControl : State {
 		public bool Value = true;
-		public WaitForControl(bool value, State next) : base(next) => Value = value;
+		public WaitForControl(bool value, State next = null) : base(next) => Value = value;
 		public WaitForControl(State next) : base(next) { }
 		public override State OnTick() => CanControlCharacter() == Value ? Next : (this);
 		public override string Name => $"WaitForControl({Value})";
@@ -77,7 +78,7 @@ namespace Shiv {
 	class Delay : State {
 		Stopwatch sw = new Stopwatch();
 		readonly uint ms;
-		public Delay(uint ms, State next) : base(next) {
+		public Delay(uint ms, State next = null) : base(next) {
 			this.ms = ms;
 			sw.Start();
 		}
@@ -87,12 +88,47 @@ namespace Shiv {
 	class WaitForBlip : State {
 		readonly BlipSprite Kind;
 		readonly BlipHUDColor Color;
-		public WaitForBlip(BlipHUDColor color, State next) : this(BlipSprite.Standard, color, next) { }
-		public WaitForBlip(BlipSprite kind, BlipHUDColor color, State next) : base(next) {
+		public WaitForBlip(BlipHUDColor color, State next = null) : this(BlipSprite.Standard, color, next) { }
+		public WaitForBlip(BlipSprite kind, BlipHUDColor color, State next = null) : base(next) {
 			Kind = kind;
 			Color = color;
 		}
 		public override State OnTick() => GetAllBlips(Kind).Any(b => GetBlipHUDColor(b) == Color) ? Next : this;
 		public override string Name => $"WaitForBlip({Color})";
+	}
+
+	class MultiState : State {
+		private LinkedList<State> States;
+		public MultiState(params Func<State, State>[] states):this(states.Select(s => new StateMachine.Runner(s)).ToArray() ) { }
+		public MultiState(params State[] states) => States = new LinkedList<State>(states);
+		public override string ToString() => string.Join(" while ", States.Select(s => $"({s})")) + (Next == null ? "" : $" then {Next.Name}");
+		public override State OnTick() {
+			LinkedListNode<State> cur = States.First;
+			while( cur != null ) {
+				State next = cur.Value.OnTick();
+				if( next == null ) {
+					Log($"State {cur.Value.Name} finished.");
+					cur = States.RemoveAndContinue(cur);
+					continue;
+				}
+				if( next != cur.Value ) {
+					Log($"State Change {cur.Value.Name} to {next.Name}");
+					cur.Value = next;
+				}
+				cur = cur.Next;
+			}
+			if( States.Count == 0 ) {
+				return Next;
+			}
+			return this;
+		}
+		public void Add(State state) => States.AddLast(state);
+		public void Remove(State state) => States.Remove(state);
+		public void Remove(Type stateType) {
+			LinkedListNode<State> cur = States.First;
+			while( cur != null ) {
+				cur = cur.Value.GetType() == stateType ? States.RemoveAndContinue(cur) : cur.Next;
+			}
+		}
 	}
 }
