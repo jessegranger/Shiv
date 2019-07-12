@@ -78,10 +78,9 @@ namespace Shiv {
 	class Mission01_WalkOut : State {
 		public override string Name => "Walk Out";
 		public override State OnTick() {
-			if( CanControlCharacter() ) {
-				return new WalkTo(Position(NearbyHumans().FirstOrDefault()), this);
-			}
-			return new WaitForControl(true, new Mission01_SelectTrevor());
+			return CanControlCharacter()
+				? new WalkTo(Position(NearbyHumans().FirstOrDefault()), this)
+				: (State)new WaitForControl(true, new Mission01_SelectTrevor());
 		}
 	}
 
@@ -98,11 +97,9 @@ namespace Shiv {
 		public override string Name => "Shoot Guard";
 		public override State OnTick() {
 			PedHandle ped = NearbyHumans().FirstOrDefault(p => GetModel(p) == PedHash.PrologueSec01Cutscene);
-			if( Exists(ped) && IsAlive(ped) ) {
-				return new ShootAt(ped, this);
-			} else {
-				return new WaitForControl(new WaitForBlip(BlipHUDColor.Yellow, new Mission01_MoveToCover()));
-			}
+			return Exists(ped) && IsAlive(ped)
+				? new ShootAt(ped, this)
+				: (State)new WaitForControl(new WaitForBlip(BlipHUDColor.Yellow, new Mission01_MoveToCover()));
 		}
 	}
 	class Mission01_Complete : State { } // wrap up
@@ -110,7 +107,7 @@ namespace Shiv {
 		public override string Name => "Move To Cover";
 		public override State OnTick() {
 			if( CanControlCharacter() && !IsInCover(Self) && !IsGoingIntoCover(Self) ) {
-				var pos = Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Yellow));
+				Vector3 pos = Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Yellow));
 				if( pos != Vector3.Zero ) {
 					return new WalkTo(pos, new EnterCover(pos, 2000, this) { Fail = this });
 				}
@@ -125,7 +122,7 @@ namespace Shiv {
 				if( IsInCover(Self) ) {
 					return new PressKey(1, Control.Cover, 200, this);
 				}
-				var pos = Position(GetAllBlips().FirstOrDefault(b => GetColor(b) == Color.Green));
+				Vector3 pos = Position(GetAllBlips().FirstOrDefault(b => GetColor(b) == Color.Green));
 				var dist = DistanceToSelf(pos);
 				if( dist < 2f ) {
 					MoveToward(pos, stoppingRange: 0f);
@@ -147,16 +144,17 @@ namespace Shiv {
 		readonly Blacklist blacklist = new Blacklist("Cops");
 		public override State OnTick() {
 			if( CanControlCharacter() ) {
-				var hostile = NearbyHumans().Where(BlipHUDColor.Red);
+				IEnumerable<PedHandle> hostile = NearbyHumans().Where(BlipHUDColor.Red);
 				if( hostile.Count() > 0 ) {
 					PedHandle target = hostile.Without(p => IsInCover(p) && !IsAimingFromCover(p)).Min(DistanceToSelf);
-					if( target == PedHandle.Invalid && !IsInCover(Self) ) {
-						return new FindCover(Position(hostile.FirstOrDefault()), this);
+					if( target == PedHandle.Invalid ) {
+						return IsInCover(Self) ? this : (State)new FindCover(Position(hostile.FirstOrDefault()), this);
+					} else {
+						return new MultiState(
+							new WalkToPed(target),
+							new ShootAt(target)
+						) { Next = this };
 					}
-					return new MultiState(
-						new WalkToPed(target),
-						new ShootAt(target)
-					) { Next = this };
 				}
 				return new WalkToPed(NearbyHumans().Where(BlipHUDColor.Blue).FirstOrDefault(), this);
 			}
