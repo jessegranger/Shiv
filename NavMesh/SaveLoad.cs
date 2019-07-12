@@ -82,6 +82,8 @@ namespace Shiv {
 						return;
 					}
 				}
+			} catch( DirectoryNotFoundException ) {
+				Log($"[{region}] Loaded 0 nodes ({filename} not found) in {s.ElapsedMilliseconds}ms");
 			} catch( FileNotFoundException ) {
 				Log($"[{region}] Loaded 0 nodes ({filename} not found) in {s.ElapsedMilliseconds}ms");
 			}
