@@ -8,20 +8,9 @@ using System.Drawing;
 namespace Shiv {
 	class Combat : State {
 		static readonly Blacklist blacklist = new Blacklist("Combat");
-		private PedHandle prevTarget = PedHandle.Invalid;
 		public Combat(State next):base(next) { }
 		public override State OnTick() {
 			if( CanControlCharacter() ) {
-				var hostile = NearbyHumans().Where(IsInCombat);
-				if( hostile.Count() > 0 ) {
-					KillTarget = hostile.Without(p => IsInCover(p) && !IsAimingFromCover(p)).Min(DistanceToSelf);
-					if( KillTarget == PedHandle.Invalid && !IsInCover(Self) ) {
-						return new FindCover(Position(hostile.FirstOrDefault()), this) { Fail = this };
-					} else if( prevTarget != KillTarget ) {
-						prevTarget = KillTarget;
-						WalkTarget = Position(KillTarget);
-					}
-				}
 				return this;
 			}
 			return Next;

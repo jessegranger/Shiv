@@ -18,11 +18,11 @@ namespace Shiv {
 					.FirstOrDefault();
 				// .Min(DistanceToSelf);
 				if( ungrown != NodeHandle.Invalid ) {
-					return new MoveTo(ungrown, this);
+					return new WalkTo(ungrown, this);
 				}
 			} else {
 				Log($"Exploring last grown");
-				return new MoveTo(Position(LastGrown), this);
+				return new WalkTo(Position(LastGrown), this);
 			}
 			return this;
 		}

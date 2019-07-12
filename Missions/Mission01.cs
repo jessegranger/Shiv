@@ -13,6 +13,20 @@ using System.Diagnostics;
 
 namespace Shiv {
 
+	class Mission01_Approach : State {
+		public override string Name => "Approach Hostages";
+		public override State OnTick() {
+			if( !CanControlCharacter() ) {
+				return new Mission01_Threaten();
+			}
+			PedHandle ped = NearbyHumans().Where(BlipHUDColor.Red).FirstOrDefault();
+			return new MultiState(
+				new AimAt(ped),
+				new WalkTo(Position(ped))
+			) { Next = this };
+		}
+	}
+
 	class Mission01_Detonate : State { // use the phone to detonate bomb
 		public override string Name => "Detonate";
 		public override State OnTick() {
@@ -36,7 +50,7 @@ namespace Shiv {
 				? new Mission01_GetMoney()
 				: vault == Vector3.Zero
 				? new Delay(500, this)
-				: (State)new MoveTo(vault, new Mission01_GetMoney());
+				: (State)new WalkTo(vault, new Mission01_GetMoney());
 		}
 		private uint retryCount = 0;
 	}
@@ -65,7 +79,7 @@ namespace Shiv {
 		public override string Name => "Walk Out";
 		public override State OnTick() {
 			if( CanControlCharacter() ) {
-				return new MoveTo(Position(NearbyHumans().FirstOrDefault()), this);
+				return new WalkTo(Position(NearbyHumans().FirstOrDefault()), this);
 			}
 			return new WaitForControl(true, new Mission01_SelectTrevor());
 		}
@@ -85,8 +99,7 @@ namespace Shiv {
 		public override State OnTick() {
 			PedHandle ped = NearbyHumans().FirstOrDefault(p => GetModel(p) == PedHash.PrologueSec01Cutscene);
 			if( Exists(ped) && IsAlive(ped) ) {
-				KillTarget = ped;
-				return this;
+				return new ShootAt(ped, this);
 			} else {
 				return new WaitForControl(new WaitForBlip(BlipHUDColor.Yellow, new Mission01_MoveToCover()));
 			}
@@ -99,7 +112,7 @@ namespace Shiv {
 			if( CanControlCharacter() && !IsInCover(Self) && !IsGoingIntoCover(Self) ) {
 				var pos = Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Yellow));
 				if( pos != Vector3.Zero ) {
-					return new MoveTo(pos, new EnterCover(pos, 2000, this) { Fail = this });
+					return new WalkTo(pos, new EnterCover(pos, 2000, this) { Fail = this });
 				}
 			}
 			return new WaitForControl(new WaitForBlip(BlipHUDColor.Green, new Mission01_MoveToButton()));
@@ -119,35 +132,33 @@ namespace Shiv {
 					return this;
 				}
 				if( pos != Vector3.Zero ) {
-					return new MoveTo(pos, this);
+					return new WalkTo(pos, this);
 				}
 			}
 			return new WaitForControl(
 				new WaitForBlip(BlipHUDColor.Red,
-				new Mission01_KillAllCops()
+				new Mission01_GetAway()
 			));
 		}
 	}
 
-	class Mission01_KillAllCops : State {
-		public override string Name => "Kill Cops";
+	class Mission01_GetAway : State {
+		public override string Name => "Get away";
 		readonly Blacklist blacklist = new Blacklist("Cops");
 		public override State OnTick() {
 			if( CanControlCharacter() ) {
 				var hostile = NearbyHumans().Where(BlipHUDColor.Red);
-				if( Call<int>(GET_PLAYER_WANTED_LEVEL, CurrentPlayer) > 0 ) {
-					hostile = hostile.Concat(GetAllBlips(BlipSprite.PoliceOfficer).Select(GetEntity).Cast<PedHandle>());
-				}
-				var getaway = NearbyVehicles().Where(BlipHUDColor.Blue).FirstOrDefault();
 				if( hostile.Count() > 0 ) {
-					KillTarget = hostile.Without(p => IsInCover(p) && !IsAimingFromCover(p)).Min(DistanceToSelf);
-					if( KillTarget == PedHandle.Invalid && !IsInCover(Self) ) {
+					PedHandle target = hostile.Without(p => IsInCover(p) && !IsAimingFromCover(p)).Min(DistanceToSelf);
+					if( target == PedHandle.Invalid && !IsInCover(Self) ) {
 						return new FindCover(Position(hostile.FirstOrDefault()), this);
 					}
-					WalkTarget = Position(KillTarget);
-				} else if( getaway != VehicleHandle.Invalid ) {
-					return new MoveTo(Position(getaway), this);
+					return new MultiState(
+						new WalkToPed(target),
+						new ShootAt(target)
+					) { Next = this };
 				}
+				return new WalkToPed(NearbyHumans().Where(BlipHUDColor.Blue).FirstOrDefault(), this);
 			}
 			return new Mission01_Complete();
 		}
@@ -155,41 +166,27 @@ namespace Shiv {
 
 	class Mission01_Threaten : State {
 		public override string Name => "Threaten Hostages";
-		public uint LastShift = 0;
+		private uint LastShift = 0;
+		private PedHandle Target;
 		public override State OnTick() {
 			IEnumerable<PedHandle> targets = NearbyHumans().Where(BlipHUDColor.Red).Where(p => CanSee(Self, p, IntersectOptions.Map));
 			if( targets.Count() > 0 ) {
 				if( GameTime - LastShift > 3000 ) {
 					LastShift = GameTime;
-					AimTarget = Vector3.Zero;
-					AimAtHead = targets.ToArray().Random<PedHandle>();
+					Target = targets.ToArray().Random<PedHandle>();
 				}
-				if( AimAtHead != PedHandle.Invalid ) {
+				if( Target != PedHandle.Invalid ) {
+					ForcedAim(CurrentPlayer, true);
+					LookToward(HeadPosition(Target));
 					return this;
 				}
 			}
-			AimAtHead = PedHandle.Invalid;
+			ForcedAim(CurrentPlayer, false);
 			return new Delay(2000, new Mission01_Detonate());
 		}
 	}
 
-	class Mission01_Approach : State {
-		public override string Name => "Approach Hostages";
-		public override State OnTick() {
-			if( !CanControlCharacter() ) {
-				AimTarget = Vector3.Zero;
-				return new Mission01_Threaten();
-			}
-			PedHandle ped = DangerSense.NearbyDanger.FirstOrDefault();
-			AimTarget = HeadPosition(ped);
-			if( AimTarget != Vector3.Zero ) {
-				if( DistanceToSelf(AimTarget) > 2f ) {
-					return new MoveTo(PutOnGround(Position(ped), 1f), this);
-				}
-			}
-			return this;
-		}
-	}
+
 	/*
 	abstract class Mission : Goal {
 		public override string ToString() => "Mission";

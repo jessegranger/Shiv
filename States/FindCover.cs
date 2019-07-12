@@ -25,17 +25,14 @@ namespace Shiv {
 
 	}
 	class EnterCover : State {
-		Vector3 Target;
-		uint Timeout;
+		readonly Vector3 Target;
+		readonly uint Timeout;
 		Stopwatch sw = new Stopwatch();
 		public EnterCover(Vector3 target, uint timeout, State next) : base(next) {
 			Target = target;
 			Timeout = timeout;
 		}
-		private State Done() {
-			LookTarget = Vector3.Zero;
-			return Next;
-		}
+		private State Done() => Next;
 		public override State OnTick() {
 			if( IsInCover(Self) || IsGoingIntoCover(Self) ) {
 				return Done();
@@ -46,11 +43,10 @@ namespace Shiv {
 			if( sw.ElapsedMilliseconds > Timeout ) {
 				return Fail;
 			}
-			KillTarget = PedHandle.Invalid;
-			AimAtHead = PedHandle.Invalid;
-			AimTarget = Vector3.Zero;
-			LookTarget = Target;
-			return new PressKey(1, Control.Cover, 300, new Delay(300, this));
+			return new MultiState(
+				new LookAt(Target, null) { Duration = 500 },
+				new PressKey(1, Control.Cover, 300, new Delay(300, this))
+			);
 		}
 	}
 	class FindCover : State {
@@ -59,10 +55,7 @@ namespace Shiv {
 
 		static Blacklist blacklist = new Blacklist("Cover");
 		public FindCover(Vector3 danger, State next) : base(next) => Danger = danger;
-		private State Done() {
-			AimTarget = Vector3.Zero;
-			return Next;
-		}
+		private State Done() => Next;
 		public override State OnTick() {
 			if( IsInCover(Self) || IsGoingIntoCover(Self) ) {
 				return Done();
@@ -86,7 +79,7 @@ namespace Shiv {
 				if( DistanceToSelf(pos) < 2f ) {
 					return new EnterCover(pos, 2000, this) { Fail = fail };
 				} else {
-					return new MoveTo(Target, this) { Run = true, Fail = fail };
+					return new WalkTo(Target, this) { Run = true, Fail = fail };
 				}
 			}
 			return this;

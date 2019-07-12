@@ -127,7 +127,6 @@ namespace Shiv {
 		public void Close() => Closed?.Invoke(null, null);
 	}
 
-	[DependOn(typeof(ControlsScript))]
 	public class MenuScript : Script {
 		public MenuScript() { }
 
@@ -169,7 +168,7 @@ namespace Shiv {
 
 		public override void OnTick() {
 			if( rootMenu != null ) {
-				Call(DISABLE_CONTROL_ACTION, 0, Global.Control.Phone, true);
+				Call(DISABLE_CONTROL_ACTION, 0, Control.Phone, true);
 				Call(_DISABLE_PHONE_THIS_FRAME, true);
 				rootMenu.Draw();
 			}
@@ -224,7 +223,7 @@ namespace Shiv {
 							.Item("GotoVault", () => StateMachine.Run(new Mission01_GotoVault()))
 							.Item("MoveToCover", () => StateMachine.Run(new Mission01_MoveToCover()))
 							.Item("MoveToButton", () => StateMachine.Run(new Mission01_MoveToButton()))
-							.Item("KillAllCops", () => StateMachine.Run(new Mission01_KillAllCops()))
+							.Item("KillAllCops", () => StateMachine.Run(new Mission01_GetAway()))
 						)
 					)
 					.Item("Show Path To", new Menu(menuLeft, menuTop, menuWidth)
@@ -243,20 +242,26 @@ namespace Shiv {
 						})
 					)
 					.Item("Walk To", new Menu(menuLeft, menuTop, menuWidth)
-						.Item("Trevor's House", () => StateMachine.Run(new MoveTo(new Vector3(1937.5f, 3814.5f, 33.4f))))
-						.Item("Safehouse", () => StateMachine.Run(new MoveTo(Position(GetAllBlips(BlipSprite.Safehouse).FirstOrDefault()))))
+						.Item("Trevor's House", () => StateMachine.Run(new WalkTo(new Vector3(1937.5f, 3814.5f, 33.4f))))
+						.Item("Safehouse", () => StateMachine.Run(new WalkTo(Position(GetAllBlips(BlipSprite.Safehouse).FirstOrDefault()))))
 						.Item("Wander", () => StateMachine.Run(new Wander()))
 						.Item("Explore", () => StateMachine.Run(new Explore()))
-						.Item("Yellow Blip", () => StateMachine.Run(new MoveTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Yellow)))))
-						.Item("Blue Blip", () => StateMachine.Run(new MoveTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Blue)))))
-						.Item("Green Blip", () => StateMachine.Run(new MoveTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Green)))))
-						.Item("Red Blip", () => StateMachine.Run(new MoveTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Red)))))
+						.Item("Yellow Blip", () => StateMachine.Run(new WalkTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Yellow)))))
+						.Item("Blue Blip", () => StateMachine.Run(new WalkTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Blue)))))
+						.Item("Green Blip", () => StateMachine.Run(new WalkTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Green)))))
+						.Item("Red Blip", () => StateMachine.Run(new WalkTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Red)))))
 					)
 					.Item("Drive To", new Menu(menuLeft, menuTop, menuWidth)
 						.Item("Wander", (Action)(() => StateMachine.Run(new DriveWander(State.Idle) { Speed = 10f, DrivingFlags = VehicleDrivingFlags.Human })))
 						.Item("Trevor's House", () => StateMachine.Run(new DriveTo(new Vector3(1983f, 3829f, 32f), State.Idle) { Speed = 10f }))
 						.Item("Safehouse", () => StateMachine.Run(new DriveTo(Position(GetAllBlips(BlipSprite.Safehouse).FirstOrDefault()), State.Idle) { Speed = 15f }))
-						.Item("Waypoint", () => StateMachine.Run(new DriveTo(Position(GetAllBlips(BlipSprite.Waypoint).FirstOrDefault()), State.Idle) { Speed = 10f }))
+						.Item("Waypoint", () => StateMachine.Run(
+								new MultiState(
+									new DriveTo(Position(GetAllBlips(BlipSprite.Waypoint).FirstOrDefault()), State.Idle) { Speed = 10f },
+									new LookAt(() => NearbyHumans()[0], null)
+								)
+							)
+						)
 						.Item("Yellow Blip", () => StateMachine.Run(new DriveTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Yellow)), State.Idle)))
 						.Item("Green Blip", () => StateMachine.Run(new DriveTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Green)), State.Idle)))
 						.Item("Blue Blip", () => StateMachine.Run(new DriveTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Blue)), State.Idle)))
@@ -355,10 +360,6 @@ namespace Shiv {
 			Controls.Bind(Keys.End, () => {
 				Goals.Clear();
 				TaskClearAll();
-				AimTarget = Vector3.Zero;
-				AimAtHead = PedHandle.Invalid;
-				KillTarget = PedHandle.Invalid;
-				WalkTarget = Vector3.Zero;
 				PathStatus.CancelAll();
 				StateMachine.Clear();
 			});
@@ -418,19 +419,25 @@ namespace Shiv {
 			});
 
 			Controls.Bind(Keys.K, () => {
-				StateMachine.Run((state) => {
-					var target = NearbyHumans().FirstOrDefault();
-					var head = HeadPosition(target);
-					var vel = Velocity(target);
-					int line = 0;
-					UI.DrawTextInWorldWithOffset(head, 0f, (line++ * .02f), $"V:{Round(vel, 2)}");
-					var spot = head + (vel * 8f / CurrentFPS);
-					DrawSphere(spot, .06f, Color.Yellow);
-					DrawSphere(head, .12f, Color.Red);
-					DrawLine(head, spot, Color.Yellow);
-					AimTarget = spot;
-					return state;
-				});
+				Vector3 aimTarget = Vector3.Zero;
+				StateMachine.Run(new MultiState(
+					(state) => {
+						var target = NearbyHumans().FirstOrDefault();
+						var head = HeadPosition(target);
+						var vel = Velocity(target);
+						var spot = head + (vel * 8f / CurrentFPS);
+						aimTarget = spot;
+						DrawSphere(spot, .06f, Color.Yellow);
+						DrawSphere(head, .12f, Color.Red);
+						DrawLine(head, spot, Color.Yellow);
+						return state;
+					},
+					(state) => {
+						LookToward(aimTarget);
+						ForcedAim(CurrentPlayer, IsFacing(CameraMatrix, aimTarget));
+						return state;
+					}
+				));
 			});
 
 			NodeHandle pathTarget = NodeHandle.Invalid;
