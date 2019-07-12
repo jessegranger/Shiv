@@ -197,6 +197,7 @@ namespace Shiv {
 		public static bool IsOnVehicle(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_ON_VEHICLE, ped);
 		public static bool IsInvincible(PedHandle ent) => IsInvincible((EntHandle)ent);
 		public static void IsInvincible(PedHandle ent, bool value) => IsInvincible((EntHandle)ent, value);
+		public static bool IsRagdoll(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_RAGDOLL, ped);
 	}
 
 
