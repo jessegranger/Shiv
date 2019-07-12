@@ -367,32 +367,5 @@ namespace Shiv {
 			}
 		}
 
-		public static Producer<NodeHandle> FloodThread(NodeHandle n, int maxNodes, int maxDepth, Func<NodeHandle, IEnumerable<NodeHandle>> edges) {
-			var producer = new DistinctProducer<NodeHandle>() { Limit = (ulong)maxNodes };
-			ThreadPool.QueueUserWorkItem((object state) => {
-				var queue = new Queue<NodeHandle>();
-				queue.Enqueue(n);
-				while( true ) {
-					if( queue.Count == 0 ) {
-						Log("FloodThread: Exhausted search area.");
-						break;
-					}
-					if( producer.IsCancellationRequested ) {
-						Log($"FloodThread: Cancelled after {producer.Count}");
-						break;
-					}
-					NodeHandle cur = queue.Dequeue();
-					if( producer.Produce(cur) && queue.Count < maxDepth * 8 ) {
-						foreach( var e in edges(cur) ) {
-							queue.Enqueue(e);
-						}
-					}
-				}
-				Log("FloodThread: Closing");
-				producer.Close();
-			});
-			return producer;
-		}
-
 	}
 }
