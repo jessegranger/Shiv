@@ -34,7 +34,7 @@ namespace Shiv {
 
 		public static readonly Func<PedHandle[]> NearbyHumans = Throttle(101, () =>
 			GetAllPeds().Cast<PedHandle>()
-				.Where(h => h != Self && IsAlive(h) && IsHuman(h))
+				.Where(h => h != Self && Exists(h) && IsAlive(h) && IsHuman(h))
 				.OrderBy(DistanceToSelf)
 				.ToArray()
 		);
@@ -66,6 +66,10 @@ namespace Shiv {
 		public static bool IsAiming(PedHandle ped) => GetConfigFlag(ped, 78);
 		public static bool GetConfigFlag(PedHandle ped, int id) => Call<bool>(GET_PED_CONFIG_FLAG, ped, id);
 
+		public static float Heading(PedHandle ped, PedHandle other) {
+			var d = Vector3.Normalize(Position(other) - Position(ped));
+			return Rad2Deg(Math.Atan2(d.Y, d.X));
+		}
 		public static float Heading(PedHandle ent) => Heading((EntHandle)ent);
 		public static void Heading(PedHandle ent, float value) => Heading((EntHandle)ent, value);
 
@@ -78,12 +82,25 @@ namespace Shiv {
 
 		public static PedType GetPedType(PedHandle ped) => ped == PedHandle.Invalid ? PedType.Invalid : Call<PedType>(GET_PED_TYPE, ped);
 
-		public static PedHandle CreatePed(PedType type, ModelHash model, Vector3 pos, float heading) {
+		public static PedHandle CreatePed(PedType type, PedHash model, Vector3 pos, float heading) {
 			switch( RequestModel(model) ) {
 				case AssetStatus.Invalid: return PedHandle.ModelInvalid;
 				case AssetStatus.Loading: return PedHandle.ModelLoading;
 				default: return Call<PedHandle>(CREATE_PED, type, model, pos.X, pos.Y, pos.Z, heading, false, true);
 			}
+		}
+		public static bool TryCreatePed(PedType type, PedHash model, Vector3 pos, float heading, out PedHandle ped) {
+			if( ! IsValid(model) ) {
+				ped = PedHandle.ModelInvalid;
+				return false;
+			}
+			if( ! IsLoaded(model) ) {
+				ped = PedHandle.ModelLoading;
+				RequestModel(model);
+				return false;
+			}
+			ped = Call<PedHandle>(CREATE_PED, type, model, pos.X, pos.Y, pos.Z, heading, false, true);
+			return true;
 		}
 
 		public static PedHandle CreatePedInsideVehicle(VehicleHandle veh, PedType type, PedHash model, VehicleSeat seat) => CreatePedInsideVehicle(veh, type, (ModelHash)model, seat);
@@ -121,7 +138,7 @@ namespace Shiv {
 		public static bool CanSee(PedHandle ped, Vector3 pos, IntersectOptions opts = IntersectOptions.Map | IntersectOptions.Objects ) {
 			Vector3 start = HeadPosition(ped);
 			float len = (start - pos).Length();
-			RaycastResult result = Raycast(HeadPosition(ped), pos, opts, ped);
+			RaycastResult result = Raycast(start, pos, opts, ped);
 			return result.DidHit ? (start - result.HitPosition).Length() / len > .99f : false;
 		}
 
@@ -198,6 +215,12 @@ namespace Shiv {
 		public static bool IsInvincible(PedHandle ent) => IsInvincible((EntHandle)ent);
 		public static void IsInvincible(PedHandle ent, bool value) => IsInvincible((EntHandle)ent, value);
 		public static bool IsRagdoll(PedHandle ped) => ped != PedHandle.Invalid && Call<bool>(IS_PED_RAGDOLL, ped);
+
+		public static WeaponHash CurrentWeapon(PedHandle ped) {
+			uint w = 0;
+			unsafe { Call(GET_CURRENT_PED_WEAPON, Self, new IntPtr(&w)); }
+			return (WeaponHash)w;
+		}
 	}
 
 
