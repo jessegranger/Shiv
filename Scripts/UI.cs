@@ -59,6 +59,7 @@ namespace Shiv {
 			}
 			lastX = originX;
 			lastY = originY;
+			headlineCounts.Clear();
 		}
 		public static void DrawText(string text, float scale = .4f, int font = 4, Color color = default) => DrawText(lastX, lastY += .019f, text, scale, font, color);
 		public static void DrawText(float x, float y, string text, float scale = .4f, int font = 4) => DrawText(x, y, text, scale, font, Color.White);
@@ -68,6 +69,15 @@ namespace Shiv {
 			var sPos = ScreenCoords(pos);
 			DrawText(sPos.X + dx, sPos.Y + dy, text, scale, font, color);
 		}
+
+		private static ConcurrentDictionary<PedHandle, int> headlineCounts = new ConcurrentDictionary<PedHandle, int>();
+		public static void DrawHeadline(string text) => DrawHeadline(Self, text);
+		public static void DrawHeadline(PedHandle ped, string text) {
+			headlineCounts.TryGetValue(ped, out int line);
+			DrawTextInWorldWithOffset(HeadPosition(ped), 0f, (line++ * .02f), text);
+			headlineCounts.AddOrUpdate(ped, line, (p, old) => Math.Max(old+1,line));
+		}
+		// 		=> DrawTextInWorldWithOffset(HeadPosition(Self), 0f, (headlineCount++ * .02f), text);
 		public static void DrawText(float x, float y, string text, float scale, int font, Color color) {
 			if( color == default ) {
 				color = Color.White;
