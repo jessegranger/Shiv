@@ -24,7 +24,7 @@ namespace Shiv {
 	/// - GTA game dll
 	/// - dinput8.dll (bootstraps the hook dll)
 	/// - ScriptHookV.dll (does the real hooking of the engine)
-	/// - Shiv.asi (sets up a CLR environ)
+	/// - Shiv.asi (from Loader project, sets up a CLR environ)
 	/// - Main.shiv (this project, class Shiv)
 	/// </remarks>
 	public static class Shiv {
@@ -83,10 +83,10 @@ namespace Shiv {
 					cur = Script.Order.RemoveAndContinue(cur);
 				}
 			}
-
+			Controls.OnInit();
 		}
 
-		private static MovingAverage fps = new MovingAverage(60);
+		private static MovingAverage fps = new MovingAverage(5);
 
 		public static void OnTick() {
 			var w = new Stopwatch();
