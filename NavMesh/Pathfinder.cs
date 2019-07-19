@@ -143,10 +143,30 @@ namespace Shiv {
 	public class SmoothPath {
 		Vector3[] steps;
 		int cursor = 0;
-		public SmoothPath(IEnumerable<NodeHandle> path) => steps = path.Select(Position).ToArray();
-		public SmoothPath(IEnumerable<Vector3> path) => steps = path.ToArray();
+		public SmoothPath(IEnumerable<NodeHandle> path) : this(path.Select(Position)) { }
+		public SmoothPath(IEnumerable<Vector3> path) => steps = Culled(path).ToArray();
+		public static IEnumerable<Vector3> Culled(IEnumerable<Vector3> path) {
+			if( path.Count() < 3 ) {
+				foreach( var v in path ) { yield return v; }
+				yield break;
+			}
+
+			Vector3[] orig = path.ToArray();
+			int i = 0;
+			for( int j = 1; j < orig.Length - 1; j++ ) {
+				if( Raycast(orig[i], orig[j], .4f, IntersectOptions.Everything, Self).DidHit ) {
+					yield return orig[j - 1];
+					i = j;
+				}
+			}
+			// always keep the last two steps untouched, as an anchor
+			yield return orig[orig.Length - 2];
+			yield return orig[orig.Length - 1];
+		}
+		public void Draw() => ((Array)steps).Each(DrawSphere(.03f, Color.Orange));
 		public void UpdateCursor(float steppingRange) {
 			float dot =0f;
+			Vector3 last = steps[steps.Length - 1];
 			while( cursor < steps.Length - 1 ) {
 				Vector3 forward = PlayerPosition - steps[cursor];
 				if( forward.Length() < steppingRange
@@ -172,10 +192,10 @@ namespace Shiv {
 		public bool IsComplete() => cursor >= steps.Length - 1;
 		public Vector3 NextStep(float steppingRange=0.25f) {
 			UpdateCursor(steppingRange);
-			int line = 0;
+			// int line = 0;
 			var x = (steps[cursor] - PlayerPosition);
 			var norm_x = Vector3.Normalize(x);
-			return steps[cursor] + (norm_x * Max(0f, .5f - x.Length()));
+			return steps[cursor]; // + (norm_x * Max(0f, steppingRange - x.Length()));
 			/*
 			var x = (float)Sqrt(DistanceToSelf(steps[cursor]));
 			var c = (1f - steppingRange);
@@ -209,13 +229,6 @@ namespace Shiv {
 				.Each(DrawSphere(.03f, Color.Yellow));
 		public override string ToString() => $"({this.Count()} steps)";
 
-		public static IEnumerable<Vector3> Smooth(Path path, Func<float, Vector3[], Vector3> interp) {
-			Vector3[] src = path.Select(Position).ToArray();
-			for(int i = 0; i < src.Length; i++ ) {
-				yield return interp((float)i / src.Length, src);
-			}
-		}
-		public static IEnumerable<Vector3> Smooth(Path path) => Smooth(path, Interp.Bezier);
 	}
 
 	public static partial class Global {
@@ -428,7 +441,7 @@ namespace Shiv {
 				if( v == PlayerVehicle || v == ignore ) {
 					continue;
 				}
-				if( ! Call<bool>(IS_VEHICLE_SEAT_FREE, v, VehicleSeat.Driver) ) {
+				if( ! IsSeatFree(v, VehicleSeat.Driver) ) {
 					// cars with drivers need a different solution (avoidance not blocking)
 					continue;
 				}
@@ -466,7 +479,7 @@ namespace Shiv {
 				boxes.AddRange(GetBlockingPeds(20, debug));
 			}
 			var blocked = new ConcurrentSet<NodeHandle>();
-			Parallel.For(0, boxes.Count, i => NavMesh.GetAllHandlesInBox(boxes[i], blocked));
+			Parallel.For(0, boxes.Count, i => GetAllHandlesInBox(boxes[i], blocked));
 
 			s.Stop();
 			if( debug ) {
