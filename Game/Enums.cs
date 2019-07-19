@@ -1448,6 +1448,7 @@ namespace Shiv {
 		}
 
 		public enum PedHash : uint {
+			Invalid = 0,
 			Michael = 225514697u,
 			Franklin = 2602752943u,
 			Trevor = 2608926626u,
@@ -2749,6 +2750,7 @@ namespace Shiv {
 		}
 
 		public enum WeaponHash : uint {
+			Invalid = 0,
 			Knife = 2578778090u,
 			Nightstick = 1737195953u,
 			Hammer = 1317494643u,
