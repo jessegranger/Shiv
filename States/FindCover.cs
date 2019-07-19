@@ -44,8 +44,8 @@ namespace Shiv {
 				return Fail;
 			}
 			return new MultiState(
-				new LookAt(Target, null) { Duration = 500 },
-				new PressKey(1, Control.Cover, 300, new Delay(300, this))
+				new LookAt(Target, null) { Duration = 600 },
+				new PressKey(1, Control.Cover, 300, new Delay(300, new MultiState.Clear(this)))
 			);
 		}
 	}
@@ -71,8 +71,8 @@ namespace Shiv {
 			} else {
 				var pos = Position(Target);
 				var fail = new StateMachine.Runner("Fail", (state) => {
-					Log($"FindCover: target {Target} failed, adding to blacklist");
 					blacklist.Add(Target, 10000);
+					Log($"FindCover: target {Target} failed, adding to blacklist ({blacklist.Count})");
 					Target = NodeHandle.Invalid;
 					return this;
 				});
