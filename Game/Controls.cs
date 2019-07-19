@@ -73,21 +73,39 @@ namespace Shiv {
 		public static Vector3 FirstStep(IEnumerable<NodeHandle> path) => FirstStep(path.Take(3).Select(NavMesh.Position));
 		// public static Vector3 FirstStep(IEnumerable<Vector3> path) => Bezier(.25f, Items(PlayerPosition).Concat(path.Take(5)).ToArray());
 		public static Vector3 FirstStep(IEnumerable<Vector3> path) {
-			var factor = (float)Pow(Math.Max(0f, 1f - DistanceToSelf(path.First())), 2);
-			return Interp.Bezier(factor, path.Take(3).ToArray());
+			// var factor = (float)Pow(Math.Max(0f, 1f - DistanceToSelf(path.First())), 2);
+			// return Interp.Bezier(factor, path.Take(3).ToArray());
 			// var first = path.First();
 			// var second = path.Skip(1).First();
 			// return Vector3.Lerp(first, second, Clamp(2f * (float)Pow(1f - DistanceToSelf(first), 2), 0f, 1f));
+			return First(path);
 		}
 		public static MoveResult FollowPath(IEnumerable<NodeHandle> path, float steppingRange=0.2f) => FollowPath(path.Take(3).Select(NavMesh.Position));
 		public static MoveResult FollowPath(IEnumerable<Vector3> path, float steppingRange=0.2f) => path == null || path.Count() < 2 ? MoveResult.Complete : MoveToward(FirstStep(path), steppingRange);
 
-		private static float LookActivation(float x) => (float)(1f * ((Sigmoid(x * CurrentFPS / 4f) * 2f) - 1f));
+		private static float LookActivation(float x, float deadZone=.01f) => (float)(1f * ((Sigmoid(x * CurrentFPS / (1f + deadZone)) * 2f) - 1f));
 		// private static float LookActivation(float x) => (float)(x * CurrentFPS * .2f);
 		// private static float LookActivation(float x) => (float)(x * CurrentFPS * Sqrt(Abs(CurrentFPS * x * .2f)));
 		// private static float LookActivation(float x) => (float)(x * CurrentFPS * Sqrt(Abs(x * .8f)));
-		public static bool LookToward(Vector3 pos, bool debug=false) {
-			pos = pos - (Velocity(Self) * 7f / CurrentFPS);
+		public static bool LookToward(PedHandle ped, float deadZone=.01f, bool debug=false) {
+			var dist = Sqrt(DistanceToSelf(ped));
+			var pos = HeadPosition(ped);
+			float leadFactor = Clamp((float)Sqrt(dist), 1f, 10f); // + LookLeadFactor) / 2f;
+			UI.DrawTextInWorld(pos, $"D:{dist:F0}m L:{leadFactor:F1} dZ:{deadZone}");
+			pos = pos  + (Velocity(ped) * leadFactor / CurrentFPS);
+			pos.Z -= .02f; // shoot closer to the neck
+			if( debug ) {
+				DrawSphere(pos, .04f, Color.Yellow);
+			}
+			return LookToward(pos, deadZone, debug);
+		}
+		public static float LookLeadFactor = 8f;
+		public static bool LookToward(Vector3 pos, float deadZone=0.1f, bool debug=false) {
+			Vector3 offset = (Velocity(Self) * LookLeadFactor / CurrentFPS);
+			pos = pos - offset;
+			if( debug ) {
+				DrawSphere(pos, .06f, Color.Red);
+			}
 			Vector3 forward = Forward(CameraMatrix);
 			Vector3 cam = Position(CameraMatrix);
 			Vector3 delta = Vector3.Normalize(pos - cam) - forward;
@@ -97,12 +115,65 @@ namespace Shiv {
 			if( debug ) { DrawLine(end, end + delta, Color.White); }
 			// probably a way to do all this with one quaternion multiply or something
 			if( debug ) { UI.DrawText(.45f, .43f, $"Look: activating: {right:F4} {up:F4}"); }
-			float dX = Clamp(LookActivation(right), -10f, 10f);
-			float dY = Clamp(LookActivation(up), -10f, 10f);
+			float dX = Clamp(LookActivation(right, deadZone), -1f, 1f);
+			float dY = Clamp(LookActivation(up, deadZone), -1f, 1f);
 			SetControlValue(1, Control.LookLeftRight, dX);
 			SetControlValue(1, Control.LookUpDown, -dY);
 			if( debug ) { UI.DrawText(.45f, .45f, $"Look: dx:{dX:F4} dy:{dY:F4} (err {delta.LengthSquared():F5})"); }
 			return delta.LengthSquared() < .0001f;
+		}
+
+		public static bool ShootToKill(PedHandle target) {
+			LookToward(target, deadZone:.02f);
+			ForcedAim(CurrentPlayer, IsFacing(CameraMatrix, Position(target)));
+			if( IsAimingAtEntity(target) ) {
+				SetControlValue(0, Control.Attack, 1f);
+				return true;
+			}
+			return false;
+		}
+
+		public static void YawToward(VehicleHandle v, float heading) => YawToward(Matrix(v), heading);
+		public static void YawToward(Matrix4x4 m, float heading) {
+			float yaw = (2f * Sigmoid(RelativeHeading(Heading(m), heading) * .3f)) - 1f;
+			if( yaw < 0f ) {
+				SetControlValue(0, Control.VehicleFlyYawRight, -yaw);
+			} else if( yaw > 0f ) {
+				SetControlValue(0, Control.VehicleFlyYawLeft, yaw);
+			}
+		}
+
+		public static MoveResult FlyToward(Vector3 pos, float maxSpeed, float minHeight=20f) {
+			var heli = PlayerVehicle;
+			if( heli != VehicleHandle.Invalid ) {
+				var model = GetModel(heli);
+				if( IsHeli(model) ) {
+					var ground = GetGroundZ(PlayerPosition);
+					var elevation = PlayerPosition.Z - ground;
+					if( elevation < minHeight ) {
+						SetControlValue(1, Control.VehicleFlyThrottleUp, 1f);
+						return MoveResult.Continue;
+					}
+					// TODO: check a capsule ray around our velocity
+					var Vh = Velocity(heli);
+					var Mh = Matrix(heli);
+					var Ph = Position(Mh);
+					var Fh = Forward(Mh);
+					// the heli's current movement heading
+					var Hh = Heading(Vh); // Rad2Deg(Atan2(Vh.Y, Vh.X));
+					var Dv = pos - Ph;
+					// the heading to the target
+					var Hv = Heading(Dv); // Rad2Deg(Atan2(Dv.Y, Dv.X));
+					YawToward(Mh, Hv);
+
+					float pitch = ((Speed(Self) / (maxSpeed * 3f)) - 1f) / 2f;
+					SetControlValue(0, Control.VehicleFlyPitchUpDown, pitch);
+					float throttle = -Vh.Z;
+					SetControlValue(0, Control.VehicleFlyThrottleUp, throttle);
+					return MoveResult.Continue;
+				}
+			}
+			return MoveResult.Failed;
 		}
 
 		[Flags]
@@ -193,7 +264,13 @@ namespace Shiv {
 		private static Type DisabledExcept = null;
 		public static bool Disabled { get; private set; } = false;
 
+		public static void OnInit() {
+			Bind(Keys.PageDown, () => LookLeadFactor = Max(1f, LookLeadFactor -= .5f));
+			Bind(Keys.PageUp, () => LookLeadFactor = Min(15f, LookLeadFactor += .5f));
+		}
+
 		public static void OnTick() {
+			UI.DrawText($"Lead Factor: {LookLeadFactor:F1}");
 			// Process all the keys that we are artificially pressing
 			active.RemoveAll(e => e.expires < GameTime);
 			foreach( var e in active ) {
