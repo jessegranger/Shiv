@@ -9,7 +9,7 @@ namespace Shiv {
 		readonly uint Duration;
 		Stopwatch sw = new Stopwatch();
 		public PressKey(Control key, uint duration, State next) : this(1,key,duration,next) { }
-		public PressKey(int group, Control key, uint duration, State next):base(next) {
+		public PressKey(int group, Control key, uint duration, State next = null) : base(next) {
 			Group = group;
 			Key = key;
 			Duration = duration;
@@ -24,5 +24,6 @@ namespace Shiv {
 			SetControlValue(Group, Key, Value);
 			return this;
 		}
+		public override string ToString() => $"PressKey({Group},{Key},{Value:F1}f,{Duration - sw.ElapsedMilliseconds}ms)";
 	}
 }
