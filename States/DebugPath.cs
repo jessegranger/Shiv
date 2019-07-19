@@ -14,6 +14,7 @@ namespace Shiv {
 		public uint Clearance = 1;
 
 		public bool GrowIfNeeded = false;
+		private bool Started = false;
 
 		public NodeHandle TargetNode { get; private set; }
 
@@ -21,25 +22,26 @@ namespace Shiv {
 		private Path path;
 
 		public DebugPath(Vector3 v) : this(Handle(PutOnGround(v, 1f))) { }
-		public DebugPath(NodeHandle targetNode) {
-			TargetNode = targetNode;
-			if( !IsGrown(TargetNode) && GrowIfNeeded ) {
-				Grow(TargetNode, 5);
-			}
-			Restart();
-		}
-		private readonly Random random = new Random();
-		private void Restart() => req = new PathRequest(PlayerNode, TargetNode, 30000, AvoidPeds, AvoidCars, AvoidObjects, Clearance);
+		public DebugPath(NodeHandle targetNode) => TargetNode = targetNode;
+		private void Restart() => req = new PathRequest(PlayerNode, TargetNode, 3000, AvoidPeds, AvoidCars, AvoidObjects, Clearance);
 		public override State OnTick() {
 			if( TargetNode == NodeHandle.Invalid ) {
 				return Fail;
+			}
+			if( ! Started ) {
+				Started = true;
+				if( !IsGrown(TargetNode) && GrowIfNeeded ) {
+					Grow(TargetNode, 5);
+				}
+				Restart();
+				return this;
 			}
 			if( req.IsReady() ) {
 				path = req.GetResult();
 				Restart();
 			}
 			if( path != null ) {
-				while( DistanceToSelf(path.FirstOrDefault()) < 1f ) {
+				while( DistanceToSelf(path.FirstOrDefault()) < .6f ) {
 					path.Pop();
 				}
 				path.Draw();
@@ -51,7 +53,7 @@ namespace Shiv {
 				req.Blocked
 					.Select(Position)
 					.OrderBy(DistanceToSelf)
-					.Take(100)
+					.Take(50)
 					.Each(DrawSphere(.02f, Color.Red));
 			}
 			return this;
