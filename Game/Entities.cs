@@ -59,6 +59,8 @@ namespace Shiv {
 		public static bool Exists(EntHandle ent) => ent == 0 ? false : Call<bool>(DOES_ENTITY_EXIST, ent);
 		public static bool IsAlive(EntHandle ent) => ent == 0 ? false : Exists(ent) && !Call<bool>(IS_ENTITY_DEAD, ent);
 		public static bool IsDead(EntHandle ent) => ent == 0 ? false : Exists(ent) && Call<bool>(IS_ENTITY_DEAD, ent);
+		public static void Delete(VehicleHandle ped) => Delete((EntHandle)ped);
+		public static void Delete(PedHandle ped) => Delete((EntHandle)ped);
 		public static void Delete(EntHandle ent) {
 			IsMissionEntity(ent, false);
 			unsafe { Call(DELETE_ENTITY, new IntPtr(&ent)); }
@@ -94,7 +96,11 @@ namespace Shiv {
 
 		public static ModelHash GetModel(EntHandle ent) => ent == 0 ? 0 : Call<ModelHash>(GET_ENTITY_MODEL, ent);
 		public static bool IsValid(ModelHash model) => model == ModelHash.Invalid ? false : Call<bool>(IS_MODEL_VALID, model);
+		public static bool IsValid(VehicleHash model) => model == VehicleHash.Invalid ? false : Call<bool>(IS_MODEL_VALID, model);
+		public static bool IsValid(PedHash model) => model == PedHash.Invalid ? false : Call<bool>(IS_MODEL_VALID, model);
 		public static bool IsLoaded(ModelHash model) => model == 0 ? false : Call<bool>(HAS_MODEL_LOADED, model);
+		public static bool IsLoaded(VehicleHash model) => model == 0 ? false : Call<bool>(HAS_MODEL_LOADED, model);
+		public static bool IsLoaded(PedHash model) => model == 0 ? false : Call<bool>(HAS_MODEL_LOADED, model);
 		public static AssetStatus RequestModel(VehicleHash model) => RequestModel((ModelHash)model);
 		public static AssetStatus RequestModel(PedHash model) => RequestModel((ModelHash)model);
 		public static AssetStatus RequestModel(ModelHash model) => (!IsValid(model))
@@ -102,15 +108,24 @@ namespace Shiv {
 				: Call<ModelHash>(REQUEST_MODEL, model) == model ? AssetStatus.Loaded : AssetStatus.Loading;
 
 		public static bool IsBicycle(ModelHash m) => Call<bool>(IS_THIS_MODEL_A_BICYCLE, m);
+		public static bool IsBicycle(VehicleHash m) => Call<bool>(IS_THIS_MODEL_A_BICYCLE, m);
 		public static bool IsMotorbike(ModelHash m) => Call<bool>(IS_THIS_MODEL_A_BIKE, m);
+		public static bool IsMotorbike(VehicleHash m) => Call<bool>(IS_THIS_MODEL_A_BIKE, m);
 		public static bool IsBoat(ModelHash m) => Call<bool>(IS_THIS_MODEL_A_BOAT, m);
+		public static bool IsBoat(VehicleHash m) => Call<bool>(IS_THIS_MODEL_A_BOAT, m);
 		public static bool IsCar(ModelHash m) => Call<bool>(IS_THIS_MODEL_A_CAR, m);
+		public static bool IsCar(VehicleHash m) => Call<bool>(IS_THIS_MODEL_A_CAR, m);
 		public static bool IsAmphibiousCar(ModelHash m) => Call<bool>((Hash)0x633F6F44A537EBB6, m);
+		public static bool IsAmphibiousCar(VehicleHash m) => Call<bool>((Hash)0x633F6F44A537EBB6, m);
+		public static bool IsHeli(VehicleHash m) => Call<bool>(IS_THIS_MODEL_A_HELI, m);
 		public static bool IsHeli(ModelHash m) => Call<bool>(IS_THIS_MODEL_A_HELI, m);
 		public static bool IsPlane(ModelHash m) => Call<bool>(IS_THIS_MODEL_A_PLANE, m);
+		public static bool IsPlane(VehicleHash m) => Call<bool>(IS_THIS_MODEL_A_PLANE, m);
 		public static bool IsTrain(ModelHash m) => Call<bool>(IS_THIS_MODEL_A_TRAIN, m);
+		public static bool IsTrain(VehicleHash m) => Call<bool>(IS_THIS_MODEL_A_TRAIN, m);
 		public static bool IsVehicle(ModelHash m) => Call<bool>(IS_MODEL_A_VEHICLE, m);
 		public static void NotNeeded(ModelHash m) => Call(SET_MODEL_AS_NO_LONGER_NEEDED, m);
+		public static void NotNeeded(VehicleHash m) => Call(SET_MODEL_AS_NO_LONGER_NEEDED, m);
 
 		private struct ModelDims {
 			public Vector3 backLeft;
@@ -139,6 +154,17 @@ namespace Shiv {
 
 		public static Vector3 Velocity(EntHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_VELOCITY, ent);
 		public static void Velocity(EntHandle ent, Vector3 value) => Call(SET_ENTITY_VELOCITY, ent, value);
+
+		public static Vector3 Rotation(EntHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_ROTATION, ent, 0);
+		public static void Rotation(EntHandle ent, Vector3 rot) => Call<Vector3>(SET_ENTITY_ROTATION, ent, rot, 0, true);
+		public static Vector3 Rotation(PedHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_ROTATION, ent, 0);
+		public static void Rotation(PedHandle ent, Vector3 rot) => Call<Vector3>(SET_ENTITY_ROTATION, ent, rot, 0, true);
+		public static Vector3 Rotation(VehicleHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_ROTATION, ent, 0);
+		public static void Rotation(VehicleHandle ent, Vector3 rot) => Call<Vector3>(SET_ENTITY_ROTATION, ent, rot, 0, true);
+
+		public static Vector3 RotationVelocity(EntHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_ROTATION_VELOCITY, ent);
+		public static Vector3 RotationVelocity(PedHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_ROTATION_VELOCITY, ent);
+		public static Vector3 RotationVelocity(VehicleHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_ROTATION_VELOCITY, ent);
 
 		public static float Speed(EntHandle ent) => ent == 0 ? 0f : Call<float>(GET_ENTITY_SPEED, ent);
 
@@ -238,6 +264,7 @@ namespace Shiv {
 		public static PedHandle FirstOrDefault(this IEnumerable<PedHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
 		public static VehicleHandle FirstOrDefault(this IEnumerable<VehicleHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
 		public static BlipHandle FirstOrDefault(this IEnumerable<BlipHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(x) == blipColor);
+		public static BlipHandle First(IEnumerable<BlipHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(x) == blipColor);
 
 		public static IEnumerable<BlipHandle> GetAllBlips() => GetAllBlips(BlipSprite.Standard);
 		public static IEnumerable<BlipHandle> GetAllBlips(BlipSprite type) {
@@ -247,6 +274,8 @@ namespace Shiv {
 				h = Call<BlipHandle>(GET_NEXT_BLIP_INFO_ID, type);
 			}
 		}
+		public static bool TryGetBlip(BlipSprite type, out BlipHandle blip) => (blip = GetAllBlips(type).FirstOrDefault()) != default;
+		public static bool TryGetBlip(BlipHUDColor color, out BlipHandle blip) => (blip = GetAllBlips(BlipSprite.Standard).Where(color).FirstOrDefault()) != default;
 
 		public static void AttachTo(EntHandle a, EntHandle b, BoneIndex bone = BoneIndex.Invalid, Vector3 offset = default, Vector3 rot = default) => Call(ATTACH_ENTITY_TO_ENTITY, a, b, bone, offset, rot, 0, 0, 0, 0, 2, 1);
 		public static bool IsAttached(PedHandle a) => Call<bool>(IS_ENTITY_ATTACHED, a);
@@ -271,7 +300,13 @@ namespace Shiv {
 		public static uint CurrentAmmo(PedHandle ent, WeaponHash weap) => Call<uint>(GET_AMMO_IN_PED_WEAPON, ent, weap);
 		public static void CurrentAmmo(PedHandle ent, WeaponHash weap, uint value) => Call(SET_PED_AMMO, ent, weap, value);
 
-		public static void AmmoInClip(PedHandle ent, WeaponHash weap, int value) => Call(SET_AMMO_IN_CLIP, ent, weap, value);
+		/// <summary>
+		/// Set the number of bullets in the current clip.
+		/// </summary>
+		public static void AmmoInClip(PedHandle ent, WeaponHash weap, uint value) => Call(SET_AMMO_IN_CLIP, ent, weap, value);
+		/// <summary>
+		/// The number of bullets in the current clip. When zero, reload is required.
+		/// </summary>
 		public static uint AmmoInClip(PedHandle ent, WeaponHash weap) {
 			uint ammo = 0;
 			unsafe { Call<uint>(GET_AMMO_IN_CLIP, ent, weap, new IntPtr(&ammo)); }
