@@ -67,13 +67,19 @@ namespace Shiv {
 
 		public static uint WheelCount(VehicleHandle ent) => Read<uint>(Address(ent), 0xB18);
 
-		public static VehicleHandle CreateVehicle(ModelHash model, Vector3 pos, float heading) => CreateVehicle((VehicleHash)model, pos, heading);
-		public static VehicleHandle CreateVehicle(VehicleHash model, Vector3 pos, float heading) {
-			switch( RequestModel(model) ) {
-				case AssetStatus.Invalid: return VehicleHandle.Invalid;
-				case AssetStatus.Loading: return VehicleHandle.ModelLoading;
-				default: return Call<VehicleHandle>(CREATE_VEHICLE, model, pos.X, pos.Y, pos.Z, heading, true, true);
+		public static bool TryCreateVehicle(VehicleHash model, Vector3 pos, float heading, out VehicleHandle vehicle) {
+			if( ! IsValid(model) ) {
+				vehicle = VehicleHandle.ModelInvalid;
+				return false;
 			}
+			if( ! IsLoaded(model) ) {
+				vehicle = VehicleHandle.ModelLoading;
+				RequestModel(model);
+				return false;
+			}
+			vehicle = Call<VehicleHandle>(CREATE_VEHICLE, model, pos.X, pos.Y, pos.Z, heading, true, true);
+			UI.DrawHeadline($"CREATE_VEHICLE returned = {vehicle}");
+			return true;
 		}
 
 		public enum VehicleNode : ulong { Invalid = 0 };
@@ -152,11 +158,18 @@ namespace Shiv {
 			var ret = new Dictionary<VehicleSeat, PedHandle>();
 			Enum.GetValues(typeof(VehicleSeat)).Each<VehicleSeat>( seat => {
 				PedHandle ped = GetPedInSeat(veh, seat);
-				ret[seat] = IsAlive(ped) ? ped : 0;
+				ret[seat] = IsAlive(ped) ? ped : PedHandle.Invalid;
 			});
 			return ret;
 		}
 
+		public static bool IsSeatFree(VehicleHandle v, VehicleSeat seat) => Call<bool>(IS_VEHICLE_SEAT_FREE, v, seat);
+
+		/// <summary>
+		/// Used in combination with <see cref="GetVehicleOffset(VehicleHandle, Vector3)"/>,
+		/// these are coordinates that, when transformed by the model matrix,
+		/// are positioned in useful places around a vehicle.
+		/// </summary>
 		public static class VehicleOffsets {
 			// these are coordinates relative to the bounding box of the model,
 			// origin is at the center
@@ -170,14 +183,34 @@ namespace Shiv {
 			public static readonly Vector3 BackRightWheel = new Vector3(.66f, -.3f, 0f);
 			public static readonly Vector3 BackBumper = new Vector3(0f, -.66f, 0f);
 		}
+		/// <summary>
+		/// Get a position in world-coords, adjacent to this Vehicle.
+		/// Consider using <see cref="VehicleOffsets"/> to find useful preset offsets.
+		/// </summary>
 		public static Vector3 GetVehicleOffset(VehicleHandle v, Vector3 offset) => GetVehicleOffset(v, offset, Matrix(v));
+		/// <summary>
+		/// Get a position in world-coords, adjacent to this Vehicle.
+		/// Consider using <see cref="VehicleOffsets"/> to find useful preset offsets.
+		/// </summary>
 		public static Vector3 GetVehicleOffset(VehicleHandle v, Vector3 offset, Matrix4x4 m) => GetVehicleOffset(v, offset, m, GetModel(v));
+		/// <summary>
+		/// Get a position in world-coords, adjacent to this Vehicle.
+		/// Consider using <see cref="VehicleOffsets"/> to find useful preset offsets.
+		/// </summary>
 		public static Vector3 GetVehicleOffset(VehicleHandle v, Vector3 offset, Matrix4x4 m, VehicleHash model) {
 			GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
 			return GetVehicleOffset(v, offset, m, frontRight, backLeft);
 		}
+		/// <summary>
+		/// Get a position in world-coords, adjacent to this Vehicle.
+		/// Consider using <see cref="VehicleOffsets"/> to find useful preset offsets.
+		/// </summary>
 		public static Vector3 GetVehicleOffset(VehicleHandle v, Vector3 offset, Matrix4x4 m, Vector3 frontRight, Vector3 backLeft) => Vector3.Transform(offset * (frontRight - backLeft), m);
 
+
+		// In order, each entry in this array corresponds to a 60 degree slice
+		// If the danger is in slice 0-60, we take cover at the offset from array index 0
+		// If the danger is in slice 60-120, we take cover at the offset from array index 1
 		private static readonly Vector3[] vehicleCoverOffset = new Vector3[6] {
 			VehicleOffsets.BackBumper,
 			VehicleOffsets.FrontLeftWheel,
@@ -186,8 +219,12 @@ namespace Shiv {
 			VehicleOffsets.BackRightWheel,
 			VehicleOffsets.FrontRightWheel,
 		};
+
+		/// <summary>
+		/// Return the position around this vehicle that provides the best cover from danger.
+		/// </summary>
 		public static Vector3 FindCoverBehindVehicle(VehicleHandle v, Vector3 danger, bool debug=false) {
-			if( Call<bool>(IS_VEHICLE_SEAT_FREE, v, VehicleSeat.Driver) && Speed(v) == 0f ) {
+			if( IsSeatFree(v, VehicleSeat.Driver) && Speed(v) == 0f ) {
 				Matrix4x4 m = Matrix(v);
 				Vector3 pos = Global.Position(m);
 				Vector3 delta = danger - pos;
