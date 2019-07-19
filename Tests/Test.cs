@@ -146,9 +146,9 @@ namespace Shiv {
 					}))
 				);
 			}
-			PedHandle ped = NearbyHumans().FirstOrDefault();
+			PedHandle ped = First(NearbyHumans().Where(p => GetPedType(p) == PedType.Cop));
 			PedHash model = GetModel(ped);
-			if( ped != PedHandle.Invalid && model == PedHash.Invalid ) {
+			if( ped == PedHandle.Invalid || model == PedHash.Invalid ) {
 				return this;
 			}
 			bool test = model == PedHash.Cop01SFY;
