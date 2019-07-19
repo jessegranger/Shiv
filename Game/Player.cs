@@ -103,6 +103,7 @@ namespace Shiv {
 
 		public static void SetTargetingMode(TargetingMode mode) => Call(SET_PLAYER_TARGETING_MODE, mode);
 
+		public static void ForcedAim(bool value) => Call(SET_PLAYER_FORCED_AIM, CurrentPlayer, value);
 		public static void ForcedAim(PlayerHandle p, bool value) => Call(SET_PLAYER_FORCED_AIM, p, value);
 		public static void ForcedZoom(PlayerHandle p, bool value) => Call(SET_PLAYER_FORCED_ZOOM, p, value);
 		public static void SkipAimIntro(PlayerHandle p, bool value) => Call(SET_PLAYER_FORCE_SKIP_AIM_INTRO, p, value);
