@@ -10,17 +10,24 @@ using static Shiv.Global;
 using static Shiv.NavMesh;
 using static System.Math;
 using System.Diagnostics;
+using System.Threading.Tasks;
 
 namespace Shiv {
 
 	public class MenuItem {
 		public string Label;
-		public Action OnClick = null;
+		public bool IsActivating = false;
+		public Action<MenuItem> OnClick = null;
+		public Menu Parent = null;
 		public Menu SubMenu = null;
 		public MenuItem(string label) => Label = label;
+		public MenuItem(string label, Action<MenuItem> click) {
+			Label = label;
+			OnClick = click;
+		}
 		public MenuItem(string label, Action func) {
 			Label = label;
-			OnClick = func ?? throw new ArgumentNullException(nameof(func));
+			OnClick = (item) => func();
 		}
 		public override string ToString() => Label;
 	}
@@ -36,12 +43,103 @@ namespace Shiv {
 		public ClearWanted() : base("[?] Clear Wanted", () => Call(CLEAR_PLAYER_WANTED_LEVEL, CurrentPlayer)) { }
 		public override string ToString() => $"[{Call<int>(GET_PLAYER_WANTED_LEVEL, CurrentPlayer)}] Clear Wanted";
 	}
+	public class SpawnPed : State {
+		public PedType Type;
+		public PedHash Model;
+		public Vector3 Location = Vector3.Zero;
+		public float Heading = 0f;
+		public SpawnPed(PedType type, PedHash hash, State next = null) : base(next) {
+			Model = hash;
+			Type = type;
+		}
+		public override string ToString() => $"Spawn({Model})";
+		public override State OnTick() {
+			if( Location == Vector3.Zero ) {
+				Location = PlayerPosition + (Forward(PlayerMatrix) * 5f);
+			}
+			if( Heading == 0f ) {
+				Heading = Heading(Self) - 90f;
+			}
+			if( TryCreatePed(Type, Model, Location, Heading, out PedHandle veh) ) {
+				UI.DrawHeadline($"TryCreatePed: {veh}");
+				switch( veh ) {
+					case PedHandle.Invalid: return Fail;
+					case PedHandle.ModelInvalid: return Fail;
+					case PedHandle.ModelLoading: return this;
+					default: return Next;
+				}
+			}
+			UI.DrawHeadline("TryCreatePed: false");
+			return this;
+		}
+	}
+	public class SpawnVehicle : State {
+		public VehicleHash Model;
+		public Vector3 Location = Vector3.Zero;
+		public float Heading = 0f;
+		public SpawnVehicle(VehicleHash hash, State next = null) : base(next) => Model = hash;
+		public override string ToString() => $"Spawn({Model})";
+		public override State OnTick() {
+			if( Location == Vector3.Zero ) {
+				Location = PlayerPosition + (Forward(PlayerMatrix) * 6f);
+			}
+			if( Heading == 0f ) {
+				Heading = Heading(Self) - 90f;
+			}
+			if( TryCreateVehicle(Model, Location, Heading, out VehicleHandle veh) ) {
+				UI.DrawHeadline($"TryCreateVehicle: {veh}");
+				switch( veh ) {
+					case VehicleHandle.Invalid: return Fail;
+					case VehicleHandle.ModelInvalid: return Fail;
+					case VehicleHandle.ModelLoading: return this;
+					default: return Next;
+				}
+			}
+			UI.DrawHeadline("TryCreateVehicle: false");
+			return this;
+		}
+	}
+	public class VehicleSpawnMenuItem : MenuItem {
+		static Menu heliMenu = new Menu();
+		static Menu carMenu = new Menu();
+		static Menu boatMenu = new Menu();
+		static Menu planeMenu = new Menu();
+		static Menu bikeMenu = new Menu();
+		static Menu otherMenu = new Menu();
+		static Menu spawnMenu = new Menu();
+		static VehicleSpawnMenuItem() {
+			Array values = Enum.GetValues(typeof(VehicleHash));
+			Array.Sort(values.Select<VehicleHash, string>(v => $"{v}").ToArray(), values);
+			values.Each<VehicleHash>(hash =>
+					( IsHeli(hash) ? heliMenu :
+						IsBicycle(hash) ? bikeMenu :
+						IsMotorbike(hash) ? bikeMenu :
+						IsBoat(hash) ? boatMenu :
+						IsCar(hash) ? carMenu :
+						IsPlane(hash) ? planeMenu :
+						otherMenu
+					).Item($"{hash}", () => new SpawnVehicle(hash))
+				);
+			spawnMenu
+				.Item("Cars", carMenu)
+				.Item("Bikes", bikeMenu)
+				.Item("Boats", boatMenu)
+				.Item("Planes", planeMenu)
+				.Item("Helicopters", heliMenu)
+				.Item("Other", otherMenu);
+		}
+
+		public VehicleSpawnMenuItem() : base("[?] Spawn Vehicle", (item) => {
+			item.Parent.ShowSubmenu(spawnMenu);
+		}) { }
+		public override string ToString() => $"[{(PlayerVehicle == VehicleHandle.Invalid ? " " : "X")}] Spawn Vehicle";
+	}
 
 	public class MaxWantedLevel : MenuItem {
 		uint level = 5;
 		public MaxWantedLevel() : base("[?] Max Wanted Level") {
 			level = Call<uint>(GET_MAX_WANTED_LEVEL);
-			OnClick = () => {
+			OnClick = (item) => {
 				level = (level + 1) % 6;
 				Call(SET_MAX_WANTED_LEVEL, level);
 			};
@@ -55,42 +153,54 @@ namespace Shiv {
 		public Color BackgroundColor = Color.DarkGray;
 		public Color ItemColor = Color.DarkGreen;
 		public Color HighlightColor = Color.Green;
+		public Color ActivateColor = Color.Yellow;
 		public float BorderWidth = .003f;
 		public int HighlightIndex = 0;
+		public int ScrollOffset = 0;
+		public int LinesPerPage = 10;
 		public List<MenuItem> Items = new List<MenuItem>();
 		public Menu Parent = null;
 		public Menu SubMenu = null;
+		public Menu():this(MenuScript.DefaultLeft, MenuScript.DefaultTop, MenuScript.DefaultWidth) { }
 		public Menu(float x, float y, float w) : base(x, y, w, 0) => MenuWidth = w;
 		public Menu Item(MenuItem item) {
 			Items.Add(item);
+			item.Parent = this;
 			H += ItemHeight;
 			return this;
 		}
 		public Menu Item(string label, Action click) => Item(new MenuItem(label, click));
-		public Menu Item(string label, Menu subMenu) {
-			return Item(label, () => {
-				subMenu.Parent = this;
-				this.SubMenu = subMenu;
-				void closed(object _, object e) {
-					subMenu.Closed -= closed;
-					subMenu.Parent = null;
-					this.SubMenu = null;
-				}
-				subMenu.Closed += closed;
-			});
+		public Menu Item(string label, Func<State> state) => Item(label, () => StateMachine.Run(state()));
+		public Menu Item(string label, State state) => Item(label, () => StateMachine.Run(state));
+		public Menu Item(string label, Menu subMenu) => Item(label, () => ShowSubmenu(subMenu));
+		public void ShowSubmenu(Menu subMenu) {
+			subMenu.Parent = this;
+			this.SubMenu = subMenu;
+			void closed(object _, object e) {
+				subMenu.Closed -= closed;
+				subMenu.Parent = null;
+				this.SubMenu = null;
+			}
+			subMenu.Closed += closed;
 		}
 		private int Wrap(int i, int d) {
 			i += d;
-			return i < 0 ? Items.Count - 1 :
-				i >= Items.Count ? 0 : i;
+			return i < 0 ? Items.Count - 1
+				: i >= Items.Count ? 0
+				: i;
 		}
-		public void Up() => HighlightIndex = Wrap(HighlightIndex, -1);
-		public void Down() => HighlightIndex = Wrap(HighlightIndex, +1);
+		private int Scroll(int i) {
+			ScrollOffset = Min(Max(0, Items.Count - LinesPerPage), Max(0, i - (LinesPerPage / 2)));
+			return i;
+		}
+		public void Up() => HighlightIndex = Scroll(Wrap(HighlightIndex, -1));
+		public void Down() => HighlightIndex = Scroll(Wrap(HighlightIndex, +1));
 		public void Activate() {
 			if( HighlightIndex >= 0 ) {
 				MenuItem item = Items[HighlightIndex];
+				item.IsActivating = true;
 				if( item.OnClick != null ) {
-					item.OnClick();
+					item.OnClick(item);
 				} else if( item.SubMenu != null ) {
 					item.SubMenu.Parent = this;
 					SubMenu = item.SubMenu;
@@ -110,17 +220,20 @@ namespace Shiv {
 			if( SubMenu != null ) {
 				SubMenu.Draw();
 			} else {
-				float totalHeight = (2 * BorderWidth) + ((ItemHeight + (2 * BorderWidth)) * Items.Count);
+				int itemCount = Math.Min(LinesPerPage, Items.Count);
+				float totalHeight = (2 * BorderWidth) + ((ItemHeight + (2 * BorderWidth)) * itemCount);
 				float totalWidth = (2 * BorderWidth) + MenuWidth;
 				float x = X, y = Y;
 				UI.DrawRect(x, y, totalWidth, totalHeight, BackgroundColor);
 				x += BorderWidth;
 				y += BorderWidth;
 				float itemWidth = MenuWidth - (2 * BorderWidth);
-				for( var i = 0; i < Items.Count; i++ ) {
-					UI.DrawRect(x, y, itemWidth, ItemHeight, (i == HighlightIndex ? HighlightColor : ItemColor));
+				for( var i = ScrollOffset; i < ScrollOffset + itemCount; i++ ) {
+					var item = Items[i];
+					UI.DrawRect(x, y, itemWidth, ItemHeight, (i == HighlightIndex ? (item.IsActivating ? ActivateColor: HighlightColor) :ItemColor));
 					UI.DrawText(x + BorderWidth, y + BorderWidth, Items[i].ToString());
 					y += ItemHeight + (2 * BorderWidth);
+					item.IsActivating = false;
 				}
 			}
 		}
@@ -138,24 +251,17 @@ namespace Shiv {
 				}
 				if( !downBefore && !upNow ) {
 					switch( key ) {
-						case Keys.Up:
-							menu.Up();
-							return true;
-						case Keys.Down:
-							menu.Down();
-							return true;
-						case Keys.Right:
-							menu.Activate();
-							return true;
-						case Keys.Left:
-							menu.Back();
-							return true;
-						case Keys.Back:
-							menu.Back();
-							return true;
-						case Keys.End:
-							menu.Back();
-							return true;
+						case Keys.Up: menu.Up(); return true;
+						case Keys.Down: menu.Down(); return true;
+						case Keys.Right: menu.Activate(); return true;
+						case Keys.Left: menu.Back(); return true;
+						case Keys.Back: menu.Back(); return true;
+						case Keys.End: menu.Back(); return true;
+					}
+				} else if( !upNow ) {
+					switch( key ) { // allow repeats on scroll up/down
+						case Keys.Up: menu.Up(); return true;
+						case Keys.Down: menu.Down(); return true;
 					}
 				}
 			}
@@ -198,41 +304,66 @@ namespace Shiv {
 			}
 		}
 
-		public static float menuLeft = .6f;
-		public static float menuTop = .5f;
-		public static float menuWidth = .2f;
+		public static float DefaultLeft = .6f;
+		public static float DefaultTop = .5f;
+		public static float DefaultWidth = .2f;
 		public override void OnInit() {
 			Controls.Bind(Keys.Pause, () => GamePaused = !GamePaused);
-			Controls.Bind(Keys.Right, (Action)(() => {
-				MenuScript.Show(new Menu(menuLeft, menuTop, menuWidth)
-					.Item("Trainer", new Menu(menuLeft, menuTop, menuWidth)
+			Controls.Bind(Keys.Right, () => {
+				MenuScript.Show(new Menu()
+					.Item("Trainer", new Menu()
 						.Item(new InvincibleToggle()) // "Set Invincible", () => Call(SET_PLAYER_INVINCIBLE, true))
 						.Item(new ClearWanted())
 						.Item("Give Weapons", () => GiveWeapons(Self,
-							(uint)WeaponHash.Pistol, 50,
-							(uint)WeaponHash.PumpShotgun, 100,
-							(uint)WeaponHash.CarbineRifle, 200,
+							(uint)WeaponHash.Pistol, 90,
+							(uint)WeaponHash.PumpShotgun, 200,
+							(uint)WeaponHash.SniperRifle, 50,
+							(uint)WeaponHash.RPG, 10,
 							(uint)WeaponHash.Knife, 0,
-							(uint)WeaponHash.Unarmed, 0)
+							(uint)WeaponHash.Unarmed, 0,
+							(uint)WeaponHash.CarbineRifle, 500
+							)
 						)
 						.Item(new CarRepair())
+						.Item(new VehicleSpawnMenuItem())
+						.Item("Combat Mode", () => new Combat(NearbyHumans, null))
 					)
-					.Item("Missions", new Menu(menuLeft, menuTop, menuWidth)
-						.Item("Mission01", new Menu(menuLeft, menuTop, menuWidth)
-							.Item("Start", () => StateMachine.Run(new WaitForControl(new Mission01_Approach())))
-							.Item("GotoVault", () => StateMachine.Run(new Mission01_GotoVault()))
-							.Item("MoveToCover", () => StateMachine.Run(new Mission01_MoveToCover()))
-							.Item("MoveToButton", () => StateMachine.Run(new Mission01_MoveToButton()))
-							.Item("KillAllCops", () => StateMachine.Run(new Mission01_GetAway()))
+					.Item("Missions", new Menu()
+						.Item("Mission01", new Menu()
+							.Item("Start", new WaitForControl(new Mission01_Approach()))
+							.Item("GotoVault", new Mission01_GotoVault())
+							.Item("MoveToCover", new Mission01_MoveToCover())
+							.Item("MoveToButton", new Mission01_MoveToButton())
+							.Item("Get Away", new Mission01_GetAway())
 						)
 					)
-					.Item("Show Path To", new Menu(menuLeft, menuTop, menuWidth)
-						.Item("Trevor's House", () => StateMachine.Run(new DebugPath(new Vector3(1937.5f, 3814.5f, 33.4f))))
-						.Item("Safehouse", () => StateMachine.Run(new DebugPath(Position(GetAllBlips(BlipSprite.Safehouse).FirstOrDefault()))))
-						.Item("Red Blip", () => StateMachine.Run(new DebugPath(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Red)))))
-						.Item("Green Blip", () => StateMachine.Run(new DebugPath(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Green)))))
-						.Item("Yellow Blip", () => StateMachine.Run(new DebugPath(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Yellow)))))
-						.Item("Aim Position", () => StateMachine.Run(new DebugPath(AimPosition())))
+					.Item("Tests", new Menu()
+						.Item("All", () => {
+							return new TestExitVehicle() {
+								Next = new TestSteering() {
+									Next = new TestSteeringBicycle() {
+										Next = new TestCreatePed() {
+											Next = new TestKillPed()
+										}
+									}
+								}
+							};
+						})
+						.Item("Enter Vehicle", () => new TestEnterVehicle())
+						.Item("Exit Vehicle", () => new TestExitVehicle())
+						.Item("Steering", () => new TestSteering())
+						.Item("Steering Bicycle", () => new TestSteeringBicycle())
+						.Item("Create Ped", () => new TestCreatePed())
+						.Item("Kill Ped", () => new TestKillPed())
+						.Item("Command Ped", () => new TestCommandPed())
+					)
+					.Item("Show Path To", new Menu()
+						.Item("Trevor's House", new DebugPath(new Vector3(1937.5f, 3814.5f, 33.4f)))
+						.Item("Safehouse", new DebugPath(Position(GetAllBlips(BlipSprite.Safehouse).FirstOrDefault())))
+						.Item("Red Blip", new DebugPath(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Red))))
+						.Item("Green Blip", new DebugPath(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Green))))
+						.Item("Yellow Blip", new DebugPath(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Yellow))))
+						.Item("Aim Position", new DebugPath(AimPosition()))
 						.Item("Closest Ungrown", () => {
 							Vector3 node = NavMesh.Flood(PlayerNode, 20000, 20, default, Edges)
 								.Without(IsGrown)
@@ -241,43 +372,62 @@ namespace Shiv {
 							StateMachine.Run(new DebugPath(node));
 						})
 					)
-					.Item("Walk To", new Menu(menuLeft, menuTop, menuWidth)
-						.Item("Trevor's House", () => StateMachine.Run(new WalkTo(new Vector3(1937.5f, 3814.5f, 33.4f))))
-						.Item("Safehouse", () => StateMachine.Run(new WalkTo(Position(GetAllBlips(BlipSprite.Safehouse).FirstOrDefault()))))
-						.Item("Wander", () => StateMachine.Run(new Wander()))
-						.Item("Explore", () => StateMachine.Run(new Explore()))
-						.Item("Yellow Blip", () => StateMachine.Run(new WalkTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Yellow)))))
-						.Item("Blue Blip", () => StateMachine.Run(new WalkTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Blue)))))
-						.Item("Green Blip", () => StateMachine.Run(new WalkTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Green)))))
-						.Item("Red Blip", () => StateMachine.Run(new WalkTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Red)))))
+					.Item("Walk To", new Menu()
+						.Item("Trevor's House", new WalkTo(new Vector3(1937.5f, 3814.5f, 33.4f)))
+						.Item("Safehouse", () => new WalkTo(Position(First(GetAllBlips(BlipSprite.Safehouse)))))
+						.Item("Wander", () => new Wander())
+						.Item("Explore", () => new Explore())
+						.Item("Yellow Blip", () => new WalkTo(Position(First(GetAllBlips(), BlipHUDColor.Yellow))))
+						.Item("Blue Blip", () => new WalkTo(Position(First(GetAllBlips(), BlipHUDColor.Blue))))
+						.Item("Green Blip", () => new WalkTo(Position(First(GetAllBlips(), BlipHUDColor.Green))))
+						.Item("Red Blip", () => new WalkTo(Position(First(GetAllBlips(), BlipHUDColor.Red))))
 					)
-					.Item("Drive To", new Menu(menuLeft, menuTop, menuWidth)
-						.Item("Wander", (Action)(() => StateMachine.Run(new DriveWander(State.Idle) { Speed = 10f, DrivingFlags = VehicleDrivingFlags.Human })))
-						.Item("Trevor's House", () => StateMachine.Run(new DriveTo(new Vector3(1983f, 3829f, 32f), State.Idle) { Speed = 10f }))
-						.Item("Safehouse", () => StateMachine.Run(new DriveTo(Position(GetAllBlips(BlipSprite.Safehouse).FirstOrDefault()), State.Idle) { Speed = 15f }))
-						.Item("Waypoint", () => StateMachine.Run(
-								new MultiState(
-									new DriveTo(Position(GetAllBlips(BlipSprite.Waypoint).FirstOrDefault()), State.Idle) { Speed = 10f },
-									new LookAt(() => NearbyHumans()[0], null)
+					.Item("Drive To", new Menu()
+						.Item("Wander", new MultiState(
+									new DriveWander(State.Idle) { Speed = 10f, DrivingFlags = VehicleDrivingFlags.Human },
+									new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
 								)
-							)
 						)
-						.Item("Yellow Blip", () => StateMachine.Run(new DriveTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Yellow)), State.Idle)))
-						.Item("Green Blip", () => StateMachine.Run(new DriveTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Green)), State.Idle)))
-						.Item("Blue Blip", () => StateMachine.Run(new DriveTo(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Blue)), State.Idle)))
+						.Item("Trevor's House", new MultiState(
+									new DriveTo(new Vector3(1983f, 3829f, 32f), new MultiState.Clear(null)) { Speed = 10f },
+									new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
+								)
+						)
+						.Item("Safeouse", new MultiState(
+									new DriveTo(Position(First(GetAllBlips(BlipSprite.Safehouse))), new MultiState.Clear(null)) { Speed = 10f },
+									new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
+								)
+						)
+						.Item("Waypoint", () => new MultiState(
+									new DriveTo(Position(First(GetAllBlips(BlipSprite.Waypoint))), new MultiState.Clear(null)) { Speed = 10f },
+									new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
+								)
+						)
+						.Item("Yellow Blip", () => new DriveTo(Position(First(GetAllBlips(), BlipHUDColor.Yellow)), State.Idle))
+						.Item("Green Blip", () => new DriveTo(Position(First(GetAllBlips(), BlipHUDColor.Green)), State.Idle))
+						.Item("Blue Blip", () => new DriveTo(Position(First(GetAllBlips(), BlipHUDColor.Blue)), State.Idle))
 					)
-					.Item("Clear Region", () => {
-						AllNodes.Regions.TryRemove(Region(PlayerNode), out var ignore);
-					})
-					.Item("Save NavMesh", () => NavMesh.SaveToFile())
-					.Item("Press Key", new Menu(menuLeft, menuTop, menuWidth)
-						.Item("Context", () => PressControl(2, Control.Context, 200))
-						.Item("ScriptRUp", () => PressControl(2, Control.ScriptRUp, 200))
-						.Item("ScriptRLeft", () => PressControl(2, Control.ScriptRLeft, 200))
+					.Item("Teleport To", new Menu()
+						.Item("Waypoint", () => new Teleport(Handle(Position(First(GetAllBlips(BlipSprite.Waypoint)))), null))
+						.Item("Safehouse", () => new Teleport(Handle(Position(First(GetAllBlips(BlipSprite.Safehouse)))), null))
+						.Item("Desert Airfield", () => new Teleport(NodeHandle.Airfield, null))
 					)
-				// .Item("Cancel", () => MenuScript.Hide())
+					.Item("NavMesh", new Menu()
+						.Item("Save NavMesh", SaveToFile)
+						.Item("Clear Region", () => {
+							if( AllNodes.Regions.TryGetValue(Region(PlayerNode), out var nodes) ) {
+								nodes.Clear();
+							}
+						})
+					)
+					.Item("Test Key", new Menu()
+						.Item("Context", new PressKey(2, Control.Context, 200))
+						.Item("ScriptRUp", new PressKey(2, Control.ScriptRUp, 200))
+						.Item("ScriptRLeft", new PressKey(2, Control.ScriptRLeft, 200))
+					)
 				);
-			}));
+			});
+
 			Controls.Bind(Keys.O, () => {
 				var sw = new Stopwatch();
 				sw.Start();
@@ -305,47 +455,6 @@ namespace Shiv {
 					}
 					return state;
 				});
-
-				// StateMachine.Run(new DebugPath(AimPosition()));
-
-				// Heap<int>.Test();
-
-				/*
-				NavMesh.Flood(PlayerNode, 20000, 20, default, Edges)
-					.Without(IsGrown)
-					.Select(Position)
-					.OrderBy(DistanceToSelf)
-					.Take(1)
-					.Each(v => Line.Add(HeadPosition(Self), v, Color.Red, 5000));
-				Log($"Flood took {sw.ElapsedMilliseconds}ms");
-				*/
-
-				/*
-				var producer = NavMesh.FloodThread(PlayerNode, 4000, 100, Edges);
-				var nodes = producer.Wait(2000, 20); // wait 20 ms to get up to 1000 nodes
-				int count = 0;
-				foreach( var node in nodes ) {
-					count += 1;
-					Line.Add(PlayerPosition, Position(node), Color.Red, 2000);
-				}
-				Log($"Node count: {count}");
-				*/
-
-				/*
-				Goals.Immediate(new QuickGoal(() => {
-					while( producer.TryConsume(out NodeHandle node) ) {
-						if( ! IsGrown(node) ) {
-							Line.Add(PlayerPosition, Position(node), Color.Red, 2000);
-						}
-					}
-					Log($"Flood visited {producer.Count} lines");
-					if( producer.IsClosed && producer.IsEmpty ) {
-						Log($"Flood finished");
-						return GoalStatus.Complete;
-					}
-					return GoalStatus.Active;
-				}));
-				*/
 			});
 			Controls.Bind(Keys.G, () => {
 				Goals.Immediate(new QuickGoal("CheckObstruction", () => {
@@ -362,6 +471,7 @@ namespace Shiv {
 				TaskClearAll();
 				PathStatus.CancelAll();
 				StateMachine.Clear();
+				ForcedAim(CurrentPlayer, false);
 			});
 			Controls.Bind(Keys.X, () => {
 				var aim = AimNode();
@@ -386,7 +496,6 @@ namespace Shiv {
 			});
 
 			Controls.Bind(Keys.Z, () => {
-				// NavMesh.UpdateClearanceFromCollision(AimNode());
 				var aim = AimNode();
 				var pos = Position(AimNode());
 				Flood(aim, 30, 30, default, Edges)
@@ -402,7 +511,7 @@ namespace Shiv {
 					var p = Position(AimNode());
 					if( p != Vector3.Zero ) {
 						DrawSphere(p, .1f, Color.Yellow);
-						switch( SteerToward(p, 20f, 1f, false) ) {
+						switch( SteerToward(p, 100f, 1f, false, debug:true) ) {
 							case MoveResult.Complete:
 								Log("Drive complete.");
 								return null;
@@ -419,29 +528,11 @@ namespace Shiv {
 			});
 
 			Controls.Bind(Keys.K, () => {
-				Vector3 aimTarget = Vector3.Zero;
-				StateMachine.Run(new MultiState(
-					(state) => {
-						var target = NearbyHumans().FirstOrDefault();
-						var head = HeadPosition(target);
-						var vel = Velocity(target);
-						var spot = head + (vel * 8f / CurrentFPS);
-						aimTarget = spot;
-						DrawSphere(spot, .06f, Color.Yellow);
-						DrawSphere(head, .12f, Color.Red);
-						DrawLine(head, spot, Color.Yellow);
-						return state;
-					},
-					(state) => {
-						LookToward(aimTarget);
-						ForcedAim(CurrentPlayer, IsFacing(CameraMatrix, aimTarget));
-						return state;
-					}
-				));
+				StateMachine.Run(new Combat(NearbyHumans, null));
 			});
 
 			NodeHandle pathTarget = NodeHandle.Invalid;
-			int repathEvery = 0;
+			int repathEvery = 2000;
 			Controls.Bind(Keys.L, () => {
 				pathTarget = AimNode();
 				var pos = Position(pathTarget);
@@ -456,19 +547,17 @@ namespace Shiv {
 						req = null;
 					}
 					if( path != null ) {
-						if( path.Length < 2 || path.IsComplete() ) {
+						if( path.IsComplete() ) {
 							return null;
 						}
 						if( repathEvery > 0 && (GameTime - started) > repathEvery ) { // || DistanceToSelf(path.NextStep()) > 20f ) {
 							req = new PathRequest(PlayerNode, pathTarget, 3000, false, true, true, 1, false);
 							started = GameTime;
 						}
-						foreach(var n in nodePath.Take(30) ) {
-							DrawSphere(Position(n), .04f, Color.Yellow);
-						}
+						// foreach(var n in nodePath.Take(30) ) { DrawSphere(Position(n), .04f, Color.Yellow); }
 						var head = HeadPosition(Self);
 						DrawLine(head, path.NextStep(), Color.Orange);
-
+						path.Draw();
 
 						return state;
 						/*
@@ -491,127 +580,19 @@ namespace Shiv {
 			});
 
 			Controls.Bind(Keys.H, () => {
-				StateMachine.Run("GetHandle", (state) => {
-					var node = AimNode();
-					var p = Position(node);
-					var r = Region(node);
-					var head = HeadPosition(Self);
-					DrawLine(head, p, Color.Red);
-					int line = 0;
-					UI.DrawTextInWorld(p, $"n: {node}");
-					UI.DrawTextInWorldWithOffset(p, 0f, (++line * .02f), $"{Region(node)}, {(ulong)node & handleMask}");
-					if( IsGrown(node) ) {
-						DrawSphere(p, .02f, Color.Orange);
-					} else {
-						DrawSphere(p, .02f, Color.Green);
-					}
-					foreach( var e in Edges(node)) {
-						line = 0;
-						var end = Position(e) + (Up * .5f);
-						DrawLine(p + (Up * .5f), end, Color.White);
-						UI.DrawTextInWorldWithOffset(end, 0f, (line++ * .02f), $"e:{e}");
-						UI.DrawTextInWorldWithOffset(end, 0f, (line++ * .02f), $"{Region(e)}, {(ulong)e & handleMask}");
-					}
-				
-					foreach( var e in PossibleGrowthEdges(node) ) {
-						line = 0;
-						var ePos = Position(e);
-						var eGround = PutOnGround(ePos, 1f);
-						NodeHandle g = Handle(eGround);
-						if( IsPossibleEdge(node, g) ) {
-							var gPos = Position(g);
-							UI.DrawTextInWorldWithOffset(gPos, 0f, (line++ * .02f), $"g: {g}");
-							UI.DrawTextInWorldWithOffset(gPos, 0f, (line++ * .02f), $"{Region(g)}, {(ulong)g & handleMask}");
-							if( IsGrown(g) ) {
-								DrawSphere(gPos, .02f, Color.Orange);
-							} else {
-								DrawSphere(gPos, .02f, Color.Green);
-							}
-							DrawLine(p, gPos, IsPossibleEdge(node, g) ? Color.Green : Color.Orange);
+				StateMachine.Run(new Hover(new Vector3(PlayerPosition.X, PlayerPosition.Y, 100)));
+			});
+
+			Controls.Bind(Keys.T, () => {
+				StateMachine.Run(new TestEnterVehicle() {
+					Next = new TestExitVehicle() {
+						Next = new TestSteering() {
+							Next = new TestSteeringBicycle()
 						}
 					}
-					/*
-					const ulong mapRadius = 8192; // in the world, the map goes from -8192 to 8192
-					const float gridScale = .5f; // how big are the X,Y steps of the mesh
-					const float zScale = .25f; // how big are the Z steps of the mesh
-					const float zDepth = 1000f; // how deep underwater can the mesh go
-					const float regionScale = 128f; // how wide on each side is one region cube
-					const int regionShift = 7; // we use 7 bits each for X,Y,Z = 21 bits when we pack into RegionHandle
-					const int mapShift = 15; //  (int)Math.Log(mapRadius * 2 / gridScale, 2);
-					Vector3 v = PlayerPosition;
-
-					// v.X starts [-8192..8192] becomes [0..32k]
-					ulong x1 = (ulong)(v.X + mapRadius);
-					ulong y1 = (ulong)(v.Y + mapRadius);
-					ulong z1 = (ulong)(v.Z + zDepth);
-					UI.DrawText($"x1:{x1} y1:{y1} z1:{z1}");
-					ulong nx = (ulong)(x1 << 1); // << 1 equivalent to / gridScale (/.5f) == (*2) == (<<1)
-					ulong ny = (ulong)(y1 << 1);
-					ulong nz = (ulong)(z1 << 2); // << 2 equivalent to / zScale (/.25f) == (* 4) or (<< 2)
-					UI.DrawText($"nx:{nx} ny:{ny} nz:{nz}");
-					uint rx = (uint)(x1 >> regionShift); // Round((v.X + mapRadius) / regionScale)); // (/128) == (>>7)
-					uint ry = (uint)(y1 >> regionShift);
-					uint rz = (uint)(z1 >> regionShift);
-					UI.DrawText($"rx:{rx} ry:{ry} rz:{rz}");
-					ulong r = ((rx << (regionShift << 1)) | (ry << regionShift) | rz);
-					ulong n =
-						(nx << (mapShift << 1)) |
-						(ny << mapShift) |
-						nz;
-					UI.DrawText($"n:{n} r:{n}");
-					var node = (NodeHandle)(
-						(r << (mapShift * 3)) |
-						(nx << (mapShift << 1)) |
-						(ny << mapShift) |
-						nz
-					);
-					UI.DrawText($"node: {node} {Position(node)}");
-					*/
-					return state;
 				});
 			});
 
-			Controls.Bind(Keys.M, () => {
-				NodeHandle mark = AimNode();
-				Path path = null;
-				var req = new PathRequest(PlayerNode, mark, 1000, false, true, true, 1, true);
-				var sw = new Stopwatch();
-				sw.Start();
-				StateMachine.Run("Draw Marked", (state) => {
-					DrawSphere(Position(mark), .1f, Color.Yellow);
-					if( req.IsReady() ) {
-						path = req.GetResult();
-					}
-					if( req.IsDone() && sw.ElapsedMilliseconds > 300 ) {
-						req = new PathRequest(PlayerNode, mark, 1000, false, true, true, 1, true);
-						sw.Restart();
-					}
-					if( path != null ) {
-						while( DistanceToSelf(path.FirstOrDefault()) < .15f ) {
-							path.Pop();
-						}
-						if( path.Count() < 2 ) {
-							path = null;
-							return state;
-						}
-						req.Blocked.Select(Position).OrderBy(DistanceToSelf).Take(100).Each(DrawSphere(.02f, Color.Red));
-						path.Draw();
-						var steps = Items(PlayerPosition).Concat(path.Take(4).Select(Position)).ToArray();
-						var first = steps.Skip(1).First();
-						var second = steps.Skip(2).First();
-						var step = Vector3.Lerp(first, second, Clamp(1f - DistanceToSelf(first), 0f, 1f));
-						UI.DrawTextInWorld(first, $"{DistanceToSelf(first):F2}");
-						//Bezier(.3f, steps);
-						DrawLine(HeadPosition(Self), step, Color.Orange);
-						DrawSphere(Interp.Bezier(.2f, steps), .02f, Color.Orange);
-						DrawSphere(Interp.Bezier(.4f, steps), .02f, Color.Orange);
-						DrawSphere(Interp.Bezier(.6f, steps), .02f, Color.Orange);
-						DrawSphere(Interp.Bezier(.8f, steps), .02f, Color.Orange);
-						DrawSphere(Interp.Bezier(1f, steps), .02f, Color.Orange);
-					}
-					return state;
-				});
-			});
 		}
 	}
 
