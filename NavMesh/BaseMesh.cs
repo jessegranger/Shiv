@@ -20,7 +20,11 @@ using GTA.Native;
 // pragma warning disable CS0649
 namespace Shiv {
 
-	public enum NodeHandle : ulong { Invalid = 0 };
+	public enum NodeHandle : ulong {
+		Invalid = 0,
+		Airfield = 11147320395096474565,
+		GameStart = 15145120214786049134
+	};
 	public enum RegionHandle : uint { Invalid = 0 };
 
 	public static partial class Global {
@@ -40,7 +44,7 @@ namespace Shiv {
 		public static bool SaveEnabled = true;
 		public static bool LoadEnabled = true;
 
-		private const int magicBytes = 0x000FEED9; // if any constants/structure below should change, increment the magic bytes and update Save/Read methods
+		private const int versionBytes = 0x000FEED9; // if any constants/structure below should change, increment the magic bytes and update Save/Read methods
 
 		private const ulong mapRadius = 8192; // in the world, the map goes from -8192 to 8192
 		private const float gridScale = .5f; // how big are the X,Y steps of the mesh
@@ -143,9 +147,10 @@ namespace Shiv {
 
 			internal Heap<RegionHandle> recentRegions = new Heap<RegionHandle>(1024);
 			internal ConcurrentSet<RegionHandle> dirtyRegions = new ConcurrentSet<RegionHandle>();
-			private static ConcurrentDictionary<NodeHandle, NodeEdges> regionFactory(RegionHandle region) {
-				var ret = new ConcurrentDictionary<NodeHandle, NodeEdges>(); // allocate the dictionary on this thread's heap
+			private ConcurrentDictionary<NodeHandle, NodeEdges> regionFactory(RegionHandle region) {
+				var ret = new ConcurrentDictionary<NodeHandle, NodeEdges>();
 				ReadFromFile(region, ret);
+				recentRegions.AddOrUpdate(region, TotalTime.ElapsedMilliseconds);
 				return ret;
 			}
 			public NodeEdges Get(NodeHandle n) {
@@ -171,17 +176,21 @@ namespace Shiv {
 				return Regions.GetOrAdd(r, regionFactory).AddOrUpdate(n, newValue, valueFactory);
 			}
 
-			internal void PageOut(uint itemLimit, uint timeLimit) {
-				while( Regions.Count > itemLimit || recentRegions.PeekScore() < timeLimit ) {
-					if( (!dirtyRegions.Contains(recentRegions.Peek())) && recentRegions.TryPop(out var r) ) {
-						Regions.TryRemove(r, out var ignore);
-						Log($"Paged out region {r}, {ignore.Count} nodes.");
+			internal void PageOut(int itemLimit, long timeLimit) {
+				if( Regions.Count > itemLimit && recentRegions.PeekScore() < timeLimit ) {
+					while( Regions.Count > itemLimit && recentRegions.PeekScore() < timeLimit && recentRegions.TryPop(out var r) ) {
+						if( dirtyRegions.Contains(r) ) {
+							dirtyRegions.Remove(r);
+							SaveToFile(r);
+						}
+						Regions.TryRemove(r, out var gone);
+						Log($"Paged out region {r}, {gone.Count} nodes.");
 					}
 				}
 			}
 			internal void Clear() {
 				Regions.Clear();
-				dirtyRegions.Each(dirtyRegions.Remove);
+				dirtyRegions.Clear();
 				recentRegions.Clear();
 			}
 		}
@@ -213,7 +222,7 @@ namespace Shiv {
 			} else {
 				if( SaveEnabled && GameTime - saved > 60000 ) {
 					saved = GameTime;
-					Task.Run(() => { SaveToFile(); });
+					Task.Run(SaveToFile);
 				}
 				// UI.DrawText($"NavMesh: {Ungrown.Count}/{AllEdges.Count}", color: IsGrown(PlayerNode) ? Color.White : Color.Orange);
 				int msPerFrame = (int)(1000 / CurrentFPS);
@@ -226,7 +235,7 @@ namespace Shiv {
 				if( !IsGrown(PlayerNode) ) {
 					Grow(PlayerNode, msPerGrow);
 				} else if( Ungrown.TryDequeue(out var first) ) {
-					DrawLine(HeadPosition(Self), Position(first), Color.Orange);
+					// DrawLine(HeadPosition(Self), Position(first), Color.Orange);
 					Grow(first, msPerGrow);
 				} else {
 					/*
@@ -236,7 +245,7 @@ namespace Shiv {
 						*/
 				}
 			}
-			AllNodes.PageOut(100, (uint)Max(0, TotalTime.ElapsedMilliseconds - 60000));
+			AllNodes.PageOut(100, Max(0, TotalTime.ElapsedMilliseconds - 60000));
 		}
 		private static readonly Color[] clearanceColors = new Color[] {
 			Color.FromArgb(255, 255, 255, 255), // 0, unknown clearance
