@@ -18,54 +18,64 @@ namespace Shiv {
 		// void TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE(Ped ped, Vehicle vehicle, float x, float y, float z, float speed, int driveMode, float stopRange) // 158BB33F920D360C 1490182A
 		// void TASK_VEHICLE_DRIVE_WANDER(Ped ped, Vehicle vehicle, float speed, int drivingStyle) // 480142959D337D00 36EC0EB0
 
-		private static float SteerActivation(float x) => (Sigmoid(x) * 2f) - 1f;
-		public static MoveResult SteerToward(Vector3 target, float maxSpeed=10f, float stoppingRange=2f, bool stopAtEnd=false) {
+		private static float SteerActivation(float x) => (Sigmoid(10f*x) * 2f) - 1f;
+		public static MoveResult SteerToward(Vector3 target, float maxSpeed=10f, float stoppingRange=2f, bool stopAtEnd=false, bool debug=false) {
 			if( target != Vector3.Zero ) {
 				var v = CurrentVehicle(Self);
 				if( v == VehicleHandle.Invalid ) {
 					return MoveResult.Failed;
 				}
+				var model = GetModel(v);
 				var vm = Matrix(v);
 				var pv = Position(vm);
-				var fv = Forward(vm);
-				var delta = target - pv;
-				var delta_len = delta.Length();
+				var forward = Forward(vm);
+				var desired_forward = target - pv;
+				var desired_forward_len = desired_forward.Length();
 				var cur_speed = Speed(v);
-				if( delta_len < stoppingRange ) {
+				if( desired_forward_len < stoppingRange ) {
 					if( stopAtEnd && cur_speed > .01f ) {
-						if( Vector3.Dot(Velocity(v), fv) > 0f ) {
+						if( Vector3.Dot(Velocity(v), forward) > 0f ) {
 							SetControlValue(1, Control.VehicleBrake, 1.0f);
 						}
 						return MoveResult.Continue;
 					}
 					return MoveResult.Complete;
 				}
-				delta /= delta_len; // Normalize, but we already had to compute len before
-				var right = Vector3.Dot(delta, Right(vm));
-				var forward = Vector3.Dot(delta, fv);
-				var angle = Rad2Deg(Atan2(right, forward));
-				right = SteerActivation(10 * right);
+				desired_forward /= desired_forward_len; // Normalize, but we already had to compute len before
+				float turn_right = Vector3.Dot(desired_forward, Right(vm));
+				float push_forward = Vector3.Dot(desired_forward, forward);
+				float angle = Rad2Deg(Atan2(turn_right, push_forward));
+				turn_right = SteerActivation(turn_right);
 				float accel = 0f, brake = 0f;
 				float speed = Speed(v);
 				if( stopAtEnd ) {
-					maxSpeed = Math.Min(delta_len*1.5f, maxSpeed);
+					// scale the max speed down toward zero as we get close
+					maxSpeed = Math.Min(desired_forward_len*1.2f, maxSpeed);
 				}
 				if( speed < maxSpeed ) {
 					var abs_angle = Abs(angle);
-					if( abs_angle < 50 ) {
-						accel = Abs(forward);
-					} else if( abs_angle > 160 ) {
-						brake = Abs(forward);
+					if( abs_angle < 60 ) {
+						accel = Abs(push_forward);
+					} else if( abs_angle > 160 && desired_forward_len < 10f ) {
+						brake = Abs(push_forward);
 					} else {
 						brake = 1f;
-						right = angle < 0 ? 1f : -1f;
+						turn_right = angle < 0 ? 1f : -1f;
 					}
 				} else if( speed > maxSpeed * 1.1 ) {
 					brake = 1f;
 				}
-				SetControlValue(1, Control.VehicleAccelerate, accel);
-				SetControlValue(1, Control.VehicleBrake, brake);
-				SetControlValue(1, Control.VehicleMoveLeftRight, right);
+				if( IsBicycle((ModelHash)model) ) {
+					SetControlValue(1, Control.VehiclePushbikePedal, accel);
+					SetControlValue(1, Control.VehiclePushbikeRearBrake, brake);
+				} else {
+					SetControlValue(1, Control.VehicleAccelerate, accel);
+					SetControlValue(1, Control.VehicleBrake, brake);
+				}
+				SetControlValue(1, Control.VehicleMoveLeftRight, turn_right);
+				if( debug ) {
+					UI.DrawText(.5f, .4f, $"Steer: angle {angle:F2} right {turn_right:F2} accel {accel:F2} brake {brake:F2}");
+				}
 				return MoveResult.Continue;
 			}
 			return MoveResult.Failed;
@@ -175,6 +185,55 @@ namespace Shiv {
 			switch( status ) {
 				case 1: return this;
 				case 7: return Next;
+			}
+			return this;
+		}
+	}
+
+	public class EnterVehicle : State {
+		public VehicleHandle Target;
+		public uint Timeout = 10000;
+		public float Speed = 2f;
+		public VehicleSeat Seat = VehicleSeat.Driver;
+		public EnterVehicle(VehicleHandle target, State next = null) : base(next) => Target = target;
+
+		public uint Started = 0;
+
+		public override State OnTick() {
+			if( GamePaused ) {
+				return this;
+			}
+			if( !CanControlCharacter() ) {
+				return Next;
+			}
+			if( PlayerVehicle == Target ) {
+				return Next;
+			}
+			if( PlayerVehicle != VehicleHandle.Invalid ) {
+				return new LeaveVehicle(this);
+			}
+			if( ! IsTaskActive(Self, TaskID.EnterVehicle) ) {
+				Call(TASK_ENTER_VEHICLE, Self, Target, Timeout, Seat, Speed, 1, 0);
+			}
+			return this;
+
+		}
+	}
+
+	public class LeaveVehicle : State {
+		public LeaveVehicle(State next = null):base(next) { }
+		public override State OnTick() {
+			if( GamePaused ) {
+				return this;
+			}
+			if( !CanControlCharacter() ) {
+				return Next;
+			}
+			if( PlayerVehicle == VehicleHandle.Invalid ) {
+				return Next;
+			}
+			if( ! IsTaskActive(Self, TaskID.EnterVehicle) ) {
+				Call(TASK_LEAVE_VEHICLE, Self, PlayerVehicle, 0);
 			}
 			return this;
 		}
