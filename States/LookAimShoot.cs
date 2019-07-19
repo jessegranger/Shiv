@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Numerics;
 using static Shiv.Global;
 using System.Diagnostics;
+using System.Drawing;
 
 namespace Shiv {
 	class AimAt : LookAt {
@@ -16,7 +17,12 @@ namespace Shiv {
 		public AimAt(PedHandle ped, State next = null) : this(() => GetAimPosition(ped), next) { }
 		public AimAt(Func<PedHandle> target, State next = null) : base(() => GetAimPosition(target()), next) { }
 
-		public static Vector3 GetAimPosition(PedHandle ped) => HeadPosition(ped) + Velocity(ped) / CurrentFPS;
+		public static Vector3 GetAimPosition(PedHandle ped) {
+			var pos = HeadPosition(ped) + Velocity(ped) / CurrentFPS;
+			UI.DrawTextInWorld(pos, "X");
+			// DrawSphere(pos, .1f, Color.Yellow);
+			return pos;
+		}
 		public override State OnTick() {
 			ForcedAim(CurrentPlayer, IsFacing(CameraMatrix, Target()));
 			return base.OnTick();
@@ -32,14 +38,46 @@ namespace Shiv {
 
 		public override State OnTick() {
 			PedHandle target = GetPed();
+			base.OnTick();
 			if( Exists(target) && IsAlive(target) ) {
 				if( IsAimingAtEntity(target) ) {
 					SetControlValue(0, Control.Attack, 1f);
 				}
+				return this;
 			} else {
 				return Next;
 			}
-			return base.OnTick();
+		}
+	}
+
+	class LookAtPed : State {
+		public LookAtPed(Func<PedHandle> ped, State next) : base(next) => GetPed = ped;
+		public LookAtPed(PedHandle ped, State next): this(() => ped, next) { }
+
+		readonly Func<PedHandle> GetPed;
+		private Stopwatch sw = new Stopwatch();
+		public long Duration = long.MaxValue;
+
+		public override State OnTick() {
+			if( GamePaused ) {
+				return this;
+			}
+			if( !CanControlCharacter() ) {
+				return Next;
+			}
+			PedHandle ped = GetPed();
+			if( ped == PedHandle.Invalid ) {
+				return this;
+			}
+			if( ! sw.IsRunning ) {
+				sw.Start();
+			}
+			if( sw.ElapsedMilliseconds > Duration ) {
+				sw.Stop();
+				return Next;
+			}
+			LookToward(GetPed(), deadZone:4f);
+			return this;
 		}
 	}
 
@@ -48,11 +86,8 @@ namespace Shiv {
 		public LookAt(Vector3 target, State next = null) : this(() => target, next) { }
 		public LookAt(Func<Vector3> target, State next = null):base(next) => Target = target;
 
-		public LookAt(PedHandle ped, State next = null) : this(() => HeadPosition(ped), next) { }
-		public LookAt(Func<PedHandle> target, State next = null) : this(() => HeadPosition(target()), next) { }
-
 		protected readonly Func<Vector3> Target;
-		public uint Duration = uint.MaxValue;
+		public long Duration = long.MaxValue;
 		private Stopwatch timer = new Stopwatch();
 		public override State OnTick() {
 			if( GamePaused ) {
@@ -69,7 +104,7 @@ namespace Shiv {
 				if( timer.ElapsedMilliseconds > Duration ) {
 					return Next;
 				}
-				LookToward(target);
+				LookToward(target, deadZone:4f);
 				return this;
 			}
 			timer.Stop();
