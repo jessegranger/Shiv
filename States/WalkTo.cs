@@ -35,31 +35,53 @@ namespace Shiv {
 		public float StoppingRange = 2f;
 		protected PathRequest request;
 		protected Path path;
+		private NodeHandle Origin = NodeHandle.Invalid;
 		private NodeHandle target = NodeHandle.Invalid;
 		protected NodeHandle Target {
 			get => target;
 			set {
 				target = value;
-				request?.Cancel();
-				request = new PathRequest(PlayerNode, value, 120000, false, true, true, 1);
+				if( Started ) {
+					Restart();
+				}
 			}
 		}
 		Stopwatch sw = new Stopwatch();
 		public bool Run = false;
-		public WalkTo(Vector3 target, State next = null):this(Handle(PutOnGround(target, 1f)), next) { }
-		public WalkTo(NodeHandle target, State next = null) : base(next) => Target = target;
+		private bool Started = false;
+		public WalkTo(Vector3 target, State next = null) : this(Handle(PutOnGround(target, 1f)), next) { }
+		public WalkTo(NodeHandle end, State next = null) : this(PlayerNode, end, next) { }
+		public WalkTo(NodeHandle start, NodeHandle end, State next = null) : base(next) {
+			Origin = start;
+			Target = end;
+		}
 		public override State OnTick() {
 			if( GamePaused ) {
 				return this;
 			}
+			if( Target == NodeHandle.Invalid ) {
+				return Fail;
+			}
 			if( ! CanControlCharacter() ) {
 				return Next;
 			}
-			if( request != null ) {
+			if( ! Started ) {
 
+				Started = true;
+				Restart();
+				// while we are pathing, also be exiting cover, or exiting vehicle
 				if( IsInCover(Self) ) {
 					return new PressKey(Control.Cover, 200, new Delay(100, this));
+				} else if( PlayerVehicle != VehicleHandle.Invalid ) {
+					Origin = Handle(GetVehicleOffset(PlayerVehicle, VehicleOffsets.DriverDoor));
+					return new LeaveVehicle(this);
 				}
+
+				// if we dont need to take care of any prep, just idle for at least one frame
+				return this;
+			}
+
+			if( request != null ) {
 				if( request.IsReady() ) {
 					path = request.GetResult();
 					request = null;
@@ -69,6 +91,7 @@ namespace Shiv {
 					: this;
 				}
 			}
+
 			if( path != null ) {
 				var dist = DistanceToSelf(Target);
 				if( Sqrt(dist) < StoppingRange ) {
@@ -84,15 +107,17 @@ namespace Shiv {
 						if( Run && !IsRunning(Self) ) {
 							ToggleSprint();
 						}
+						/* disable stuck detection until we are using SmoothPath
 						Vector3 step = Position(path.First());
 						var vel = Vector3.Normalize(Velocity(Self));
 						var expected = Vector3.Normalize(step - PlayerPosition);
 						var overlap = Vector3.Dot(vel, expected);
 						// UI.DrawTextInWorld(step, $"Overlap: {overlap}");
-						if( sw.ElapsedMilliseconds > 3200 && overlap <= 0.01f && !IsClimbing(Self) && !IsJumping(Self) && !Call<bool>(IS_PED_RAGDOLL, Self) ) {
+						if( sw.ElapsedMilliseconds > 3200 && overlap <= 0.01f && !IsClimbing(Self) && !IsJumping(Self) && !IsRagdoll(Self) && Speed(Self) < .02f ) {
 							Log($"STUCK at {sw.ElapsedMilliseconds} overlap {overlap}");
 							Stuck();
 						}
+						*/
 						break;
 					case MoveResult.Complete:
 						path.Pop();
@@ -115,12 +140,13 @@ namespace Shiv {
 					.Where(n => (stuckPos - Position(n)).LengthSquared() < .75f )
 					.ToArray() // read it all so the first block doesn't interrupt the Flood
 					.Each(Block);
+				path = null;
 			}
 			Restart();
 		}
 		protected void Restart() {
-			path = null;
-			request = new PathRequest(PlayerNode, Target, 120000, false, true, true, 1);
+			request?.Cancel();
+			request = new PathRequest(Origin, Target, 1000, false, true, true, 1);
 			sw.Reset();
 		}
 	}
