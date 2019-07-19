@@ -42,8 +42,20 @@ namespace Shiv {
 		public static float Deg2Rad(double deg) => (float)(deg * Math.PI / 180);
 
 		public static float AbsHeading(float h) => h < 0 ? h + 360 : h;
-		public static float Heading(Matrix4x4 m) => Rad2Deg(Math.Atan2(m.M21, m.M22));
-		public static float RadHeading(Matrix4x4 m) => (float)Math.Atan2(m.M21, m.M22);
+		public static float Heading(Matrix4x4 m) => Rad2Deg(Math.Atan2(m.M22, m.M21));
+		public static float Heading(Vector3 v) => Rad2Deg(Math.Atan2(v.Y, v.X));
+		public static float RadHeading(Matrix4x4 m) => (float)Math.Atan2(m.M22, m.M21);
+		public static float RadHeading(Vector3 v) => (float)Math.Atan2(v.Y, v.X);
+		public static float RelativeHeading(float from, float to) {
+			float d = to - from;
+			if( d > 180 ) {
+				d -= 360;
+			}
+			if( d < -180 ) {
+				d += 360;
+			}
+			return d;
+		}
 
 		public static bool IsBetween(float min, float max, float value) => (value >= min) && (value <= max);
 
