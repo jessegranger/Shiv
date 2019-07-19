@@ -22,6 +22,10 @@ namespace Shiv {
 		public override string ToString() => $"{Name}{(Next == null ? "" : " then " + Next.Name)}";
 
 		public static State Idle = new StateMachine.Runner("Idle", (state) => state);
+
+		public static implicit operator State(Func<State, State> func) {
+			return new StateMachine.Runner(func);
+		}
 	}
 
 	public class StateMachine: Script {
@@ -44,14 +48,14 @@ namespace Shiv {
 			public override string Name => name ?? base.Name;
 			public Runner(Func<State, State> func) => F = func;
 			public Runner(string name, Func<State, State> func) { F = func; this.name = name; }
-			public override State OnTick() => F(CurrentState);
+			public override State OnTick() => F(this);
 		}
 
 		public override void OnInit() => CurrentState = State.Idle;
 		public override void OnAbort() => CurrentState = null;
 		public override void OnTick() {
 			if( CurrentState != null ) {
-				UI.DrawTextInWorldWithOffset(HeadPosition(Self), 0f, .02f, $"State: {CurrentState}");
+				UI.DrawHeadline($"State: {CurrentState}");
 				if( !GamePaused ) {
 					State nextState = CurrentState.OnTick();
 					if( CurrentState != nextState ) {
@@ -98,10 +102,23 @@ namespace Shiv {
 	}
 
 	class MultiState : State {
+
 		private LinkedList<State> States;
+
 		public MultiState(params Func<State, State>[] states):this(states.Select(s => new StateMachine.Runner(s)).ToArray() ) { }
 		public MultiState(params State[] states) => States = new LinkedList<State>(states);
+
 		public override string ToString() => string.Join(" while ", States.Select(s => $"({s})")) + (Next == null ? "" : $" then {Next.Name}");
+
+		/// <summary>
+		/// Clear is a special state that clears all running states from a MultiState.
+		/// </summary>
+		/// <example>new MultiState( new WalkTo(X), new ShootAt(Y, new MultiState.Clear(this)) );</example>
+		public class Clear : State {
+			public Clear(State next) : base(next) { }
+			public override State OnTick() => Next;
+		}
+
 		public override State OnTick() {
 			LinkedListNode<State> cur = States.First;
 			while( cur != null ) {
@@ -114,6 +131,10 @@ namespace Shiv {
 				if( next != cur.Value ) {
 					Log($"State Change {cur.Value.Name} to {next.Name}");
 					cur.Value = next;
+					if( next.GetType() == typeof(Clear) ) {
+						States.Clear();
+						return next.Next ?? Next;
+					}
 				}
 				cur = cur.Next;
 			}
