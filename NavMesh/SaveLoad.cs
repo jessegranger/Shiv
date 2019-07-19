@@ -18,7 +18,7 @@ namespace Shiv {
 			try {
 				using( BinaryReader r = Codec.Reader(filename) ) {
 					int magic = r.ReadInt32();
-					if( magic != magicBytes ) {
+					if( magic != versionBytes ) {
 						Log($"Wrong magic bytes {magic:X}");
 						return false;
 					}
@@ -91,54 +91,45 @@ namespace Shiv {
 			return;
 		}
 
-		public static void SaveToFile() {
-			if( !SaveEnabled ) {
-				return;
-			}
-
-			var sw = new Stopwatch();
-			sw.Start();
-			AllNodes.dirtyRegions.Each(region => { 
-			// AllEdges.Keys.AsParallel().GroupBy(Region).Each(g => {
-				// RegionHandle region = g.Key;
-				if( AllNodes.dirtyRegions.TryRemove(region) ) {
-					Log($"Saving dirty region {region}");
-					uint r = (uint)region >> 7;
-					Directory.CreateDirectory($"scripts/NavMesh/{r}/");
-					var file = $"scripts/NavMesh/{r}/{region}.mesh";
-					using( BinaryWriter w = Codec.Writer(file + ".tmp") ) {
-						w.Write(magicBytes);
-						var result = AllNodes.Regions[region]; // we know it's there bc it's dirty
-						ulong[] handles = result.Keys.Cast<ulong>().ToArray();
-						ulong[] edges = handles.Select(h => (ulong)result[(NodeHandle)h]).ToArray(); // use Select this way to guarantee they match the order of handles
-						byte[] buf;
-						try {
-							w.Write(handles.Length);
-							buf = new byte[handles.Length * sizeof(NodeHandle)];
-							Buffer.BlockCopy(handles, 0, buf, 0, buf.Length);
-							w.Write(buf);
-						} catch( Exception err ) {
-							Log("Failed to write handles to file: " + err.ToString());
-							return;
-						}
-						try {
-							buf = new byte[edges.Length * sizeof(ulong)];
-							Buffer.BlockCopy(edges, 0, buf, 0, buf.Length);
-							w.Write(buf);
-						} catch( Exception err ) {
-							Log("Failed to write edges to file: " + err.ToString());
-							return;
-						}
-					}
-					try { File.Delete(file); } catch( FileNotFoundException ) { }
-					try { File.Move(file + ".tmp", file); } catch( Exception e ) {
-						Log("File.Move Failed: " + e.ToString());
-					}
+		internal static void SaveToFile(RegionHandle region) {
+			Log($"Saving region {region}");
+			uint r = (uint)region >> 7;
+			Directory.CreateDirectory($"scripts/NavMesh/{r}/");
+			var file = $"scripts/NavMesh/{r}/{region}.mesh";
+			using( BinaryWriter w = Codec.Writer(file + ".tmp") ) {
+				w.Write(versionBytes);
+				var result = AllNodes.Regions[region]; // we know it's there bc it's dirty
+				ulong[] handles = result.Keys.Cast<ulong>().ToArray();
+				ulong[] edges = handles.Select(h => (ulong)result[(NodeHandle)h]).ToArray(); // use Select this way to guarantee they match the order of handles
+				byte[] buf;
+				try {
+					w.Write(handles.Length);
+					buf = new byte[handles.Length * sizeof(NodeHandle)];
+					Buffer.BlockCopy(handles, 0, buf, 0, buf.Length);
+					w.Write(buf);
+				} catch( Exception err ) {
+					Log("Failed to write handles to file: " + err.ToString());
+					return;
 				}
-			});
+				try {
+					buf = new byte[edges.Length * sizeof(ulong)];
+					Buffer.BlockCopy(edges, 0, buf, 0, buf.Length);
+					w.Write(buf);
+				} catch( Exception err ) {
+					Log("Failed to write edges to file: " + err.ToString());
+					return;
+				}
+			}
+			try { File.Delete(file); } catch( FileNotFoundException ) { }
+			try { File.Move(file + ".tmp", file); } catch( Exception e ) {
+				Log("File.Move Failed: " + e.ToString());
+			}
+		}
+
+		private static void SaveFrontierFile() {
 			var filename = "scripts/NavMesh/Frontier.mesh";
 			using( BinaryWriter w = Codec.Writer(filename + ".tmp") ) {
-				w.Write(magicBytes);
+				w.Write(versionBytes);
 				try {
 					foreach( NodeHandle h in Ungrown ) {
 						w.Write((ulong)h);
@@ -153,6 +144,20 @@ namespace Shiv {
 			try { File.Move(filename + ".tmp", filename); } catch( Exception e ) {
 				Log("File.Move Failed: " + e.ToString());
 			}
+		}
+
+		public static void SaveToFile() {
+			if( !SaveEnabled ) {
+				return;
+			}
+
+			var sw = new Stopwatch();
+			sw.Start();
+			// take a snapshot of dirty regions
+			RegionHandle[] dirty = AllNodes.dirtyRegions.ToArray();
+			dirty.Each(AllNodes.dirtyRegions.Remove);
+			dirty.Each(SaveToFile);
+			SaveFrontierFile();
 			sw.Stop();
 			Log($"Saved mesh in {sw.ElapsedMilliseconds}ms");
 		}
