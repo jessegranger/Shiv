@@ -66,5 +66,27 @@ namespace Shiv {
 				x[0].Z + (percent * (x[Max(0, x.Length - 1)].Z - x[0].Z))); // this linear interpolation on the Z is likely going to break something, but will work for flat-ish paths for now
 
 		}
+
+
+		public static Vector3 CatmullRom(float percent, IEnumerable<Vector3> input) {
+			Vector3[] v = input.Take(4).ToArray();
+			return 
+				v[0] * (-0.5f * percent * percent * percent + 1.0f * percent * percent - 0.5f * percent) +
+				v[1] * (+1.5f * percent * percent * percent - 2.5f * percent * percent + 1.0f) +
+				v[2] * (-1.5f * percent * percent * percent + 2.0f * percent * percent + 0.5f * percent) +
+				v[3] * (+0.5f * percent * percent * percent - 0.5f * percent * percent);
+		}
+		public static Vector3 CatmullRom25(IEnumerable<Vector3> input) {
+			Vector3[] v = input.Take(4).ToArray();
+			return v[0] * -0.0703125f + v[1] * +0.8671875f + v[2] * +0.2265625f + v[3] * -0.0234375f;
+		}
+		public static Vector3 CatmullRom50(IEnumerable<Vector3> input) {
+			Vector3[] v = input.Take(4).ToArray();
+			return v[0] * -0.0625f + v[1] * +0.5625f + v[2] * +0.5625f + v[3] * -0.0625f;
+		}
+		public static Vector3 CatmullRom75(IEnumerable<Vector3> input) {
+			Vector3[] v = input.Take(4).ToArray();
+			return v[3] * -0.0703125f + v[2] * +0.8671875f + v[1] * +0.2265625f + v[0] * -0.0234375f;
+		}
 	}
 }
