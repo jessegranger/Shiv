@@ -24,16 +24,27 @@ namespace Shiv {
 			void Cancel();
 		}
 		public class Future<T> : IFuture<T>, IDisposable {
-			private ReaderWriterLockSlim guard = new ReaderWriterLockSlim();
 			private T result = default;
 			private Exception error;
 			protected CancellationTokenSource cancel = new CancellationTokenSource();
 			private CountdownEvent ready = new CountdownEvent(1);
 
+			private ReaderWriterLockSlim guard = new ReaderWriterLockSlim();
+			private class WriteLock : IDisposable {
+				private Future<T> f;
+				public WriteLock(Future<T> future) => (f = future).guard.EnterWriteLock();
+				public void Dispose() => f.guard.ExitWriteLock();
+			}
+			private class ReadLock : IDisposable {
+				private Future<T> f;
+				public ReadLock(Future<T> future) => (f = future).guard.EnterReadLock();
+				public void Dispose() => f.guard.ExitReadLock();
+			}
+
 			public Future() { }
 			private bool disposed = false;
 			public void Dispose() {
-				if( ! disposed ) {
+				if( !disposed ) {
 					disposed = true;
 					if( !cancel.IsCancellationRequested ) {
 						cancel.Cancel();
@@ -46,56 +57,50 @@ namespace Shiv {
 			~Future() {
 				Dispose();
 			}
-			public Future(Func<T> func):this() {
+			public Future(Func<T> func) : this() {
 				ThreadPool.QueueUserWorkItem((object arg) => {
-					try { Resolve(func()); }
-					catch( Exception err ) { Reject(err); }
+					try { Resolve(func()); } catch( Exception err ) { Reject(err); }
 				});
 			}
-			public Future(Func<CancellationToken, T> func):this() {
+			public Future(Func<CancellationToken, T> func) : this() {
 				ThreadPool.QueueUserWorkItem((object arg) => {
-					try { Resolve(func(cancel.Token)); }
-					catch( Exception err ) { Reject(err); }
+					try { Resolve(func(cancel.Token)); } catch( Exception err ) { Reject(err); }
 				});
 			}
 			public T GetResult() {
-				if( guard.TryEnterReadLock(20) ) {
-					try { return result; } finally { guard.ExitReadLock(); }
+				using( new ReadLock(this) ) {
+					return result;
 				}
-				return default;
 			}
 			public bool TryGetResult(out T result) {
-				result = default;
-				if( ready.IsSet && guard.TryEnterReadLock(20) ) {
-					try {
+				if( ready.IsSet ) {
+					using( new ReadLock(this) ) {
 						result = this.result;
 						return true;
-					} finally {
-						guard.ExitReadLock();
 					}
 				}
+				result = default;
 				return false;
 			}
 
-
-			public Exception GetError() => error;
+			public Exception GetError() { using( new ReadLock(this) ) { return error; } }
 			public bool IsDone() => IsFailed() || IsCanceled() || IsReady();
-			public bool IsFailed() => error != null;
-			public bool IsReady() => ready.IsSet;
+			public bool IsFailed() { using( new ReadLock(this) ) { return error != null; } }
+			public bool IsReady() { using( new ReadLock(this) ) { return error == null && ready.IsSet; } }
 			public IFuture<T> Resolve(T item) {
-				if( guard.TryEnterWriteLock(10) ) {
-					try {
-						result = item;
-						ready.Signal();
-					} finally {
-						guard.ExitWriteLock();
-					}
-				} else {
-					Reject(new TimeoutException());
+				using( new WriteLock(this) ) {
+					result = item;
+					ready.Signal();
 				}
 				return this;
 			}
-			public void Reject(Exception err) => error = err;
+			public void Reject(Exception err) {
+				using( new WriteLock(this) ) {
+					result = default;
+					error = err;
+					ready.Signal();
+				}
+			}
 			public void Wait() => ready.Wait(cancel.Token);
 			public void Wait(int timeout) => ready.Wait(timeout, cancel.Token);
 			public T WaitResult() {
@@ -109,6 +114,7 @@ namespace Shiv {
 			public void Cancel() { try { cancel.Cancel(); } catch( Exception ) { } }
 			public bool IsCanceled() => cancel.IsCancellationRequested;
 		}
+
 		public class Immediate<T> : IFuture<T> { // a dummy future with no locks
 			private readonly T result;
 			public Immediate(T item) => result = item;
@@ -126,6 +132,7 @@ namespace Shiv {
 			public T WaitResult(int timeout) => result;
 			public void Cancel() { }
 		}
+
 		public class ConcurrentSet<T> : IEnumerable<T> {
 			private ConcurrentDictionary<T, bool> data = new ConcurrentDictionary<T, bool>();
 			public virtual bool Contains(T k) => data.ContainsKey(k);
@@ -135,6 +142,7 @@ namespace Shiv {
 			public virtual IEnumerator<T> GetEnumerator() => data.Keys.GetEnumerator();
 			IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 			public uint Count => (uint)data.Count;
+			public void Clear() => data.Clear();
 		}
 	}
 }
