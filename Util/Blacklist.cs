@@ -35,6 +35,7 @@ namespace Shiv {
 
 			if( data != null ) {
 				data.Clear();
+				data = null;
 			}
 		}
 

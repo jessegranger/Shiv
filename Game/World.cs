@@ -15,7 +15,7 @@ namespace Shiv {
 				Call<bool>(_GET_SCREEN_COORD_FROM_WORLD_COORD,
 					pos, new IntPtr(&x), new IntPtr(&y)); }
 			return new PointF(x, y);
-		} // TODO: measure the speed of this versus using CameraMatrix directly
+		} // TODO: measure the speed of this versus using CameraMatrix directly (Since we already pay to fetch it every frame)
 
 		public static Vector3 PutOnGround(Vector3 pos, float off = 0) =>
 			pos == Vector3.Zero ? pos 

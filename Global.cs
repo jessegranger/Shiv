@@ -35,9 +35,7 @@ namespace Shiv {
 		/// </summary>
 		public static bool GamePaused {
 			get => gamePaused;
-			set {
-				Call(SET_GAME_PAUSED, gamePaused = value);
-			}
+			set => Call(SET_GAME_PAUSED, gamePaused = value);
 		}
 		private static bool gamePaused = false;
 

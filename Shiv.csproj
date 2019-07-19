@@ -32,6 +32,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
+    <Compile Include="Missions\GenericMission.cs" />
     <Compile Include="States\Combat.cs" />
     <Compile Include="NavMesh\Edges.cs" />
     <Compile Include="NavMesh\Growth.cs" />
@@ -39,12 +40,14 @@
     <Compile Include="NavMesh\SaveLoad.cs" />
     <Compile Include="States\DebugPath.cs" />
     <Compile Include="States\Explore.cs" />
+    <Compile Include="States\Flying.cs" />
     <Compile Include="States\LookAimShoot.cs" />
     <Compile Include="States\Teleport.cs" />
     <Compile Include="States\Wander.cs" />
     <Compile Include="States\FindCover.cs" />
     <Compile Include="States\PressKey.cs" />
     <Compile Include="States\WalkTo.cs" />
+    <Compile Include="Tests\Test.cs" />
     <Compile Include="Util\Consumer.cs" />
     <Compile Include="Util\Interpolation.cs" />
     <Compile Include="Util\Producer.cs" />

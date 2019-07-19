@@ -3,9 +3,13 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Linq;
 
 namespace Shiv {
 	public static partial class Global {
+
+		public static T First<T>(IEnumerable<T> list) => list.FirstOrDefault();
+		public static T First<T>(IEnumerable<T> list, Func<T, bool> predicate) => list.FirstOrDefault(predicate);
 
 		public static IEnumerable<T> Select<S, T>(this Array array, Func<S, T> func) {
 			foreach( S x in array ) {
@@ -17,7 +21,6 @@ namespace Shiv {
 			foreach( T x in list ) {
 				func(x);
 			}
-
 			return list;
 		}
 
