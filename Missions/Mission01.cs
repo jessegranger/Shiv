@@ -20,7 +20,7 @@ namespace Shiv {
 				return new Mission01_Threaten();
 			}
 			PedHandle ped = NearbyHumans().Where(BlipHUDColor.Red).FirstOrDefault();
-			return new MultiState(
+			return new StateMachine(Self,
 				new AimAt(ped),
 				new WalkTo(Position(ped))
 			) { Next = this };
