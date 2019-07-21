@@ -167,12 +167,14 @@ namespace Shiv {
 					.GetOrAdd(r, regionFactory)
 					.AddOrUpdate(n, e, (k, o) => e);
 				recentRegions.AddOrUpdate(r, TotalTime.ElapsedMilliseconds);
+				SetDirty(r);
 			}
 			public void SetDirty(NodeHandle n) => dirtyRegions.Add(Region(n));
 			public void SetDirty(RegionHandle r) => dirtyRegions.Add(r);
 			public NodeEdges AddOrUpdate(NodeHandle n, NodeEdges newValue, Func<NodeHandle, NodeEdges, NodeEdges> valueFactory) {
 				RegionHandle r = Region(n);
 				recentRegions.AddOrUpdate(r, TotalTime.ElapsedMilliseconds);
+				SetDirty(r);
 				return Regions.GetOrAdd(r, regionFactory).AddOrUpdate(n, newValue, valueFactory);
 			}
 

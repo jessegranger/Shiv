@@ -148,8 +148,6 @@ namespace Shiv {
 			} else {
 				AllNodes.AddOrUpdate(a, 0, (k, oldValue) => oldValue & ~mask);
 			}
-			AllNodes.SetDirty(a);
-			AllNodes.SetDirty(b);
 			return true;
 		}
 		public static NodeEdges AddEdge(NodeEdges e, NodeHandle a, NodeHandle b) {
@@ -167,14 +165,12 @@ namespace Shiv {
 		public static NodeEdges IsGrown(NodeEdges e, bool value) => value ? e | NodeEdges.IsGrown : e & ~NodeEdges.IsGrown;
 		public static void IsGrown(NodeHandle a, bool value) {
 			AllNodes.AddOrUpdate(a, value ? NodeEdges.IsGrown : 0, (key, e) => IsGrown(e, value));
-			AllNodes.SetDirty(a);
 		}
 
 		public static bool IsCover(NodeHandle a) => HasFlag(a, NodeEdges.IsCover); // AllEdges.TryGetValue(a, out var flags) && (flags & NodeEdges.IsCover) > 0;
 		public static NodeEdges IsCover(NodeEdges e, bool value) => value ? e | NodeEdges.IsCover : e & ~NodeEdges.IsCover;
 		public static void IsCover(NodeHandle a, bool value) {
 			AllNodes.AddOrUpdate(a, value ? NodeEdges.IsCover : 0, (key, e) => IsCover(e, value));
-			AllNodes.SetDirty(a);
 		}
 
 		public static uint Clearance(NodeEdges e) => (uint)((ulong)(e & NodeEdges.ClearanceMask) >> 32);
