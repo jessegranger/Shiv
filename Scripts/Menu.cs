@@ -16,7 +16,7 @@ namespace Shiv {
 
 	public class MenuItem {
 		public string Label;
-		public bool IsActivating = false;
+		internal Stopwatch IsActivating = new Stopwatch();
 		public Action<MenuItem> OnClick = null;
 		public Menu Parent = null;
 		public Menu SubMenu = null;
@@ -47,6 +47,7 @@ namespace Shiv {
 		public PedType Type;
 		public PedHash Model;
 		public Vector3 Location = Vector3.Zero;
+		private PedHandle Created = PedHandle.Invalid;
 		public float Heading = 0f;
 		public SpawnPed(PedType type, PedHash hash, State next = null) : base(next) {
 			Model = hash;
@@ -60,13 +61,21 @@ namespace Shiv {
 			if( Heading == 0f ) {
 				Heading = Heading(Self) - 90f;
 			}
+			if( Created != PedHandle.Invalid ) {
+				UI.DrawHeadline($"TryCreatePed: {Created} loading...");
+				if( GetModel(Created) == Model ) {
+					return Next;
+				}
+			}
 			if( TryCreatePed(Type, Model, Location, Heading, out PedHandle veh) ) {
 				UI.DrawHeadline($"TryCreatePed: {veh}");
 				switch( veh ) {
 					case PedHandle.Invalid: return Fail;
 					case PedHandle.ModelInvalid: return Fail;
 					case PedHandle.ModelLoading: return this;
-					default: return Next;
+					default:
+						Created = veh;
+						return this;
 				}
 			}
 			UI.DrawHeadline("TryCreatePed: false");
@@ -77,6 +86,9 @@ namespace Shiv {
 		public VehicleHash Model;
 		public Vector3 Location = Vector3.Zero;
 		public float Heading = 0f;
+
+		private VehicleHandle Created = VehicleHandle.Invalid;
+
 		public SpawnVehicle(VehicleHash hash, State next = null) : base(next) => Model = hash;
 		public override string ToString() => $"Spawn({Model})";
 		public override State OnTick() {
@@ -86,13 +98,22 @@ namespace Shiv {
 			if( Heading == 0f ) {
 				Heading = Heading(Self) - 90f;
 			}
+			if( Created != VehicleHandle.Invalid ) { // wait until really loaded to move to the next state
+				if( GetModel(Created) == Model ) {
+					Broadcast.SendMessage("Vehicle Spawned", Actor, data: Created);
+					return Next;
+				}
+				return this;
+			}
 			if( TryCreateVehicle(Model, Location, Heading, out VehicleHandle veh) ) {
 				UI.DrawHeadline($"TryCreateVehicle: {veh}");
 				switch( veh ) {
 					case VehicleHandle.Invalid: return Fail;
 					case VehicleHandle.ModelInvalid: return Fail;
 					case VehicleHandle.ModelLoading: return this;
-					default: return Next;
+					default:
+						Created = veh;
+						return this;
 				}
 			}
 			UI.DrawHeadline("TryCreateVehicle: false");
@@ -157,7 +178,7 @@ namespace Shiv {
 		public float BorderWidth = .003f;
 		public int HighlightIndex = 0;
 		public int ScrollOffset = 0;
-		public int LinesPerPage = 10;
+		public int LinesPerPage = 7;
 		public List<MenuItem> Items = new List<MenuItem>();
 		public Menu Parent = null;
 		public Menu SubMenu = null;
@@ -170,8 +191,8 @@ namespace Shiv {
 			return this;
 		}
 		public Menu Item(string label, Action click) => Item(new MenuItem(label, click));
-		public Menu Item(string label, Func<State> state) => Item(label, () => StateMachine.Run(state()));
-		public Menu Item(string label, State state) => Item(label, () => StateMachine.Run(state));
+		public Menu Item(string label, Func<State> state) => Item(label, () => SetState(Self, state()));
+		public Menu Item(string label, State state) => Item(label, () => SetState(Self, state));
 		public Menu Item(string label, Menu subMenu) => Item(label, () => ShowSubmenu(subMenu));
 		public void ShowSubmenu(Menu subMenu) {
 			subMenu.Parent = this;
@@ -198,7 +219,7 @@ namespace Shiv {
 		public void Activate() {
 			if( HighlightIndex >= 0 ) {
 				MenuItem item = Items[HighlightIndex];
-				item.IsActivating = true;
+				item.IsActivating.Start();
 				if( item.OnClick != null ) {
 					item.OnClick(item);
 				} else if( item.SubMenu != null ) {
@@ -230,10 +251,15 @@ namespace Shiv {
 				float itemWidth = MenuWidth - (2 * BorderWidth);
 				for( var i = ScrollOffset; i < ScrollOffset + itemCount; i++ ) {
 					var item = Items[i];
-					UI.DrawRect(x, y, itemWidth, ItemHeight, (i == HighlightIndex ? (item.IsActivating ? ActivateColor: HighlightColor) :ItemColor));
-					UI.DrawText(x + BorderWidth, y + BorderWidth, Items[i].ToString());
+					Color c = i == HighlightIndex ?
+						item.IsActivating.IsRunning ?
+						ActivateColor : HighlightColor : ItemColor;
+					if( item.IsActivating.ElapsedMilliseconds > 100 ) {
+						item.IsActivating.Reset();
+					}
+					UI.DrawRect(x, y, itemWidth, ItemHeight, c);
+					UI.DrawText(x + BorderWidth, y + BorderWidth, $"{i+1}. {Items[i]}");
 					y += ItemHeight + (2 * BorderWidth);
-					item.IsActivating = false;
 				}
 			}
 		}
@@ -309,46 +335,46 @@ namespace Shiv {
 		public static float DefaultWidth = .2f;
 		public override void OnInit() {
 			Controls.Bind(Keys.Pause, () => GamePaused = !GamePaused);
-			Controls.Bind(Keys.Right, () => {
-				MenuScript.Show(new Menu()
-					.Item("Trainer", new Menu()
-						.Item(new InvincibleToggle()) // "Set Invincible", () => Call(SET_PLAYER_INVINCIBLE, true))
-						.Item(new ClearWanted())
-						.Item("Give Weapons", () => GiveWeapons(Self,
-							(uint)WeaponHash.Pistol, 90,
-							(uint)WeaponHash.PumpShotgun, 200,
-							(uint)WeaponHash.SniperRifle, 50,
-							(uint)WeaponHash.RPG, 10,
-							(uint)WeaponHash.Knife, 0,
-							(uint)WeaponHash.Unarmed, 0,
-							(uint)WeaponHash.CarbineRifle, 500
-							)
+			Controls.Bind(Keys.Right, (Action)(() => {
+			MenuScript.Show(new Menu()
+				.Item("Trainer", new Menu()
+					.Item(new InvincibleToggle()) // "Set Invincible", () => Call(SET_PLAYER_INVINCIBLE, true))
+					.Item(new ClearWanted())
+					.Item("Give Weapons", () => GiveWeapons(Self,
+						(uint)WeaponHash.Pistol, 90,
+						(uint)WeaponHash.PumpShotgun, 200,
+						(uint)WeaponHash.SniperRifle, 50,
+						(uint)WeaponHash.RPG, 10,
+						(uint)WeaponHash.Knife, 0,
+						(uint)WeaponHash.Unarmed, 0,
+						(uint)WeaponHash.CarbineRifle, 500
 						)
-						.Item(new CarRepair())
-						.Item(new VehicleSpawnMenuItem())
-						.Item("Combat Mode", () => new Combat(NearbyHumans, null))
+					)
+					.Item(new CarRepair())
+					.Item(new VehicleSpawnMenuItem())
+					.Item("Combat Mode", () => SetState(Self, new Combat(NearbyHumans, null)))
 					)
 					.Item("Missions", new Menu()
 						.Item("Mission01", new Menu()
-							.Item("Start", new WaitForControl(new Mission01_Approach()))
-							.Item("GotoVault", new Mission01_GotoVault())
-							.Item("MoveToCover", new Mission01_MoveToCover())
-							.Item("MoveToButton", new Mission01_MoveToButton())
-							.Item("Get Away", new Mission01_GetAway())
+							.Item("Start", () => new WaitForControl(new Mission01_Approach()))
+							.Item("GotoVault", () => new Mission01_GotoVault())
+							.Item("MoveToCover", () => new Mission01_MoveToCover())
+							.Item("MoveToButton", () => new Mission01_MoveToButton())
+							.Item("Get Away", () => new Mission01_GetAway())
 						)
 					)
 					.Item("Tests", new Menu()
-						.Item("All", () => {
-							return new TestExitVehicle() {
-								Next = new TestSteering() {
-									Next = new TestSteeringBicycle() {
-										Next = new TestCreatePed() {
-											Next = new TestKillPed()
-										}
-									}
-								}
-							};
-						})
+						.Item("All", () => SetState(Self, State.Series(
+								new TestSteering(),
+								new TestExitVehicle(),
+								new TestSteeringBicycle(),
+								new TestCreatePed(),
+								new TestKillPed(),
+								new TestCommandPed(),
+								new TestPedCanDrive(),
+								new TestPedCanFly()
+							))
+						)
 						.Item("Enter Vehicle", () => new TestEnterVehicle())
 						.Item("Exit Vehicle", () => new TestExitVehicle())
 						.Item("Steering", () => new TestSteering())
@@ -356,6 +382,8 @@ namespace Shiv {
 						.Item("Create Ped", () => new TestCreatePed())
 						.Item("Kill Ped", () => new TestKillPed())
 						.Item("Command Ped", () => new TestCommandPed())
+						.Item("Ped Can Drive", () => new TestPedCanDrive())
+						.Item("Ped Can Fly", () => new TestPedCanFly())
 					)
 					.Item("Show Path To", new Menu()
 						.Item("Trevor's House", new DebugPath(new Vector3(1937.5f, 3814.5f, 33.4f)))
@@ -369,7 +397,7 @@ namespace Shiv {
 								.Without(IsGrown)
 								.Select(Position)
 								.Min(DistanceToSelf);
-							StateMachine.Run(new DebugPath(node));
+							SetState(Self, new DebugPath(node));
 						})
 					)
 					.Item("Walk To", new Menu()
@@ -383,34 +411,36 @@ namespace Shiv {
 						.Item("Red Blip", () => new WalkTo(Position(First(GetAllBlips(), BlipHUDColor.Red))))
 					)
 					.Item("Drive To", new Menu()
-						.Item("Wander", new MultiState(
-									new DriveWander(State.Idle) { Speed = 10f, DrivingFlags = VehicleDrivingFlags.Human },
-									new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
-								)
+						.Item("Wander", () => SetState(Self, 
+								new DriveWander(null) { Speed = 10f, DrivingFlags = VehicleDrivingFlags.Human },
+								new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
+							)
 						)
-						.Item("Trevor's House", new MultiState(
-									new DriveTo(new Vector3(1983f, 3829f, 32f), new MultiState.Clear(null)) { Speed = 10f },
-									new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
-								)
+						.Item("Trevor's House", () => SetState(Self,
+								new DriveTo(new Vector3(1983f, 3829f, 32f), new StateMachine.Clear(null)) { Speed = 10f },
+								new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
+							)
 						)
-						.Item("Safeouse", new MultiState(
-									new DriveTo(Position(First(GetAllBlips(BlipSprite.Safehouse))), new MultiState.Clear(null)) { Speed = 10f },
-									new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
-								)
+						.Item("Safeouse", () => SetState(Self,
+								new DriveTo(Position(First(GetAllBlips(BlipSprite.Safehouse))), new StateMachine.Clear(null)) { Speed = 10f },
+								new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
+							)
 						)
-						.Item("Waypoint", () => new MultiState(
-									new DriveTo(Position(First(GetAllBlips(BlipSprite.Waypoint))), new MultiState.Clear(null)) { Speed = 10f },
-									new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
-								)
+						.Item("Waypoint", () => SetState(Self,
+								new DriveTo(Position(First(GetAllBlips(BlipSprite.Waypoint))), new StateMachine.Clear(null)) { Speed = 10f },
+								new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
+							)
 						)
-						.Item("Yellow Blip", () => new DriveTo(Position(First(GetAllBlips(), BlipHUDColor.Yellow)), State.Idle))
-						.Item("Green Blip", () => new DriveTo(Position(First(GetAllBlips(), BlipHUDColor.Green)), State.Idle))
-						.Item("Blue Blip", () => new DriveTo(Position(First(GetAllBlips(), BlipHUDColor.Blue)), State.Idle))
+						.Item("Blip", new Menu()
+							.Item("Yellow", () => new DriveTo(Position(First(GetAllBlips(), BlipHUDColor.Yellow)), null))
+							.Item("Green", () => new DriveTo(Position(First(GetAllBlips(), BlipHUDColor.Green)), null))
+							.Item("Blue", () => new DriveTo(Position(First(GetAllBlips(), BlipHUDColor.Blue)), null))
+						)
 					)
 					.Item("Teleport To", new Menu()
 						.Item("Waypoint", () => new Teleport(Handle(Position(First(GetAllBlips(BlipSprite.Waypoint)))), null))
 						.Item("Safehouse", () => new Teleport(Handle(Position(First(GetAllBlips(BlipSprite.Safehouse)))), null))
-						.Item("Desert Airfield", () => new Teleport(NodeHandle.Airfield, null))
+						.Item("Desert Airfield", () => new Teleport(NodeHandle.DesertAirfield, null))
 					)
 					.Item("NavMesh", new Menu()
 						.Item("Save NavMesh", SaveToFile)
@@ -426,7 +456,7 @@ namespace Shiv {
 						.Item("ScriptRLeft", new PressKey(2, Control.ScriptRLeft, 200))
 					)
 				);
-			});
+			}));
 
 			Controls.Bind(Keys.O, () => {
 				var sw = new Stopwatch();
@@ -434,7 +464,7 @@ namespace Shiv {
 				var queue = new Queue<NodeHandle>();
 				var seen = new HashSet<NodeHandle>();
 				var limit = 9;
-				StateMachine.Run((state) => {
+				AddState(Self, State.Runner("Show Materials", (state) => {
 					queue.Enqueue(PlayerNode);
 					seen.Clear();
 					while( queue.Count > 0 ) {
@@ -454,24 +484,23 @@ namespace Shiv {
 						}
 					}
 					return state;
-				});
+				}));
 			});
 			Controls.Bind(Keys.G, () => {
-				Goals.Immediate(new QuickGoal("CheckObstruction", () => {
+				SetState(Self, State.Runner("Check Obstruction", (state) => {
 					var p = Position(PlayerNode);
 					foreach( NodeHandle e in Edges(PlayerNode) ) {
 						var pos = Position(e);
 						CheckObstruction(p, (pos - p), true);
 					}
-					return GoalStatus.Active;
+					return state;
 				}));
 			});
 			Controls.Bind(Keys.End, () => {
-				Goals.Clear();
-				TaskClearAll();
-				PathStatus.CancelAll();
-				StateMachine.Clear();
 				ForcedAim(CurrentPlayer, false);
+				TaskClearAll();
+				StateMachines.ClearAllStates();
+				PathStatus.CancelAll();
 			});
 			Controls.Bind(Keys.X, () => {
 				var aim = AimNode();
@@ -488,10 +517,9 @@ namespace Shiv {
 				NavMesh.ShowEdges = !NavMesh.ShowEdges;
 			});
 			Controls.Bind(Keys.N, () => {
-				Goals.Immediate(new QuickGoal("Show Blocked", () => {
+				SetState(Self, State.Runner("Show Blocked", (state) => {
 					Pathfinder.GetBlockedNodes(true, true, false, true);
-					// NavMesh.DebugVehicle();
-					return GoalStatus.Active;
+					return state;
 				}));
 			});
 
@@ -506,7 +534,7 @@ namespace Shiv {
 			});
 
 			Controls.Bind(Keys.J, () => {
-				StateMachine.Run("Drive Direct", (state) => {
+				SetState(Self, (State)((state) => {
 					var n = AimNode();
 					var p = Position(AimNode());
 					if( p != Vector3.Zero ) {
@@ -524,11 +552,11 @@ namespace Shiv {
 						}
 					}
 					return state;
-				});
+				}));
 			});
 
 			Controls.Bind(Keys.K, () => {
-				StateMachine.Run(new Combat(NearbyHumans, null));
+				SetState(Self, new Combat(NearbyHumans, null));
 			});
 
 			NodeHandle pathTarget = NodeHandle.Invalid;
@@ -540,7 +568,7 @@ namespace Shiv {
 				var started = GameTime;
 				NodeHandle[] nodePath = null;
 				SmoothPath path = null;
-				StateMachine.Run("Follow Path", (state) => {
+				SetState(Self, State.Runner("Follow Path", (state) => {
 					if( req != null && req.IsReady() ) {
 						nodePath = req.GetResult().ToArray(); // for debugging
 						path = new SmoothPath(req.GetResult()); // .Select(Position).ToArray();
@@ -576,18 +604,18 @@ namespace Shiv {
 						*/
 					}
 					return state;
-				});
+				}));
 			});
 
 			Controls.Bind(Keys.H, () => {
-				StateMachine.Run(new Hover(new Vector3(PlayerPosition.X, PlayerPosition.Y, 100)));
+				AddState(Self, new Hover(new Vector3(PlayerPosition.X, PlayerPosition.Y, 50f)));
 			});
 
 			Controls.Bind(Keys.T, () => {
-				StateMachine.Run(new TestEnterVehicle() {
-					Next = new TestExitVehicle() {
-						Next = new TestSteering() {
-							Next = new TestSteeringBicycle()
+				SetState(Self, new TestExitVehicle() {
+					Next = new TestSteering() {
+						Next = new TestKillPed() {
+							Next = new TestPedCanDrive()
 						}
 					}
 				});
