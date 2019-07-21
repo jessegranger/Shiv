@@ -162,7 +162,7 @@ namespace Shiv {
 			}
 			DrawSphere(location, .5f, Color.Yellow);
 
-			float pitch = 0f, yaw = 0f, roll = 0f, throttle = 0f;
+			float pitch = 0f, roll = 0f, throttle = 0f;
 
 			// exactly counter any current roll, to stabilize
 			roll = Call<float>(GET_ENTITY_ROLL, PlayerVehicle);
