@@ -102,14 +102,15 @@ namespace Shiv {
 				}
 			}
 			public void Wait() => ready.Wait(cancel.Token);
-			public void Wait(int timeout) => ready.Wait(timeout, cancel.Token);
-			public T WaitResult() {
-				ready.Wait(cancel.Token);
-				return GetResult();
-			}
-			public T WaitResult(int timeout) {
-				ready.Wait(timeout, cancel.Token);
-				return GetResult();
+			public void Wait(uint timeout) => ready.Wait((int)timeout, cancel.Token);
+			public T WaitResult() => WaitResult(uint.MaxValue);
+			public T WaitResult(uint timeout) {
+				try {
+					ready.Wait((int)timeout, cancel.Token);
+					return GetResult();
+				} catch( OperationCanceledException ) {
+					return default;
+				}
 			}
 			public void Cancel() { try { cancel.Cancel(); } catch( Exception ) { } }
 			public bool IsCanceled() => cancel.IsCancellationRequested;
