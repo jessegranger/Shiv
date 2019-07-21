@@ -106,7 +106,6 @@ namespace Shiv {
 				PlayerVehicle = CurrentVehicle(Self);
 
 				int dt = (int)GameTime - (int)LastGameTime;
-				LastGameTime = GameTime;
 				if( dt != 0 ) {
 					fps.Add(1000 / dt);
 				}
@@ -117,6 +116,8 @@ namespace Shiv {
 
 				// run all Script instances in order
 				Script.Order.Visit(s => s.OnTick());
+
+				LastGameTime = GameTime;
 
 			} catch( Exception err ) {
 				Log($"Uncaught error in Main.OnTick: {err.Message} {err.StackTrace}");
