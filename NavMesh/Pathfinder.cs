@@ -163,16 +163,20 @@ namespace Shiv {
 			yield return orig[orig.Length - 2];
 			yield return orig[orig.Length - 1];
 		}
-		public void Draw() => ((Array)steps).Each(DrawSphere(.03f, Color.Orange));
+		public void Draw() => steps.Each(step => DrawSphere(step, .03f, Color.Orange));
 		public void UpdateCursor(float steppingRange) {
-			float dot =0f;
+			float dot = 0f;
+			if( steps.Length == 0 ) {
+				cursor = 0;
+				return;
+			}
 			Vector3 last = steps[steps.Length - 1];
 			while( cursor < steps.Length - 1 ) {
 				Vector3 forward = PlayerPosition - steps[cursor];
 				if( forward.Length() < steppingRange
 					|| Vector3.Dot(forward, (steps[cursor + 1] - steps[cursor])) > 0 ) {
 					cursor += 1;
-					Log($"Advancing cursor to {cursor} {forward.Length():F2}");
+					// Log($"Advancing cursor to {cursor} {forward.Length():F2}");
 				} else {
 					break;
 				}
@@ -182,7 +186,7 @@ namespace Shiv {
 				dot = 0f;
 				if( (dot = Vector3.Dot(back, (steps[cursor] - steps[cursor - 1]))) < 0 ) {
 					cursor -= 1;
-					Log($"Retreating cursor back to {cursor}, dot: {dot:F2}");
+					// Log($"Retreating cursor back to {cursor}, dot: {dot:F2}");
 				} else {
 					break;
 				}
@@ -338,7 +342,6 @@ namespace Shiv {
 					float dist = (curPos - targetNodePos).LengthSquared();
 					// Log($"dist = {dist:F2}");
 					if( dist <= .5f ) {
-						Log($"[{targetNode}] Found a path, unrolling...");
 						var ret = new Path(UnrollPath(cameFrom, best, debug));
 						Log($"[{targetNode}] Found a path of {ret.Count()} steps ({closedSet.Count} searched in {s.ElapsedMilliseconds}ms)");
 						return ret;
