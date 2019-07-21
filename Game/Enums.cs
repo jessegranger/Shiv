@@ -3688,6 +3688,7 @@ namespace Shiv {
 		}
 
 		public enum Materials {
+			Invalid = 0,
 			none = -1,
 			unk = -1775485061,
 			concrete = 1187676648,
