@@ -22,7 +22,7 @@ namespace Shiv {
 
 	public enum NodeHandle : ulong {
 		Invalid = 0,
-		Airfield = 11147320395096474565,
+		DesertAirfield = 11147038923340768197,
 		GameStart = 15145120214786049134
 	};
 	public enum RegionHandle : uint { Invalid = 0 };
@@ -184,7 +184,7 @@ namespace Shiv {
 							SaveToFile(r);
 						}
 						Regions.TryRemove(r, out var gone);
-						Log($"Paged out region {r}, {gone.Count} nodes.");
+						// Log($"Paged out region {r}, {gone.Count} nodes.");
 					}
 				}
 			}
