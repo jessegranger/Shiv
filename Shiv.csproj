@@ -48,6 +48,7 @@
     <Compile Include="States\PressKey.cs" />
     <Compile Include="States\WalkTo.cs" />
     <Compile Include="Tests\Test.cs" />
+    <Compile Include="Util\Broadcast.cs" />
     <Compile Include="Util\Consumer.cs" />
     <Compile Include="Util\Interpolation.cs" />
     <Compile Include="Util\Producer.cs" />
@@ -71,7 +72,6 @@
     <Compile Include="NavMesh\BaseMesh.cs" />
     <Compile Include="NavMesh\Pathfinder.cs" />
     <Compile Include="Util\Codec.cs" />
-    <Compile Include="Scripts\Goals.cs" />
     <Compile Include="Game\Imports.cs" />
     <Compile Include="Util\Math.cs" />
     <Compile Include="Game\NativeHashes.cs" />
@@ -82,7 +82,6 @@
     <Compile Include="Scripts\Persistent.cs" />
     <Compile Include="Scripts\BaseScript.cs" />
     <Compile Include="Game\Vehicle.cs" />
-    <Compile Include="Scripts\Senses.cs" />
     <Compile Include="Scripts\UI.cs" />
     <Compile Include="Scripts\VehicleMesh.cs" />
     <Compile Include="States\BaseMachine.cs" />
