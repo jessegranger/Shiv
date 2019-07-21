@@ -17,7 +17,7 @@ using System.Drawing;
 namespace Shiv {
 
 	public static partial class Global {
-		private static int[] GetAllVehicles(uint max = 512) {
+		private static int[] GetAllVehicles(uint max = 256) {
 			if( max == 0 ) {
 				throw new ArgumentException();
 			}

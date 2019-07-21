@@ -66,10 +66,7 @@ namespace Shiv {
 		public static bool IsAiming(PedHandle ped) => GetConfigFlag(ped, 78);
 		public static bool GetConfigFlag(PedHandle ped, int id) => Call<bool>(GET_PED_CONFIG_FLAG, ped, id);
 
-		public static float Heading(PedHandle ped, PedHandle other) {
-			var d = Vector3.Normalize(Position(other) - Position(ped));
-			return Rad2Deg(Math.Atan2(d.Y, d.X));
-		}
+		public static float Heading(PedHandle ped, PedHandle other) => Heading(Vector3.Normalize(Position(other) - Position(ped)));
 		public static float Heading(PedHandle ent) => Heading((EntHandle)ent);
 		public static void Heading(PedHandle ent, float value) => Heading((EntHandle)ent, value);
 
