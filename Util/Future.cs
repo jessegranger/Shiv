@@ -11,7 +11,7 @@ namespace Shiv {
 		public interface IFuture<T> {
 			T GetResult();
 			T WaitResult();
-			T WaitResult(int timeout);
+			T WaitResult(uint timeout);
 			Exception GetError();
 			bool IsDone();
 			bool IsReady();
@@ -20,7 +20,7 @@ namespace Shiv {
 			IFuture<T> Resolve(T item);
 			void Reject(Exception err);
 			void Wait();
-			void Wait(int timeout);
+			void Wait(uint timeout);
 			void Cancel();
 		}
 		public class Future<T> : IFuture<T>, IDisposable {
@@ -128,9 +128,9 @@ namespace Shiv {
 			public void Reject(Exception err) { }
 			public IFuture<T> Resolve(T item) => this;
 			public void Wait() { }
-			public void Wait(int timeout) { }
+			public void Wait(uint timeout) { }
 			public T WaitResult() => result;
-			public T WaitResult(int timeout) => result;
+			public T WaitResult(uint timeout) => result;
 			public void Cancel() { }
 		}
 
