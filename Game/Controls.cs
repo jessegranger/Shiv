@@ -46,9 +46,9 @@ namespace Shiv {
 			SetControlValue(1, Control.MoveUpDown, dY = MoveActivation(
 				-1f * Vector3.Dot(delta, Forward(CameraMatrix)),
 				CurrentFPS));
-			DrawLine(HeadPosition(Self), pos, Color.Orange);
 			var dist = DistanceToSelf(pos);
 			if( debug ) {
+				DrawLine(HeadPosition(Self), pos, Color.Orange);
 				UI.DrawTextInWorld(pos, $"dX:{dX:F2} dY:{dY:F2} dist:{DistanceToSelf(pos):F2}");
 			}
 
@@ -83,25 +83,23 @@ namespace Shiv {
 		public static MoveResult FollowPath(IEnumerable<NodeHandle> path, float steppingRange=0.2f) => FollowPath(path.Take(3).Select(NavMesh.Position));
 		public static MoveResult FollowPath(IEnumerable<Vector3> path, float steppingRange=0.2f) => path == null || path.Count() < 2 ? MoveResult.Complete : MoveToward(FirstStep(path), steppingRange);
 
-		private static float LookActivation(float x, float deadZone=.01f) => (float)(1f * ((Sigmoid(x * CurrentFPS / (1f + deadZone)) * 2f) - 1f));
-		// private static float LookActivation(float x) => (float)(x * CurrentFPS * .2f);
-		// private static float LookActivation(float x) => (float)(x * CurrentFPS * Sqrt(Abs(CurrentFPS * x * .2f)));
-		// private static float LookActivation(float x) => (float)(x * CurrentFPS * Sqrt(Abs(x * .8f)));
+		private static float InstantFPS => (float)(1000f / Math.Max(1, GameTime - LastGameTime));
+		private static float LookActivation(float x, float deadZone=.01f) => (Sigmoid(x * InstantFPS / (1f + deadZone)) * 2f) - 1f;
 		public static bool LookToward(PedHandle ped, float deadZone=.01f, bool debug=false) {
-			var dist = Sqrt(DistanceToSelf(ped));
-			var pos = HeadPosition(ped);
+			double dist = Sqrt(DistanceToSelf(ped));
+			Vector3 pos = HeadPosition(ped);
 			float leadFactor = Clamp((float)Sqrt(dist), 1f, 10f); // + LookLeadFactor) / 2f;
-			UI.DrawTextInWorld(pos, $"D:{dist:F0}m L:{leadFactor:F1} dZ:{deadZone}");
-			pos = pos  + (Velocity(ped) * leadFactor / CurrentFPS);
-			pos.Z -= .02f; // shoot closer to the neck
+			pos = pos  + (Velocity(ped) * leadFactor / InstantFPS);
+			pos.Z -= .02f; // closer to the neck, a cautious bias
 			if( debug ) {
+				UI.DrawHeadline(ped, $"D:{dist:F0}m L:{leadFactor:F1} dZ:{deadZone}");
 				DrawSphere(pos, .04f, Color.Yellow);
 			}
 			return LookToward(pos, deadZone, debug);
 		}
 		public static float LookLeadFactor = 8f;
 		public static bool LookToward(Vector3 pos, float deadZone=0.1f, bool debug=false) {
-			Vector3 offset = (Velocity(Self) * LookLeadFactor / CurrentFPS);
+			Vector3 offset = (Velocity(Self) * LookLeadFactor / InstantFPS);
 			pos = pos - offset;
 			if( debug ) {
 				DrawSphere(pos, .06f, Color.Red);
@@ -124,7 +122,11 @@ namespace Shiv {
 		}
 
 		public static bool ShootToKill(PedHandle target) {
-			LookToward(target, deadZone:.02f);
+			float deadZone = .02f;
+			if( !IsAiming(Self) ) {
+				deadZone = 4f;
+			}
+			LookToward(target, deadZone);
 			ForcedAim(CurrentPlayer, IsFacing(CameraMatrix, Position(target)));
 			if( IsAimingAtEntity(target) ) {
 				SetControlValue(0, Control.Attack, 1f);
