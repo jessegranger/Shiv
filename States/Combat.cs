@@ -90,21 +90,35 @@ namespace Shiv {
 			}
 		}
 
-		public Vector3 CoverPosition(Vector3 danger) => FindCoverBehindVehicle(First(NearbyVehicles()), danger);
 
+		private VehicleHandle CoverVehicle() => First(NearbyVehicles().Where(veh => IsSeatFree(veh, VehicleSeat.Driver) && Speed(veh) == 0f).Without(coverVehicleBlacklist.Contains));
+		public Vector3 CoverPosition(VehicleHandle veh, Vector3 danger) => FindCoverBehindVehicle(veh, danger);
+
+		private VehicleHandle coverVehicle;
 		private Vector3 coverPosition = Vector3.Zero;
-		private PathRequest coverPath;
+		private PathRequest coverPathRequest;
+		private static Blacklist coverVehicleBlacklist = new Blacklist("CoverVehicles");
+		private SmoothPath coverPath;
 		private void CheckCover() {
-			Vector3 newCover = CoverPosition(Position(target));
-			if( coverPosition == Vector3.Zero || coverPosition != newCover ) {
-				coverPosition = newCover;
-				if( coverPath != null ) {
-					coverPath.Cancel();
+			if( target != PedHandle.Invalid ) {
+				var danger = Position(target);
+				VehicleHandle newVehicle = CoverVehicle();
+				if( coverVehicle == VehicleHandle.Invalid || coverVehicle != newVehicle ) {
+					coverVehicle = newVehicle;
+					coverPosition = Vector3.Zero;
 				}
-				coverPath = new PathRequest(PlayerNode, Handle(coverPosition), 1000, false, true, true, 1);
+				Vector3 newCover = CoverPosition(coverVehicle, danger);
+				if( coverPosition == Vector3.Zero || coverPosition != newCover ) {
+					coverPosition = newCover;
+					if( coverPathRequest != null ) {
+						coverPathRequest.Cancel();
+					}
+					coverPathRequest = new PathRequest(PlayerNode, Handle(coverPosition), 1000, false, true, true, 1);
+				}
 			}
 		}
 
+		private readonly float steppingRange = 0.2f;
 		public override State OnTick() {
 			if( GamePaused || !CanControlCharacter() ) {
 				return this;
@@ -112,15 +126,42 @@ namespace Shiv {
 			UI.DrawHeadline($"Kills: {killCount}");
 			var weapon = CurrentWeapon(Self);
 			var maxClip = MaxAmmoInClip(Self, weapon);
-			// if( weapon != WeaponHash.Invalid) { AmmoInClip(Self, weapon, MaxAmmoInClip(Self, weapon)); }
+			if( weapon != WeaponHash.Invalid) { AmmoInClip(Self, weapon, MaxAmmoInClip(Self, weapon)); }
 			var CameraForward = Forward(CameraMatrix);
 			var CameraHeading = Heading(CameraForward);
 
 			CheckVehicles();
 
+			if( coverPathRequest != null ) {
+				if( coverPathRequest.IsReady() ) {
+					coverPath = new SmoothPath(coverPathRequest.GetResult());
+					coverPathRequest = null;
+				} else if( coverPathRequest.IsFailed() ) {
+					UI.DrawHeadline($"coverPath failed");
+					coverVehicleBlacklist.Add(coverVehicle, 15000);
+				} else if( coverPathRequest.IsCanceled() ) {
+					UI.DrawHeadline("coverPath canceled");
+					coverPathRequest = null;
+				}
+			}
+
 			if( coverPath != null ) {
-				if( coverPath.IsReady() ) {
-					coverPath.GetResult().Draw();
+				// coverPath.Draw();
+				coverPath.UpdateCursor(steppingRange);
+				bool aiming = IsAiming(Self);
+				bool running = IsRunning(Self);
+				bool cover = IsInCover(Self);
+				if( !coverPath.IsComplete() ) {
+					if( cover ) {
+						AddStateOnce(Self, new PressKey(0, Control.Cover, 100));
+					}
+					if( aiming && !running ) {
+						ToggleSprint();
+					}
+					MoveToward(coverPath.NextStep(steppingRange));
+				} else if( !cover ) {
+					coverPath = null;
+					AddStateOnce(Self, new PressKey(0, Control.Cover, 100));
 				}
 			}
 
@@ -135,8 +176,8 @@ namespace Shiv {
 					.Without(blacklist.Contains)
 					.Where(ped => (!blacklist.Contains(ped)) && ped != Self && ped != target && Exists(ped) && IsAlive(ped))
 					.OrderBy(DistanceToSelf)
-					.Where(ped => DistanceToSelf(ped) < 300f*300f)
-					.Take(4)
+					.Where(ped => DistanceToSelf(ped) < 150f*150f)
+					.Take(3)
 					.Min(ped => Math.Abs(Heading(Self, ped) - CameraHeading));
 				if( target == PedHandle.Invalid ) {
 					if( AmmoInClip(Self, weapon) < maxClip ) {
@@ -149,7 +190,7 @@ namespace Shiv {
 				CheckCover();
 				lastSwitch = GameTime;
 			}
-			var ray = Raycast(Position(CameraMatrix), HeadPosition(target), IntersectOptions.Everything ^ IntersectOptions.Vegetation, Self);
+			var ray = Raycast(HeadPosition(Self), HeadPosition(target), IntersectOptions.Everything ^ IntersectOptions.Vegetation, Self);
 			if( ray.DidHit && ray.Entity != (EntHandle)target ) {
 				Sphere.Add(ray.HitPosition, .06f, Color.Orange, 1000);
 				blacklist.Add(target, 1000);
