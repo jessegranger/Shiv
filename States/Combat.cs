@@ -9,6 +9,21 @@ using System;
 using System.Numerics;
 
 namespace Shiv {
+	class ReloadWeapon : State {
+		public override State OnTick() {
+			var weapon = CurrentWeapon(Actor);
+			var maxClip = MaxAmmoInClip(Actor, weapon);
+			var ammo = AmmoInClip(Actor, weapon);
+			if( ammo == maxClip ) {
+				return Next;
+			}
+			if( !IsReloading(Actor) ) {
+				Call(TASK_RELOAD_WEAPON, Actor, 1);
+			}
+			return this;
+		}
+	}
+
 	class Combat : State {
 		static readonly Blacklist blacklist = new Blacklist("Combat");
 		static readonly Blacklist vehicles = new Blacklist("Vehicles");
@@ -75,19 +90,39 @@ namespace Shiv {
 			}
 		}
 
+		public Vector3 CoverPosition(Vector3 danger) => FindCoverBehindVehicle(First(NearbyVehicles()), danger);
+
+		private Vector3 coverPosition = Vector3.Zero;
+		private PathRequest coverPath;
+		private void CheckCover() {
+			Vector3 newCover = CoverPosition(Position(target));
+			if( coverPosition == Vector3.Zero || coverPosition != newCover ) {
+				coverPosition = newCover;
+				if( coverPath != null ) {
+					coverPath.Cancel();
+				}
+				coverPath = new PathRequest(PlayerNode, Handle(coverPosition), 1000, false, true, true, 1);
+			}
+		}
+
 		public override State OnTick() {
 			if( GamePaused || !CanControlCharacter() ) {
 				return this;
 			}
 			UI.DrawHeadline($"Kills: {killCount}");
 			var weapon = CurrentWeapon(Self);
-			if( weapon != WeaponHash.Invalid) {
-				AmmoInClip(Self, weapon, MaxAmmoInClip(Self, weapon));
-			}
+			var maxClip = MaxAmmoInClip(Self, weapon);
+			// if( weapon != WeaponHash.Invalid) { AmmoInClip(Self, weapon, MaxAmmoInClip(Self, weapon)); }
 			var CameraForward = Forward(CameraMatrix);
-			var CameraHeading = Rad2Deg(Math.Atan2(CameraForward.Y, CameraForward.X));
+			var CameraHeading = Heading(CameraForward);
 
 			CheckVehicles();
+
+			if( coverPath != null ) {
+				if( coverPath.IsReady() ) {
+					coverPath.GetResult().Draw();
+				}
+			}
 
 			if( target != PedHandle.Invalid && !IsAlive(target) ) {
 				killCount += 1;
@@ -95,34 +130,43 @@ namespace Shiv {
 			}
 
 			if( target == PedHandle.Invalid || (GameTime - lastSwitch) > 3000 ) {
-
+				NearbyHumans().Where(IsShooting).Each(blacklist.Remove);
 				target = GetHostiles()
 					.Without(blacklist.Contains)
 					.Where(ped => (!blacklist.Contains(ped)) && ped != Self && ped != target && Exists(ped) && IsAlive(ped))
 					.OrderBy(DistanceToSelf)
+					.Where(ped => DistanceToSelf(ped) < 300f*300f)
 					.Take(4)
 					.Min(ped => Math.Abs(Heading(Self, ped) - CameraHeading));
 				if( target == PedHandle.Invalid ) {
+					if( AmmoInClip(Self, weapon) < maxClip ) {
+						return new ReloadWeapon() { Next = this };
+					}
 					ForcedAim(false);
 					return this;
 				}
+
+				CheckCover();
 				lastSwitch = GameTime;
 			}
-			var ray = Raycast(HeadPosition(Self), HeadPosition(target), IntersectOptions.Everything ^ IntersectOptions.Vegetation, Self);
+			var ray = Raycast(Position(CameraMatrix), HeadPosition(target), IntersectOptions.Everything ^ IntersectOptions.Vegetation, Self);
 			if( ray.DidHit && ray.Entity != (EntHandle)target ) {
 				Sphere.Add(ray.HitPosition, .06f, Color.Orange, 1000);
 				blacklist.Add(target, 1000);
 				target = PedHandle.Invalid;
 				return this;
 			}
+			/*
 			if( IsInCover(target) && !(IsAimingFromCover(target) || IsAiming(target)) ) {
 				blacklist.Add(target, 100);
 				target = PedHandle.Invalid;
 				return this;
 			}
+			*/
 			ShootToKill(target);
 			return this;
 		}
+
 	}
 	/*
 	class Mission01 : Mission {

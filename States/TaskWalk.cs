@@ -14,7 +14,6 @@ namespace Shiv {
 
 	class TaskWalk : State {
 		public Vector3 Target;
-		public PedHandle Actor = Self;
 		public float StoppingRange = 2f;
 		public float Speed = 1f;
 		public int Timeout = -1;

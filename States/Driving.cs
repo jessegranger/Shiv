@@ -114,22 +114,28 @@ namespace Shiv {
 
 	public class DriveTo : State {
 		public Func<Vector3> Target;
+		private Vector3 target;
 		public VehicleDrivingFlags DrivingFlags = (VehicleDrivingFlags)DrivingStyle.Normal;
 		public float StoppingRange = 10f;
 		public float Speed = 1f;
 		private uint Started = 0;
-		public DriveTo(Func<Vector3> target, State next):base(next) => Target = target;
-		public DriveTo(Vector3 target, State next) : this(() => target, next) { }
+		public DriveTo(Func<Vector3> target, State next=null):base(next) => Target = target;
+		public DriveTo(Vector3 target, State next=null) : this(() => target, next) { }
+
+		/// <summary>
+		/// Must set Target.
+		/// </summary>
+		public DriveTo(State next=null):base(next) { }
 
 		private State Start() {
-			if( Started == 0 ) {
+			if( Started == 0 && target != Vector3.Zero ) {
 				Started = GameTime;
 				TaskClearAll();
-				Call(SET_DRIVER_RACING_MODIFIER, Self, 1f);
-				Call(SET_DRIVER_ABILITY, Self, 1f);
-				Call(SET_DRIVER_AGGRESSIVENESS, Self, .5f);
+				Call(SET_DRIVER_RACING_MODIFIER, Actor, 1f);
+				Call(SET_DRIVER_ABILITY, Actor, 1f);
+				Call(SET_DRIVER_AGGRESSIVENESS, Actor, .5f);
 				Call(TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE,
-					Self, PlayerVehicle, Target(),
+					Actor, CurrentVehicle(Actor), target,
 					Speed,
 					DrivingFlags,
 					StoppingRange
@@ -137,12 +143,18 @@ namespace Shiv {
 			}
 			return this;
 		}
+		public State Restart() {
+			Started = 0;
+			return Start();
+		}
 		public override State OnTick() {
-			if( Started == 0 ) {
-				return Start();
+			Vector3 newTarget = Target();
+			if( target == Vector3.Zero || target != newTarget ) {
+				target = Target();
+				return Restart();
 			}
-			Call(SET_DRIVE_TASK_CRUISE_SPEED, Self, 15f - (NavMesh.Ungrown.Count/250f));
-			int status = GetScriptTaskStatus(Self, TaskStatusHash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE);
+			Call(SET_DRIVE_TASK_CRUISE_SPEED, Actor, 15f - (NavMesh.Ungrown.Count/250f));
+			int status = GetScriptTaskStatus(Actor, TaskStatusHash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE);
 			UI.DrawText($"Drive: (started {Started}) (status {status})");
 			switch( status ) {
 				case 1: return this;
@@ -164,11 +176,11 @@ namespace Shiv {
 			if( Started == 0 ) {
 				Started = GameTime;
 				TaskClearAll();
-				Call(SET_DRIVER_RACING_MODIFIER, Self, 1f);
-				Call(SET_DRIVER_ABILITY, Self, 1f);
-				Call(SET_DRIVER_AGGRESSIVENESS, Self, .5f);
+				Call(SET_DRIVER_RACING_MODIFIER, Actor, 1f);
+				Call(SET_DRIVER_ABILITY, Actor, 1f);
+				Call(SET_DRIVER_AGGRESSIVENESS, Actor, .5f);
 				Call(TASK_VEHICLE_DRIVE_WANDER,
-					Self, PlayerVehicle,
+					Actor, CurrentVehicle(Actor),
 					Speed,
 					DrivingFlags
 				);
@@ -179,8 +191,8 @@ namespace Shiv {
 			if( Started == 0 ) {
 				return Start();
 			}
-			Call(SET_DRIVE_TASK_CRUISE_SPEED, Self, 15f - (NavMesh.Ungrown.Count/300f));
-			int status = GetScriptTaskStatus(Self, TaskStatusHash.TASK_VEHICLE_DRIVE_WANDER);
+			Call(SET_DRIVE_TASK_CRUISE_SPEED, Actor, 15f - (NavMesh.Ungrown.Count/300f));
+			int status = GetScriptTaskStatus(Actor, TaskStatusHash.TASK_VEHICLE_DRIVE_WANDER);
 			UI.DrawText($"Drive: status {status}");
 			switch( status ) {
 				case 1: return this;
@@ -191,30 +203,60 @@ namespace Shiv {
 	}
 
 	public class EnterVehicle : State {
-		public VehicleHandle Target;
+		public Func<VehicleHandle> Target;
+		private VehicleHandle target = VehicleHandle.Invalid;
 		public uint Timeout = 10000;
 		public float Speed = 2f;
 		public VehicleSeat Seat = VehicleSeat.Driver;
-		public EnterVehicle(VehicleHandle target, State next = null) : base(next) => Target = target;
+		public EnterVehicle(VehicleHandle veh, State next = null) : base(next) => Target = () => veh;
+		public EnterVehicle(Func<VehicleHandle> veh, State next = null) : base(next) => Target = veh;
+
+		/// <summary>
+		/// Always set { Target = () => vehicle } if you construct it this way.
+		/// </summary>
+		public EnterVehicle(State next=null) :base(next) { }
 
 		public uint Started = 0;
+
+		public void Restart() {
+			// TaskClearAll(Actor);
+			Call(TASK_ENTER_VEHICLE, Actor, target, Timeout, Seat, Speed, 1, 0);
+		}
 
 		public override State OnTick() {
 			if( GamePaused ) {
 				return this;
 			}
-			if( !CanControlCharacter() ) {
+			VehicleHandle newTarget = Target();
+			if( target == VehicleHandle.Invalid || target != newTarget ) {
+				Log($"Setting new target {target}");
+				target = newTarget;
+				Restart();
+			}
+			if( target == VehicleHandle.Invalid ) {
+				Timeout -= GameTime - LastGameTime;
+				if( Timeout <= 0 ) {
+					Log($"Timed out");
+					return Fail;
+				}
+				UI.DrawHeadline($"Waiting for target...");
+				return this; // wait until the Target() function returns a valid target
+			}
+			VehicleHandle ActorVehicle = CurrentVehicle(Actor);
+			// in the right vehicle
+			if( ActorVehicle == target ) {
+				Broadcast.SendMessage("EnterVehicle", Actor, data:ActorVehicle);
 				return Next;
 			}
-			if( PlayerVehicle == Target ) {
-				return Next;
-			}
-			if( PlayerVehicle != VehicleHandle.Invalid ) {
+			// in the wrong vehicle
+			if( ActorVehicle != VehicleHandle.Invalid ) {
 				return new LeaveVehicle(this);
 			}
-			if( ! IsTaskActive(Self, TaskID.EnterVehicle) ) {
-				Call(TASK_ENTER_VEHICLE, Self, Target, Timeout, Seat, Speed, 1, 0);
+			// fell out of the task for some reason
+			if( ! IsTaskActive(Actor, TaskID.EnterVehicle) ) {
+				Restart();
 			}
+			UI.DrawHeadline(Actor, "State: Enter Vehicle");
 			return this;
 
 		}
@@ -229,11 +271,12 @@ namespace Shiv {
 			if( !CanControlCharacter() ) {
 				return Next;
 			}
-			if( PlayerVehicle == VehicleHandle.Invalid ) {
+			VehicleHandle ActorVehicle = CurrentVehicle(Actor);
+			if( ActorVehicle == VehicleHandle.Invalid ) {
 				return Next;
 			}
-			if( ! IsTaskActive(Self, TaskID.EnterVehicle) ) {
-				Call(TASK_LEAVE_VEHICLE, Self, PlayerVehicle, 0);
+			if( ! IsTaskActive(Actor, TaskID.EnterVehicle) ) {
+				Call(TASK_LEAVE_VEHICLE, Actor, ActorVehicle, 0);
 			}
 			return this;
 		}

@@ -8,8 +8,8 @@ namespace Shiv {
 		public Vector3 Target;
 		public float Heading = 0f;
 		public bool Started { get; private set; } = false;
-		public Teleport(NodeHandle node, State next) : base(next) => Target = NavMesh.Position(node);
-		public Teleport(Vector3 pos, State next) : base(next) => Target = pos;
+		public Teleport(NodeHandle node, State next=null) : base(next) => Target = NavMesh.Position(node);
+		public Teleport(Vector3 pos, State next=null) : base(next) => Target = pos;
 		public override State OnTick() {
 			if( GamePaused )
 				return this;
