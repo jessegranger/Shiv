@@ -17,7 +17,7 @@ namespace Shiv {
 		public override State OnTick() {
 			if( Started == 0 ) {
 				Started = GameTime;
-				return new Teleport(NodeHandle.Airfield,
+				return new Teleport(NodeHandle.DesertAirfield,
 					new Delay(1000, (State)((s) => {
 						NearbyVehicles().Take(10).Cast<EntHandle>().Each(Delete);
 						return new SpawnVehicle(VehicleHash.Blade,
@@ -41,7 +41,7 @@ namespace Shiv {
 		public override State OnTick() {
 			if( Started == 0 ) {
 				Started = GameTime;
-				return new Teleport(NodeHandle.Airfield,
+				return new Teleport(NodeHandle.DesertAirfield,
 					new Delay(1000, (State)((s) => {
 						NearbyVehicles().Take(10).Cast<EntHandle>().Each(Delete);
 						NearbyHumans().Take(10).Cast<EntHandle>().Each(Delete);
@@ -71,7 +71,7 @@ namespace Shiv {
 		public override State OnTick() {
 			if( Started == 0 ) {
 				Started = GameTime;
-				return new Teleport(NodeHandle.Airfield,
+				return new Teleport(NodeHandle.DesertAirfield,
 					new Delay(1000, (State)((s) => {
 						NearbyVehicles().Take(10).Cast<EntHandle>().Each(Delete);
 						return new SpawnVehicle(VehicleHash.Blade,
@@ -107,7 +107,7 @@ namespace Shiv {
 		public override State OnTick() {
 			if( Started == 0 ) {
 				Started = GameTime;
-				return new Teleport(NodeHandle.Airfield,
+				return new Teleport(NodeHandle.DesertAirfield,
 					new Delay(1000, (State)((s) => {
 						NearbyVehicles().Take(10).Cast<EntHandle>().Each(Delete);
 						return new SpawnVehicle(VehicleHash.Bmx,
@@ -135,16 +135,20 @@ namespace Shiv {
 
 	class TestCreatePed : State {
 		private uint Started = 0;
+		public uint Timeout = 3000;
 		public override State OnTick() {
 			if( Started == 0 ) {
 				Started = GameTime;
-				return new Teleport(NodeHandle.Airfield,
+				return new Teleport(NodeHandle.DesertAirfield,
 					new Delay(1000, (State)((s) => {
 						NearbyVehicles().Take(10).Cast<EntHandle>().Each(Delete);
 						NearbyHumans().Take(10).Cast<EntHandle>().Each(Delete);
 						return new SpawnPed(PedType.Cop, PedHash.Cop01SFY, this);
 					}))
 				);
+			}
+			if( (GameTime - Started) > Timeout ) {
+				return Fail;
 			}
 			PedHandle ped = First(NearbyHumans().Where(p => GetPedType(p) == PedType.Cop));
 			PedHash model = GetModel(ped);
@@ -162,7 +166,7 @@ namespace Shiv {
 		public override State OnTick() {
 			if( Started == 0 ) {
 				Started = GameTime;
-				return new Teleport(NodeHandle.Airfield,
+				return new Teleport(NodeHandle.DesertAirfield,
 					new Delay(1000, (State)((s) => {
 						NearbyVehicles().Take(10).Cast<EntHandle>().Each(Delete);
 						NearbyHumans().Take(10).Cast<EntHandle>().Each(Delete);
@@ -170,7 +174,7 @@ namespace Shiv {
 						PedHandle target = PedHandle.Invalid;
 						return new SpawnPed(PedType.Cop, PedHash.Cop01SFY, (State)((t) => {
 							if( target == PedHandle.Invalid ) {
-								target = NearbyHumans().FirstOrDefault();
+								target = First(NearbyHumans().Where(p => GetModel(p) == PedHash.Cop01SFY));
 								if( target == PedHandle.Invalid ) {
 									return t;
 								}
@@ -220,7 +224,7 @@ namespace Shiv {
 										Actor = target, Speed = 3f,
 										Next = new TaskWalk(PlayerPosition + (West * 5f)) {
 											Actor = target, Speed = 3f,
-											Next = A 
+											Next =  this
 										}
 									}
 								};
@@ -238,4 +242,113 @@ namespace Shiv {
 			return test ? Next : Fail;
 		}
 	}
+
+	class TestPedCanDrive : State {
+		private uint Started = 0;
+		PedHandle target = PedHandle.Invalid;
+		Vector3 Location = new Vector3(1771f, 3239f, 42f);
+		public override State OnTick() {
+			if( Started == 0 ) {
+				Started = GameTime;
+				return new Teleport(NodeHandle.DesertAirfield,
+					new Delay(1000, (State)((s) => {
+						NearbyVehicles().Take(10).Cast<EntHandle>().Each(Delete);
+						NearbyHumans().Take(10).Cast<EntHandle>().Each(Delete);
+						return new SpawnPed(PedType.Cop, PedHash.Cop01SFY, (State)((t) => {
+							target = First(NearbyHumans().Where(p => GetModel(p) == PedHash.Cop01SFY));
+							return new TaskWalk(Location) {
+								Actor = target,
+								Speed = 3f,
+								Next = new SpawnVehicle(VehicleHash.Blade) {
+									Location = (Location * .8f) + (PlayerPosition * .2f),
+									Next = new EnterVehicle() {
+										Target = () => First(NearbyVehicles().Where(v => GetModel(v) == VehicleHash.Blade)),
+										Actor = target,
+										Next = new DriveTo() {
+											Target = () => PlayerPosition - (West * 5f),
+											Actor = target,
+											Next = new LeaveVehicle() {
+												Actor = target,
+												Next = new TaskWalk(PlayerPosition) {
+													Actor = target,
+													Speed = 3f,
+													Next = this
+												}
+											}
+										}
+									}
+								}
+							};
+						}));
+					}))
+				);
+			}
+			float dist = (Position(target) - Location).Length();
+			bool test = dist < 10f;
+			Log($"Should have moved a cop: {test} {dist}");
+			Delete(target);
+			return test ? Next : Fail;
+		}
+	}
+
+	class TestShootingRange : State {
+		public override State OnTick() {
+
+			return this;
+		}
+	}
+
+	class ClearArea : State {
+		public ClearArea(State next = null) : base(next) { }
+		public override State OnTick() {
+			NearbyVehicles().Take(10).Cast<EntHandle>().Each(Delete);
+			NearbyHumans().Take(10).Cast<EntHandle>().Each(Delete);
+			return Next;
+		}
+	}
+
+	class TestPedCanFly : State {
+		private uint Started = 0;
+		Vector3 Location = new Vector3(1771f, 3239f, 42f);
+		public override State OnTick() {
+			if( Started == 0 ) {
+				Started = GameTime;
+				return Series(
+					new Teleport(NodeHandle.DesertAirfield),
+					new Delay(1000),
+					new ClearArea(),
+					this
+				);
+			} else {
+
+				PedHandle cop = First(NearbyHumans().Where(p => GetModel(p) == PedHash.Cop01SFY));
+				if( cop == PedHandle.Invalid ) {
+					return new SpawnPed(PedType.Cop, PedHash.Cop01SFY, this);
+				}
+
+				VehicleHandle heli = First(NearbyVehicles().Where(v => GetModel(v) == VehicleHash.Buzzard));
+				if( heli == VehicleHandle.Invalid ) {
+					return new SpawnVehicle(VehicleHash.Buzzard) {
+						Location = (Location * .2f) + (PlayerPosition * .8f),
+						Next = this
+					};
+				}
+
+				if( CurrentVehicle(cop) == VehicleHandle.Invalid ) {
+					AddStateOnce(cop, new EnterVehicle(heli));
+					return new WaitForMessage("EnterVehicle", from: cop, next: this);
+				} else {
+					AddStateOnce(cop, new HeliMission() {
+						Heli = () => heli,
+						TargetLocation = () => Location,
+						LandingRadius = 10f,
+						Heading = Heading(PlayerPosition - Location),
+						Next = new LeaveVehicle(null)
+					});
+					return new WaitForMessage("LeaveVehicle", from: cop, next: this);
+				}
+			}
+		}
+	}
+
 }
