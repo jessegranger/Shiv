@@ -54,6 +54,82 @@ namespace Shiv {
 			DrawLine(tBack, Vector3.Transform(backLeft + d, m), Color.Pink);
 		}
 
+		public static void GetNormals(Matrix4x4 m, Vector3 backLeft, Vector3 frontRight, out Vector3[] corners, out Vector3[] centers, out Vector3[] normals) {
+			corners = new Vector3[6];
+			centers = new Vector3[6];
+			normals = new Vector3[6];
+			var w = West * (frontRight.X - backLeft.X);
+			var d = North * (frontRight.Y - backLeft.Y);
+			var h = Up * (frontRight.Z - backLeft.Z);
+			var tFront = Vector3.Transform(frontRight, m);
+			var tBack = Vector3.Transform(backLeft, m);
+			corners[0] = Vector3.Transform(frontRight + w, m);
+			corners[1] = Vector3.Transform(frontRight - h, m);
+			corners[2] = Vector3.Transform(frontRight - d, m);
+			corners[3] = Vector3.Transform(backLeft - w, m);
+			corners[4] = Vector3.Transform(backLeft + h, m);
+			corners[5] = Vector3.Transform(backLeft + d, m);
+
+			centers[0] = (corners[0] + corners[1]) * .5f;
+			centers[1] = (corners[0] + corners[2]) * .5f;
+			centers[2] = (corners[1] + corners[2]) * .5f;
+			centers[3] = (corners[3] + corners[4]) * .5f;
+			centers[4] = (corners[3] + corners[5]) * .5f;
+			centers[5] = (corners[4] + corners[5]) * .5f;
+
+			normals[0] = Vector3.Normalize(Vector3.Cross(corners[1] - tFront, corners[0] - tFront));
+			normals[1] = Vector3.Normalize(Vector3.Cross(corners[0] - tFront, corners[2] - tFront));
+			normals[2] = Vector3.Normalize(Vector3.Cross(corners[2] - tFront, corners[1] - tFront));
+			normals[3] = -normals[0];
+			normals[4] = -normals[1];
+			normals[5] = -normals[2];
+
+		}
+
+		public static Vector3 GetCenter(Matrix4x4 m, Vector3 backLeft, Vector3 frontRight) => Vector3.Transform((backLeft + frontRight) / 2f, m);
+
+		public static bool TryIntersectPlane(Vector3 rayStart, Vector3 rayEnd, Vector3 corner, Vector3 normal, Vector3 size, out Vector3 point) {
+			point = Vector3.Zero;
+			Vector3 rayDir = rayEnd - rayStart;
+
+			float denom = Vector3.Dot(normal, rayDir);
+			if( denom == 0 ) {
+				return false;
+			}
+			float r = Vector3.Dot(normal, (corner - rayStart)) / denom;
+			if( r >= 0f && r <= 1f ) {
+				point = rayStart + (r * rayDir);
+				// check if point is inside the rect
+				UI.DrawTextInWorld(corner, $"r:{r}");
+				return IsBetween(corner.X - size.X, corner.X + size.X, point.X)
+					&& IsBetween(corner.Y - size.Y, corner.Y + size.Y, point.Y)
+					&& IsBetween(corner.Z - size.Z, corner.Z + size.Z, point.Z);
+			}
+			return false;
+		}
+
+		public static bool IntersectModel(Vector3 rayStart, Vector3 rayEnd, Matrix4x4 m, Vector3 backLeft, Vector3 frontRight) {
+			Vector3 rayDir = (rayEnd - rayStart);
+			GetNormals(m, backLeft, frontRight, out var corners, out var centers, out var normals);
+			/*
+			foreach( var n in normals ) {
+				if( Vector3.Dot(rayDir, n) == 0f ) {
+					return false;
+				}
+			}
+			*/
+
+			for( int i = 0; i < 6; i++) {
+				var s = Vector3.Dot(normals[i], centers[i] - rayStart) / Vector3.Dot(normals[i], rayDir);
+				UI.DrawTextInWorld(centers[i], $"s:{s:F2}");
+				if( s > 0f && s < 1f ) {
+					return true;
+				}
+			}
+
+			return false;
+		}
+
 		public static void PauseClock(bool value) => Call(PAUSE_CLOCK, value);
 
 		public static void Blackout(bool value) => Call(_SET_BLACKOUT, value);
