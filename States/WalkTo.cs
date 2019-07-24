@@ -32,9 +32,15 @@ namespace Shiv {
 	}
 
 	class WalkTo : State {
-		public float StoppingRange = 2f;
+		public float StoppingRange = 1f;
+		public uint Timeout = 120000;
+		public bool Debug = true;
+		public bool Run = false;
+
 		protected PathRequest request;
 		protected Path path;
+		protected SmoothPath smoothPath;
+		protected float steppingRange = .2f;
 		private NodeHandle Origin = NodeHandle.Invalid;
 		private NodeHandle target = NodeHandle.Invalid;
 		protected NodeHandle Target {
@@ -47,7 +53,7 @@ namespace Shiv {
 			}
 		}
 		Stopwatch sw = new Stopwatch();
-		public bool Run = false;
+
 		private bool Started = false;
 		public WalkTo(Vector3 target, State next = null) : this(Handle(PutOnGround(target, 1f)), next) { }
 		public WalkTo(NodeHandle end, State next = null) : this(PlayerNode, end, next) { }
@@ -62,16 +68,13 @@ namespace Shiv {
 			if( Target == NodeHandle.Invalid ) {
 				return Fail;
 			}
-			if( ! CanControlCharacter() ) {
-				return Next;
-			}
 			if( ! Started ) {
 
 				Started = true;
 				Restart();
 				// while we are pathing, also be exiting cover, or exiting vehicle
 				if( IsInCover(Self) ) {
-					return new PressKey(Control.Cover, 200, new Delay(100, this));
+					AddStateOnce(Self, new ExitCover());
 				} else if( PlayerVehicle != VehicleHandle.Invalid ) {
 					Origin = Handle(GetVehicleOffset(PlayerVehicle, VehicleOffsets.DriverDoor));
 					return new LeaveVehicle(this);
@@ -84,11 +87,30 @@ namespace Shiv {
 			if( request != null ) {
 				if( request.IsReady() ) {
 					path = request.GetResult();
+					smoothPath = new SmoothPath(path);
 					request = null;
 				} else if( path == null ) {
 					return request.IsCanceled() ? null
-					: request.IsFailed() ? Fail
+					: request.IsFailed() ? (State)new TaskWalk(Position(target)) { Fail = Fail } 
 					: this;
+				}
+			}
+			
+			if( smoothPath != null ) {
+				var step = smoothPath.NextStep(PlayerPosition);
+				if( smoothPath.IsComplete() ) {
+					return Next;
+				}
+				switch( MoveToward(step, debug:true) ) {
+					case MoveResult.Failed: // smooth path currently fails on chain link fences
+						smoothPath = null; // fall back to the full path
+						break;
+					default:
+						UI.DrawHeadline(Actor, $"Walking a smooth path (speed={Speed(Actor)}.");
+						if( Run && !IsRunning(Self) ) {
+							ToggleSprint();
+						}
+						return this;
 				}
 			}
 
@@ -104,9 +126,7 @@ namespace Shiv {
 						if( !sw.IsRunning ) {
 							sw.Start();
 						}
-						if( Run && !IsRunning(Self) ) {
-							ToggleSprint();
-						}
+						// if( Run && !IsRunning(Self) ) { ToggleSprint(); }
 						/* disable stuck detection until we are using SmoothPath
 						Vector3 step = Position(path.First());
 						var vel = Vector3.Normalize(Velocity(Self));
@@ -126,7 +146,7 @@ namespace Shiv {
 					case MoveResult.Failed:
 						Log("MoveResult.Failed");
 						Stuck();
-						return Fail;
+						return new TaskWalk(Position(target), this) { Fail = this };
 				}
 			}
 			return this;
@@ -141,12 +161,13 @@ namespace Shiv {
 					.ToArray() // read it all so the first block doesn't interrupt the Flood
 					.Each(Block);
 				path = null;
+				smoothPath = null;
 			}
 			Restart();
 		}
 		protected void Restart() {
 			request?.Cancel();
-			request = new PathRequest(Origin, Target, 1000, false, true, true, 1);
+			request = new PathRequest(Origin, Target, Timeout, false, true, true, 1);
 			sw.Reset();
 		}
 	}
