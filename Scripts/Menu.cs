@@ -517,8 +517,40 @@ namespace Shiv {
 				NavMesh.ShowEdges = !NavMesh.ShowEdges;
 			});
 			Controls.Bind(Keys.N, () => {
+				EntHandle debugEnt = 0;
 				SetState(Self, State.Runner("Show Blocked", (state) => {
-					Pathfinder.GetBlockedNodes(true, true, false, true);
+					int line = 0;
+					debugEnt = AimEntity();
+					if( debugEnt != EntHandle.Invalid ) {
+						var pos = AimPosition();
+						Matrix4x4 m = Matrix(debugEnt);
+						DrawSphere(pos, .03f, Color.Red);
+						var type = GetEntityType(debugEnt);
+						UI.DrawTextInWorldWithOffset(pos, 0f, (line++ * .02f), $"{debugEnt} ({type})");
+						UI.DrawTextInWorldWithOffset(pos, 0f, (line++ * .02f), $"{Round(Position(m), 1)}");
+						switch( type ) {
+							case EntityType.Ped:
+							case EntityType.Vehicle:
+							case EntityType.Prop:
+								ModelHash model = GetModel(debugEnt);
+								if( IsValid(model) ) {
+									GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
+									GetNormals(m, backLeft, frontRight, out Vector3[] corners, out Vector3[] centers, out Vector3[] normals);
+									Vector3 center = GetCenter(m, backLeft, frontRight);
+									UI.DrawTextInWorld(center, "origin");
+									for(int i = 0; i < 6; i++ ) {
+										// UI.DrawTextInWorld(centers[i], $"center[{i}]");
+										DrawLine(centers[i], centers[i] + normals[i], Color.Green);
+										UI.DrawTextInWorld(centers[i] + normals[i], $"{i}");
+									}
+									IntersectModel(HeadPosition(Self), HeadPosition(Self) + (10f * Forward(PlayerMatrix)), m, backLeft, frontRight);
+									float volume = GetVolume(frontRight, backLeft);
+									DrawBox(m, backLeft, frontRight);
+									UI.DrawTextInWorldWithOffset(pos, 0f, (line++ * .02f), $"Volume:{volume:F2}");
+								}
+								break;
+						}
+					}
 					return state;
 				}));
 			});
@@ -539,15 +571,26 @@ namespace Shiv {
 					var p = Position(AimNode());
 					if( p != Vector3.Zero ) {
 						DrawSphere(p, .1f, Color.Yellow);
-						switch( SteerToward(p, 100f, 1f, false, debug:true) ) {
+						MoveResult result;
+						if( PlayerVehicle != VehicleHandle.Invalid ) {
+							var model = GetModel(PlayerVehicle);
+							if( IsHeli(model) ) {
+								result = FlyToward(p, 10f, 20f);
+							} else {
+								result = SteerToward(p, 100f, 1f, false, debug: true);
+							}
+						} else {
+							result = MoveToward(p, debug: true);
+						}
+						switch( result ) {
 							case MoveResult.Complete:
-								Log("Drive complete.");
+								Log("Move complete.");
 								return null;
 							case MoveResult.Continue:
-								UI.DrawText($"Drive: distance {Math.Sqrt(DistanceToSelf(p)):F2} speed {Speed(CurrentVehicle(Self))}");
+								UI.DrawText($"Move: distance {Sqrt(DistanceToSelf(p)):F2} speed {Speed(Self)}");
 								return state;
 							case MoveResult.Failed:
-								Log("Drive failed");
+								Log("Move failed");
 								return null;
 						}
 					}
@@ -560,7 +603,8 @@ namespace Shiv {
 			});
 
 			NodeHandle pathTarget = NodeHandle.Invalid;
-			int repathEvery = 2000;
+			int repathEvery = 0;
+			uint startPathAfter = GameTime + 20000;
 			Controls.Bind(Keys.L, () => {
 				pathTarget = AimNode();
 				var pos = Position(pathTarget);
@@ -569,23 +613,36 @@ namespace Shiv {
 				NodeHandle[] nodePath = null;
 				SmoothPath path = null;
 				SetState(Self, State.Runner("Follow Path", (state) => {
+					if( GameTime < startPathAfter ) {
+						UI.DrawHeadline(Self, $"Will walk back in {(startPathAfter - GameTime) / 1000:F0}s");
+						return state;
+					}
 					if( req != null && req.IsReady() ) {
 						nodePath = req.GetResult().ToArray(); // for debugging
-						path = new SmoothPath(req.GetResult()); // .Select(Position).ToArray();
+						path = new SmoothPath(req.GetResult()) {
+							SteppingRange = .5f
+						}; // .Select(Position).ToArray();
 						req = null;
 					}
 					if( path != null ) {
 						if( path.IsComplete() ) {
-							return null;
+							path = null;
+							return state;
 						}
-						if( repathEvery > 0 && (GameTime - started) > repathEvery ) { // || DistanceToSelf(path.NextStep()) > 20f ) {
+						if( repathEvery > 0 && (GameTime - started) > repathEvery ) {
 							req = new PathRequest(PlayerNode, pathTarget, 3000, false, true, true, 1, false);
 							started = GameTime;
 						}
 						// foreach(var n in nodePath.Take(30) ) { DrawSphere(Position(n), .04f, Color.Yellow); }
 						var head = HeadPosition(Self);
-						DrawLine(head, path.NextStep(), Color.Orange);
+						DrawLine(head, path.NextStep(PlayerPosition), Color.Orange);
 						path.Draw();
+
+						var step = path.NextStep(PlayerPosition);
+						MoveToward(step);
+						if( ! IsRunning(Self) ) {
+							ToggleSprint();
+						}
 
 						return state;
 						/*
@@ -619,6 +676,44 @@ namespace Shiv {
 						}
 					}
 				});
+			});
+
+			Controls.Bind(Keys.Y, () => {
+				SetState(Self, (State)((state) => {
+					Vector3 rayStart = HeadPosition(Self);
+					Vector3 rayEnd = Position(CameraMatrix) + (Forward(CameraMatrix) * 10f);
+					DrawLine(rayStart, rayEnd, Color.Red);
+					foreach( var veh in NearbyVehicles().Take(1) ) {
+						var model = GetModel(veh);
+						var m = Matrix(veh);
+						GetModelDimensions(model, out var backLeft, out var frontRight);
+						GetNormals(m, backLeft, frontRight, out var corners, out var centers, out var normals);
+						int count = 0;
+						for(int i = 0; i < corners.Length; i++ ) {
+							if( i == 1 || i == 4 ) { // dont check the top
+								continue;
+							}
+							float dX = Abs(corners[i].X - centers[i].X);
+							float dY = Abs(corners[i].Y - centers[i].Y);
+							float dZ = Abs(corners[i].Z - centers[i].Z);
+
+							UI.DrawTextInWorldWithOffset(centers[i], 0f, .02f, $"i:{i}");
+							if( TryIntersectPlane(rayStart, rayEnd, centers[i], normals[i], new Vector3(dX,dY,dZ), out Vector3 point) ) {
+								DrawLine(centers[i], centers[i] + normals[i], Color.Yellow);
+								DrawSphere(point, .1f, Color.Blue);
+								DrawLine(point, centers[i], Color.Blue);
+								count += 1;
+							} else {
+								DrawLine(centers[i], centers[i] + normals[i], Color.Green);
+							}
+						}
+						UI.DrawHeadline(Self, $"Count: {count}");
+						// if( IntersectModel(rayStart, rayEnd, m, backLeft, frontRight) ) {
+							DrawBox(m, backLeft, frontRight);
+						// }
+					}
+					return state;
+				}));
 			});
 
 		}
