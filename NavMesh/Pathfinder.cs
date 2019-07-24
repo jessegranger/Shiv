@@ -102,7 +102,7 @@ namespace Shiv {
 			return $"{Blocked.Count} {100f*bestBest:F0}% in {elapsed}ms "
 				+ (IsReady() ? GetResult().ToString() : "")
 				+ (IsFailed() ? GetError().ToString() : "")
-				+ (IsCanceled() ? "Canceled" : "");
+				+ (IsCanceled() ? " cancel" : "");
 		}
 	}
 	public static class PathStatus {
@@ -126,10 +126,10 @@ namespace Shiv {
 			UI.DrawText(left, top, $"Pathfinder: {Queue.Count} Active");
 			UI.DrawText(left, top - (padding + lineHeight), Pathfinder.Timers());
 			int lineNum = 0;
-			while( Queue.TryPeek(out PathRequest req) 
+			while( Queue.TryPeek(out PathRequest req)
 				&& req.IsDone()
 				&& req.Stopped.ElapsedMilliseconds > 20000 ) {
-				// let path requests sit around for a few seconds so they can be seen 
+				// let path requests sit around for a few seconds so they can be seen
 				Queue.TryDequeue(out PathRequest done);
 			}
 			foreach( PathRequest req in Queue.Skip(Math.Max(0, Queue.Count - numLines)) ) {
@@ -141,83 +141,105 @@ namespace Shiv {
 		}
 	}
 	public class SmoothPath {
-		Vector3[] steps;
-		int cursor = 0;
-		public SmoothPath(IEnumerable<NodeHandle> path) : this(path.Select(Position)) { }
-		public SmoothPath(IEnumerable<Vector3> path) => steps = Culled(path).ToArray();
-		public static IEnumerable<Vector3> Culled(IEnumerable<Vector3> path) {
-			if( path.Count() < 3 ) {
-				foreach( var v in path ) { yield return v; }
-				yield break;
-			}
 
-			Vector3[] orig = path.ToArray();
-			int i = 0;
-			for( int j = 1; j < orig.Length - 1; j++ ) {
-				if( Raycast(orig[i], orig[j], .4f, IntersectOptions.Everything, Self).DidHit ) {
-					yield return orig[j - 1];
-					i = j;
+		// keep a linked list of the smoothed output realized so far
+		private LinkedList<Vector3> steps;
+
+		// slide a cursor up and down the list, as we move in the world
+		private LinkedListNode<Vector3> cursor;
+
+		// keep an open IEnumerator so we can proceed with Culled() as needed
+		private IEnumerator<Vector3> source; // not an Enumerable, because we want precise control to only iterate once
+
+		// as we cull, omit points where a capsule this big can pass over it without hitting anything
+		public float CapsuleSize = .4f;
+
+		// as we move cursor along the path, in UpdateCursor, how close to each node advances the cursor
+		public float SteppingRange = .5f;
+
+		public SmoothPath(IEnumerable<NodeHandle> path) : this(path.Select(Position)) { }
+		public SmoothPath(IEnumerable<Vector3> path) {
+			steps = new LinkedList<Vector3>();
+			source = Culled(path).GetEnumerator();
+			// will do an initial set of raycasts immediately, up to the first corner/obstruction
+			Realize(1);
+			cursor = steps.First;
+		}
+		private bool Realize(int i) {
+			while( steps.Count <= i ) {
+				try {
+					if( source.MoveNext() ) {
+						steps.AddLast(source.Current);
+					} else {
+						return false;
+					}
+				} catch( InvalidOperationException ) {
+					return false;
 				}
 			}
-			// always keep the last two steps untouched, as an anchor
-			yield return orig[orig.Length - 2];
-			yield return orig[orig.Length - 1];
+			return true;
+		}
+		// Culled does the real work of walking forward with a pair of pointers
+		// yielding only the nodes where a capsule clipped the direct path
+		private IEnumerable<Vector3> Culled(IEnumerable<Vector3> path) {
+			Vector3[] orig = path.ToArray();
+			if( orig.Length < 2 ) {
+				foreach( var v in orig ) {
+					yield return v;
+				}
+			} else {
+				int i = 0;
+				for( int j = 2; j < orig.Length - 1; j++ ) {
+					if( Raycast(orig[i], orig[j], CapsuleSize, IntersectOptions.Everything ^ IntersectOptions.Vegetation, Self).DidHit ) {
+						Log($"Culled() up to {j}");
+						yield return orig[j - 1];
+						i = j;
+					}
+				}
+				// always keep the last two steps untouched, as an anchor
+				yield return orig[orig.Length - 2];
+				yield return orig[orig.Length - 1];
+			}
 		}
 		public void Draw() => steps.Each(step => DrawSphere(step, .03f, Color.Orange));
-		public void UpdateCursor(float steppingRange) {
-			float dot = 0f;
-			if( steps.Length == 0 ) {
-				cursor = 0;
+		private void UpdateCursor(Vector3 actorPosition) {
+
+			// read ahead if our cursor is near the end
+			if( !readComplete && (cursor == steps.Last) ) {
+				readComplete = !Realize(steps.Count);
+			}
+
+			if( IsComplete() ) {
+				cursor = null;
 				return;
 			}
-			Vector3 last = steps[steps.Length - 1];
-			while( cursor < steps.Length - 1 ) {
-				Vector3 forward = PlayerPosition - steps[cursor];
-				if( forward.Length() < steppingRange
-					|| Vector3.Dot(forward, (steps[cursor + 1] - steps[cursor])) > 0 ) {
-					cursor += 1;
-					// Log($"Advancing cursor to {cursor} {forward.Length():F2}");
-				} else {
-					break;
+
+			float dot = 0f;
+			if( cursor.Next != null ) {
+				Vector3 forward = actorPosition - cursor.Value;
+				if( forward.Length() < SteppingRange
+					&& Vector3.Dot(forward, (cursor.Next.Value - cursor.Value)) > 0 ) {
+					cursor = cursor.Next;
+					Log($"Advancing cursor to {Round(cursor.Value,1)} {forward.Length():F2}");
 				}
 			}
-			while( cursor > 0 ) {
-				Vector3 back = PlayerPosition - steps[cursor - 1];
+			if( cursor.Previous != null ) {
 				dot = 0f;
-				if( (dot = Vector3.Dot(back, (steps[cursor] - steps[cursor - 1]))) < 0 ) {
-					cursor -= 1;
-					// Log($"Retreating cursor back to {cursor}, dot: {dot:F2}");
-				} else {
-					break;
+				Vector3 back = actorPosition - cursor.Previous.Value;
+				if( (dot = Vector3.Dot(back, (cursor.Value - cursor.Previous.Value))) < 0 ) {
+					cursor = cursor.Previous;
+					Log($"Retreating cursor back to {Round(cursor.Value,1)}, dot: {dot:F2}");
 				}
 			}
 		}
-		public int Length => steps.Length;
-		public bool IsComplete() => cursor >= steps.Length - 1;
-		public Vector3 NextStep(float steppingRange=0.25f) {
-			UpdateCursor(steppingRange);
-			// int line = 0;
-			var x = (steps[cursor] - PlayerPosition);
-			var norm_x = Vector3.Normalize(x);
-			return steps[cursor]; // + (norm_x * Max(0f, steppingRange - x.Length()));
-			/*
-			var x = (float)Sqrt(DistanceToSelf(steps[cursor]));
-			var c = (1f - steppingRange);
-			var y = Clamp(.33f + (.33f * (c - x) / (c - steppingRange)), .33f, .66f); // should vary from .33 to .66 (smoothly tracking across the mid arc of the lagrange curve, I hope)
-			UI.DrawTextInWorldWithOffset(steps[cursor], 0f, (line++ * .02f), $"x {x:F2} c {c:F2} y {y:F2}");
-			var slice = Items(PlayerPosition).Concat(steps.Skip(cursor).Take(4)).ToArray();
-			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.1f, slice), 0f, 0f, $".1f");
-			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.2f, slice), 0f, 0f, $".2f");
-			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.3f, slice), 0f, 0f, $".3f");
-			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.4f, slice), 0f, 0f, $".4f");
-			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.5f, slice), 0f, 0f, $".5f");
-			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.6f, slice), 0f, 0f, $".6f");
-			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.7f, slice), 0f, 0f, $".7f");
-			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.8f, slice), 0f, 0f, $".8f");
-			// UI.DrawTextInWorldWithOffset(Interp.Lagrange(.9f, slice), 0f, 0f, $".9f");
-			return Interp.Lagrange(y, slice);
-			// return steps[cursor];
-			*/
+		private bool readComplete = false;
+		public bool IsComplete() => readComplete
+			&& (cursor == null
+				|| (cursor == steps.Last && (cursor.Value - PlayerPosition).Length() < SteppingRange)
+			);
+		public Vector3 NextStep(Vector3 actorPosition) {
+			UpdateCursor(actorPosition);
+			return cursor == null ? Vector3.Zero : cursor.Value;
 		}
 
 	}
@@ -237,7 +259,8 @@ namespace Shiv {
 
 	public static partial class Global {
 
-		public static Vector3 Position(Path path) => path == null ? Vector3.Zero : NavMesh.Position(path.FirstOrDefault());
+		public static Vector3 Position(Path path) =>
+			path == null ? Vector3.Zero : NavMesh.Position(path.FirstOrDefault());
 
 	}
 
@@ -307,9 +330,6 @@ namespace Shiv {
 				fScore.Add(startNode, Estimate(startNode, targetNode));
 				fScoreTimer.Stop();
 
-				// var openSet = new HashSet<NodeHandle>();
-				// var openSet = new SortedSet<NodeHandle>(Comparer<NodeHandle>.Create((NodeHandle a, NodeHandle b) => FScore(a).CompareTo(FScore(b))));
-				// var openSet = new Heap<NodeHandle>(10000, FScore);
 				var cameFrom = new Dictionary<NodeHandle, NodeHandle>();
 
 				var gScore = new Dictionary<NodeHandle, float>();
@@ -327,16 +347,13 @@ namespace Shiv {
 						return Fail($"[{targetNode}] Searching for too long, ({closedSet.Count} nodes in {s.ElapsedMilliseconds}ms.");
 					}
 
+					// close this node we are just about to visit
 					closedSetTimer.Start();
 					closedSet.Add(best);
 					closedSetTimer.Stop();
-					progress(best);
-					/*
-					if( closedSet.Count > 100 ) {
-						return Fail($"[{targetNode}] Searching too many nodes {closedSet.Count}");
-					}
-					*/
 
+					// update the progress callback
+					progress(best);
 
 					Vector3 curPos = Position(best);
 					float dist = (curPos - targetNodePos).LengthSquared();
@@ -368,7 +385,7 @@ namespace Shiv {
 									gScore[e] // best path to e so far
 									+ Estimate(ePos, targetNodePos) // plus standard A* estimate
 									+ Abs(ePos.Z - curPos.Z) // plus a penalty for going vertical
-									+ ((15 - Clearance(e))/4f) // plus a penalty for low clearance
+									+ ((15 - Clearance(e)) * .3f) // plus a penalty for low clearance
 								);
 								fScoreTimer.Stop();
 							}
@@ -383,10 +400,6 @@ namespace Shiv {
 			}
 		}
 
-		public static float GetVolume(Vector3 frontRight, Vector3 backLeft) {
-			var diag = frontRight - backLeft;
-			return Abs(diag.X) * Abs(diag.Y) * Abs(diag.Z);
-		}
 		private static readonly Random random = new Random();
 		private static HashSet<long> ignoreModels = new HashSet<long>() {
 			(long)ModelHash.Planter, // (long)ModelHash.WoodenDoor,
@@ -425,7 +438,7 @@ namespace Shiv {
 				float volume = GetVolume(frontRight, backLeft);
 				if( debug ) { DrawBox(m, backLeft, frontRight); }
 				if( debug ) { UI.DrawTextInWorldWithOffset(pos, 0f, .02f, $"{model} ({volume:F2})"); }
-				if( volume > 25) {
+				if( volume > 170 ) {
 					ignoreModels.Add((long)model);
 				} else {
 					yield return new ModelBox() { Model = model, Entity = ent, M = m, Front = frontRight, Back = backLeft };
