@@ -20,14 +20,14 @@ namespace Shiv {
 
 		public static void PressControl(int group, Control control, uint duration) => Controls.PressControl(group, control, duration);
 
-		private static float MoveActivation(float x, float fps) => (Sigmoid(x) * 4f) - 2f;
+		private static float MoveActivation(float x, float deadZone=.01f) => (Sigmoid(x / (1f + deadZone)) * 2f) - 1f;
 
 		public enum MoveResult {
 			Continue,
 			Failed,
 			Complete
 		}
-		public static MoveResult MoveToward(Vector3 pos, float stoppingRange=.25f, bool debug=false) {
+		public static MoveResult MoveToward(Vector3 pos, float stoppingRange=.25f, bool stopAtEnd=true, bool debug=false) {
 			if( pos == Vector3.Zero ) { return MoveResult.Complete; }
 			ObstructionFlags result = CheckObstruction(PlayerPosition, (pos - PlayerPosition), debug);
 			if( ! IsWalkable(result ) ) {
@@ -38,14 +38,12 @@ namespace Shiv {
 				}
 			}
 
-			Vector3 delta = pos - PlayerPosition; // Position(PlayerMatrix);
+			Vector3 delta = Vector3.Normalize(pos - PlayerPosition); // Position(PlayerMatrix);
+			float right = Vector3.Dot(delta, Right(CameraMatrix));
+			float up = Vector3.Dot(delta, Forward(CameraMatrix));
 			float dX, dY;
-			SetControlValue(1, Control.MoveLeftRight, dX = MoveActivation(
-				+2f * Vector3.Dot(delta, Right(CameraMatrix)), // TODO: 2 should be aspect ratio?
-				CurrentFPS));
-			SetControlValue(1, Control.MoveUpDown, dY = MoveActivation(
-				-1f * Vector3.Dot(delta, Forward(CameraMatrix)),
-				CurrentFPS));
+			SetControlValue(1, Control.MoveLeftRight, dX = MoveActivation( right, deadZone:.05f ));
+			SetControlValue(1, Control.MoveUpDown, dY = MoveActivation( -up, deadZone:-.05f ));
 			var dist = DistanceToSelf(pos);
 			if( debug ) {
 				DrawLine(HeadPosition(Self), pos, Color.Orange);
@@ -83,12 +81,12 @@ namespace Shiv {
 		public static MoveResult FollowPath(IEnumerable<NodeHandle> path, float steppingRange=0.2f) => FollowPath(path.Take(3).Select(NavMesh.Position));
 		public static MoveResult FollowPath(IEnumerable<Vector3> path, float steppingRange=0.2f) => path == null || path.Count() < 2 ? MoveResult.Complete : MoveToward(FirstStep(path), steppingRange);
 
-		private static float InstantFPS => (float)(1000f / Math.Max(1, GameTime - LastGameTime));
+		public static float InstantFPS => (float)(1000f / Math.Max(1, GameTime - LastGameTime));
 		private static float LookActivation(float x, float deadZone=.01f) => (Sigmoid(x * InstantFPS / (1f + deadZone)) * 2f) - 1f;
 		public static bool LookToward(PedHandle ped, float deadZone=.01f, bool debug=false) {
 			double dist = Sqrt(DistanceToSelf(ped));
 			Vector3 pos = HeadPosition(ped);
-			float leadFactor = Clamp((float)Sqrt(dist), 1f, 10f); // + LookLeadFactor) / 2f;
+			float leadFactor = Clamp((float)Sqrt(dist), 1f, 8f);
 			pos = pos  + (Velocity(ped) * leadFactor / InstantFPS);
 			pos.Z -= .02f; // closer to the neck, a cautious bias
 			if( debug ) {
@@ -97,16 +95,18 @@ namespace Shiv {
 			}
 			return LookToward(pos, deadZone, debug);
 		}
-		public static float LookLeadFactor = 8f;
 		public static bool LookToward(Vector3 pos, float deadZone=0.1f, bool debug=false) {
-			Vector3 offset = (Velocity(Self) * LookLeadFactor / InstantFPS);
+			double dist = Sqrt(DistanceToSelf(pos));
+			float leadFactor = Clamp((float)Sqrt(dist), 1f, 8f);
+			Vector3 offset = (Velocity(Self) * leadFactor / InstantFPS);
 			pos = pos - offset;
 			if( debug ) {
 				DrawSphere(pos, .06f, Color.Red);
 			}
 			Vector3 forward = Forward(CameraMatrix);
 			Vector3 cam = Position(CameraMatrix);
-			Vector3 delta = Vector3.Normalize(pos - cam) - forward;
+			Vector3 current = Vector3.Normalize(pos - cam);
+			Vector3 delta = current - forward;
 			Vector3 end = cam + forward;
 			float right = Vector3.Dot(delta, Right(CameraMatrix));
 			float up = Vector3.Dot(delta, UpVector(CameraMatrix));
@@ -118,17 +118,17 @@ namespace Shiv {
 			SetControlValue(1, Control.LookLeftRight, dX);
 			SetControlValue(1, Control.LookUpDown, -dY);
 			if( debug ) { UI.DrawText(.45f, .45f, $"Look: dx:{dX:F4} dy:{dY:F4} (err {delta.LengthSquared():F5})"); }
-			return delta.LengthSquared() < .0001f;
+			float angle = Rad2Deg(Acos(Vector3.Dot(current, forward)));
+			return angle < .01f;
 		}
 
 		public static bool ShootToKill(PedHandle target) {
 			float deadZone = .02f;
-			if( !IsAiming(Self) ) {
+			if( !IsAiming(Self) ) { // various things interrupt aiming (reloading, stumbling, climbing)
 				deadZone = 4f;
 			}
-			LookToward(target, deadZone);
 			ForcedAim(CurrentPlayer, IsFacing(CameraMatrix, Position(target)));
-			if( IsAimingAtEntity(target) ) {
+			if( IsAimingAtEntity(target) || LookToward(target, deadZone) ) {
 				SetControlValue(0, Control.Attack, 1f);
 				return true;
 			}
@@ -195,7 +195,7 @@ namespace Shiv {
 		}
 		public static bool IsClimbable(ObstructionFlags flags) => (flags & ObstructionFlags.CannotClimb) == 0;
 		public static bool IsWalkable(ObstructionFlags flags) => 0 == (flags &
-			(ObstructionFlags.Waist | ObstructionFlags.Stomach | ObstructionFlags.Chest | ObstructionFlags.Shoulder | ObstructionFlags.Head));
+			(ObstructionFlags.Waist | ObstructionFlags.Stomach | ObstructionFlags.Chest | ObstructionFlags.Shoulder | ObstructionFlags.Head | ObstructionFlags.Knee));
 
 		public static ObstructionFlags CheckObstruction(Vector3 start, Vector3 heading, bool debug = false) {
 			ObstructionFlags ret = ObstructionFlags.None;
@@ -267,12 +267,9 @@ namespace Shiv {
 		public static bool Disabled { get; private set; } = false;
 
 		public static void OnInit() {
-			Bind(Keys.PageDown, () => LookLeadFactor = Max(1f, LookLeadFactor -= .5f));
-			Bind(Keys.PageUp, () => LookLeadFactor = Min(15f, LookLeadFactor += .5f));
 		}
 
 		public static void OnTick() {
-			UI.DrawText($"Lead Factor: {LookLeadFactor:F1}");
 			// Process all the keys that we are artificially pressing
 			active.RemoveAll(e => e.expires < GameTime);
 			foreach( var e in active ) {
