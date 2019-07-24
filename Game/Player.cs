@@ -1,6 +1,7 @@
 ﻿
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Numerics;
 using static GTA.Native.Function;
 using static GTA.Native.Hash;
@@ -123,12 +124,32 @@ namespace Shiv {
 
 		public static float StealthNoise(PlayerHandle p) => Call<float>(GET_PLAYER_CURRENT_STEALTH_NOISE, p);
 
-		public static Vector3 AimPosition() {
+		private static Vector3 aimPosition;
+		private static EntHandle aimEntity;
+		private static Materials aimMaterial;
+		private static Vector3 aimNormal;
+		private static Func<(Vector3, EntHandle, Materials, Vector3)> DoAimProbe = FrameThrottle(() => {
 			Vector3 start = Position(CameraMatrix);
-			Vector3 end = start + (Forward(CameraMatrix) * 1000f);
-			var result = Raycast(start, end, IntersectOptions.Everything ^ IntersectOptions.Vegetation, Self);
-			return result.DidHit ? result.HitPosition : end;
-		}
+			Vector3 end = start + (Forward(CameraMatrix) * 400f);
+			var result = Raycast(start, end,
+				IntersectOptions.Everything ^ IntersectOptions.Vegetation, Self);
+			if( result.DidHit ) {
+				aimPosition = result.HitPosition;
+				aimEntity = result.Entity;
+				aimMaterial = result.Material;
+				aimNormal = result.SurfaceNormal;
+			} else {
+				aimPosition = end;
+				aimEntity = EntHandle.Invalid;
+				aimMaterial = Materials.Invalid;
+				aimNormal = Vector3.Zero;
+			}
+			return (aimPosition, aimEntity, aimMaterial, aimNormal);
+		});
+		public static Vector3 AimPosition() => DoAimProbe().Item1;
+		public static EntHandle AimEntity() => DoAimProbe().Item2;
+		public static Materials AimMaterial() => DoAimProbe().Item3;
+		public static Vector3 AimNormal() => DoAimProbe().Item4;
 
 		private static Dictionary<PedHash, uint> CashKeys = new Dictionary<PedHash, uint>() {
 			{ PedHash.Michael, GenerateHash("SP0_TOTAL_CASH") },
