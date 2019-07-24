@@ -57,7 +57,7 @@ namespace Shiv {
 			return d;
 		}
 
-		public static bool IsBetween(float min, float max, float value) => (value >= min) && (value <= max);
+		public static bool IsBetween(float min, float max, float value) => (value >= Math.Min(min,max)) && (value <= Math.Max(min,max));
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static float Clamp(float x, float min, float max) => Math.Max(min, Math.Min(max, x));
@@ -97,5 +97,9 @@ namespace Shiv {
 		/// <summary>  Expensive. </summary>
 		public static Vector3 GetPositionOffset(Matrix4x4 m, Vector3 pos) => Matrix4x4.Invert(m, out Matrix4x4 inv) ? Vector3.Transform(pos, inv) : Vector3.Zero;
 
+		public static float GetVolume(Vector3 frontRight, Vector3 backLeft) {
+			var diag = frontRight - backLeft;
+			return Math.Abs(diag.X) * Math.Abs(diag.Y) * Math.Abs(diag.Z);
+		}
 	}
 }
