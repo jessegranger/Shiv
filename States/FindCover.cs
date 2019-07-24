@@ -24,31 +24,6 @@ namespace Shiv {
 		public static bool IsPathToCover(NodeHandle node) => Clearance(node) < Clearance(PlayerNode);
 
 	}
-	class EnterCover : State {
-		readonly Vector3 Target;
-		readonly uint Timeout;
-		Stopwatch sw = new Stopwatch();
-		public EnterCover(Vector3 target, uint timeout, State next) : base(next) {
-			Target = target;
-			Timeout = timeout;
-		}
-		private State Done() => Next;
-		public override State OnTick() {
-			if( IsInCover(Self) || IsGoingIntoCover(Self) ) {
-				return Done();
-			}
-			if( ! sw.IsRunning ) {
-				sw.Start();
-			}
-			if( sw.ElapsedMilliseconds > Timeout ) {
-				return Fail;
-			}
-			return new StateMachine(Self,
-				new LookAt(Target, null) { Duration = 600 },
-				new PressKey(1, Control.Cover, 300, new Delay(300, new StateMachine.Clear(this)))
-			);
-		}
-	}
 	class FindCover : State {
 		NodeHandle Target = NodeHandle.Invalid;
 		Vector3 Danger;

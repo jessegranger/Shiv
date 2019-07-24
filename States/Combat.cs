@@ -7,6 +7,7 @@ using System.Drawing;
 using System.Collections.Generic;
 using System;
 using System.Numerics;
+using System.Diagnostics;
 
 namespace Shiv {
 	class ReloadWeapon : State {
@@ -19,6 +20,51 @@ namespace Shiv {
 			}
 			if( !IsReloading(Actor) ) {
 				Call(TASK_RELOAD_WEAPON, Actor, 1);
+			}
+			return this;
+		}
+	}
+
+	class EnterCover : State {
+		readonly Vector3 Target;
+		readonly uint Timeout;
+		Stopwatch sw = new Stopwatch();
+		public EnterCover(Vector3 target, uint timeout, State next = null) : base(next) {
+			Target = target;
+			Timeout = timeout;
+		}
+		public EnterCover(Vector3 target, State next = null) : base(next) {
+			Target = target;
+			Timeout = uint.MaxValue;
+		}
+		private State Done() => Next;
+		public override State OnTick() {
+			if( IsInCover(Self) || IsGoingIntoCover(Self) ) {
+				return Done();
+			}
+			if( ! sw.IsRunning ) {
+				sw.Start();
+			}
+			if( sw.ElapsedMilliseconds > Timeout ) {
+				return Fail;
+			}
+			return new StateMachine(Actor,
+				new LookAt(Target, null) { Duration = 600 },
+				new PressKey(1, Control.Cover, 300, new Delay(300, new StateMachine.Clear(this)))
+			);
+		}
+	}
+
+	class ExitCover : State {
+		public uint Started = 0;
+		public Vector3 Target = Vector3.Zero;
+		public override State OnTick() {
+			if( !IsInCover(Actor) ) {
+				return Next;
+			}
+			if( Started == 0 ) {
+				Started = GameTime;
+				Call(TASK_EXIT_COVER, Actor, 200, Target);
 			}
 			return this;
 		}
@@ -90,7 +136,6 @@ namespace Shiv {
 			}
 		}
 
-
 		private VehicleHandle CoverVehicle() => First(NearbyVehicles().Where(veh => IsSeatFree(veh, VehicleSeat.Driver) && Speed(veh) == 0f).Without(coverVehicleBlacklist.Contains));
 		public Vector3 CoverPosition(VehicleHandle veh, Vector3 danger) => FindCoverBehindVehicle(veh, danger);
 
@@ -146,22 +191,20 @@ namespace Shiv {
 			}
 
 			if( coverPath != null ) {
-				// coverPath.Draw();
-				coverPath.UpdateCursor(steppingRange);
 				bool aiming = IsAiming(Self);
 				bool running = IsRunning(Self);
 				bool cover = IsInCover(Self);
+				var step = coverPath.NextStep(PlayerPosition);
 				if( !coverPath.IsComplete() ) {
 					if( cover ) {
-						AddStateOnce(Self, new PressKey(0, Control.Cover, 100));
-					}
-					if( aiming && !running ) {
+						AddStateOnce(Self, new ExitCover() { Target = step });
+					} else if( aiming && !running ) {
 						ToggleSprint();
 					}
-					MoveToward(coverPath.NextStep(steppingRange));
+					MoveToward(step);
 				} else if( !cover ) {
 					coverPath = null;
-					AddStateOnce(Self, new PressKey(0, Control.Cover, 100));
+					AddStateOnce(Self, new PressKey(Control.Cover, 200));
 				}
 			}
 
