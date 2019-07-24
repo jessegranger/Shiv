@@ -38,5 +38,14 @@ namespace Shiv {
 			};
 		}
 
+		public static Action FrameThrottle(Action action) {
+			uint lastFrame = 0;
+			return () => {
+				if( lastFrame != FrameCount ) {
+					lastFrame = FrameCount;
+					action();
+				}
+			};
+		}
 	}
 }
