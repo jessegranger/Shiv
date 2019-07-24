@@ -57,6 +57,7 @@ namespace Shiv {
 			}
 		}
 		public static void SetState(PedHandle ped, params State[] states) => StateMachines.Set(ped, new StateMachine(ped, states));
+		public static void SetState(PedHandle ped, params Func<State, State>[] states) => StateMachines.Set(ped, new StateMachine(ped, states));
 		public static bool HasState(PedHandle ped, Type stateType) => StateMachines.HasState(ped, stateType);
 	}
 

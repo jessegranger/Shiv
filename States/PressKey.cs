@@ -8,7 +8,7 @@ namespace Shiv {
 		readonly float Value = 1.0f;
 		readonly uint Duration;
 		Stopwatch sw = new Stopwatch();
-		public PressKey(Control key, uint duration, State next) : this(1,key,duration,next) { }
+		public PressKey(Control key, uint duration, State next=null) : this(1,key,duration,next) { }
 		public PressKey(int group, Control key, uint duration, State next = null) : base(next) {
 			Group = group;
 			Key = key;
