@@ -70,6 +70,7 @@ namespace Shiv {
 			unsafe { Call(SET_ENTITY_AS_NO_LONGER_NEEDED, new IntPtr(&ent)); }
 		}
 
+		public static EntityType GetEntityType(EntHandle ent) => Call<EntityType>(GET_ENTITY_TYPE, ent);
 
 		public static IntPtr Address(EntHandle ent) => GetEntityAddress((int)ent);
 		public static Vector3 Position(EntHandle ent) => Position(Matrix(ent)); // Read<Vector3>(Address(ent), 0x90);
