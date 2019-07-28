@@ -385,30 +385,19 @@ namespace Shiv {
 						.Item("Ped Can Drive", () => new TestPedCanDrive())
 						.Item("Ped Can Fly", () => new TestPedCanFly())
 					)
-					.Item("Show Path To", new Menu()
-						.Item("Trevor's House", new DebugPath(new Vector3(1937.5f, 3814.5f, 33.4f)))
-						.Item("Safehouse", new DebugPath(Position(GetAllBlips(BlipSprite.Safehouse).FirstOrDefault())))
-						.Item("Red Blip", new DebugPath(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Red))))
-						.Item("Green Blip", new DebugPath(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Green))))
-						.Item("Yellow Blip", new DebugPath(Position(GetAllBlips().FirstOrDefault(BlipHUDColor.Yellow))))
-						.Item("Aim Position", new DebugPath(AimPosition()))
-						.Item("Closest Ungrown", () => {
-							Vector3 node = NavMesh.Flood(PlayerNode, 20000, 20, default, Edges)
-								.Without(IsGrown)
-								.Select(Position)
-								.Min(DistanceToSelf);
-							SetState(Self, new DebugPath(node));
-						})
+					.Item("Debug", new Menu()
+						.Item(new DebugAimMenuItem())
 					)
 					.Item("Walk To", new Menu()
-						.Item("Trevor's House", new WalkTo(new Vector3(1937.5f, 3814.5f, 33.4f)))
+						.Item("Trevor's House", new WalkTo(NodeHandle.TrevorTrailerParking))
 						.Item("Safehouse", () => new WalkTo(Position(First(GetAllBlips(BlipSprite.Safehouse)))))
 						.Item("Wander", () => new Wander())
 						.Item("Explore", () => new Explore())
-						.Item("Yellow Blip", () => new WalkTo(Position(First(GetAllBlips(), BlipHUDColor.Yellow))))
-						.Item("Blue Blip", () => new WalkTo(Position(First(GetAllBlips(), BlipHUDColor.Blue))))
-						.Item("Green Blip", () => new WalkTo(Position(First(GetAllBlips(), BlipHUDColor.Green))))
-						.Item("Red Blip", () => new WalkTo(Position(First(GetAllBlips(), BlipHUDColor.Red))))
+						.Item("Blip", new Menu()
+							.Item("Yellow", () => new WalkTo(Position(First(GetAllBlips(), BlipHUDColor.Yellow)), null))
+							.Item("Green", () => new WalkTo(Position(First(GetAllBlips(), BlipHUDColor.Green)), null))
+							.Item("Blue", () => new WalkTo(Position(First(GetAllBlips(), BlipHUDColor.Blue)), null))
+						)
 					)
 					.Item("Drive To", new Menu()
 						.Item("Wander", () => SetState(Self, 
@@ -517,36 +506,30 @@ namespace Shiv {
 				NavMesh.ShowEdges = !NavMesh.ShowEdges;
 			});
 			Controls.Bind(Keys.N, () => {
-				EntHandle debugEnt = 0;
 				SetState(Self, State.Runner("Show Blocked", (state) => {
-					int line = 0;
-					debugEnt = AimEntity();
-					if( debugEnt != EntHandle.Invalid ) {
-						var pos = AimPosition();
-						Matrix4x4 m = Matrix(debugEnt);
-						DrawSphere(pos, .03f, Color.Red);
-						var type = GetEntityType(debugEnt);
-						UI.DrawTextInWorldWithOffset(pos, 0f, (line++ * .02f), $"{debugEnt} ({type})");
-						UI.DrawTextInWorldWithOffset(pos, 0f, (line++ * .02f), $"{Round(Position(m), 1)}");
-						switch( type ) {
+					foreach( EntHandle ent in NearbyObjects().Take(10) ) {
+						switch( GetEntityType(ent) ) {
 							case EntityType.Ped:
 							case EntityType.Vehicle:
 							case EntityType.Prop:
-								ModelHash model = GetModel(debugEnt);
+								Matrix4x4 m = Matrix(ent);
+								ModelHash model = GetModel(ent);
 								if( IsValid(model) ) {
 									GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
-									GetNormals(m, backLeft, frontRight, out Vector3[] corners, out Vector3[] centers, out Vector3[] normals);
-									Vector3 center = GetCenter(m, backLeft, frontRight);
-									UI.DrawTextInWorld(center, "origin");
-									for(int i = 0; i < 6; i++ ) {
-										// UI.DrawTextInWorld(centers[i], $"center[{i}]");
-										DrawLine(centers[i], centers[i] + normals[i], Color.Green);
-										UI.DrawTextInWorld(centers[i] + normals[i], $"{i}");
+									Vector3 rayStart = Position(CameraMatrix);
+									Vector3 rayEnd = rayStart + (10f * Forward(CameraMatrix));
+									if( IntersectModel(rayStart, rayEnd, m, backLeft, frontRight) ) {
+										DrawBox(m, backLeft, frontRight);
+										foreach( FinitePlane plane in GetModelPlanes(m, backLeft, frontRight) ) {
+											DrawLine(plane.Center, plane.Center + plane.Normal, Color.Green);
+										}
+										var center = GetCenter(m, backLeft, frontRight);
+										int line = 0;
+										UI.DrawTextInWorldWithOffset(center, 0f, (line++ * .02f), $"ent:{ent} {GetEntityType(ent)} {model}");
+										UI.DrawTextInWorldWithOffset(center, 0f, (line++ * .02f), $"volume:{GetVolume(frontRight, backLeft)}");
+										UI.DrawTextInWorldWithOffset(center, 0f, (line++ * .02f), $"object:{Call<int>(GET_KEY_FOR_ENTITY_IN_ROOM, ent)}");
 									}
-									IntersectModel(HeadPosition(Self), HeadPosition(Self) + (10f * Forward(PlayerMatrix)), m, backLeft, frontRight);
-									float volume = GetVolume(frontRight, backLeft);
-									DrawBox(m, backLeft, frontRight);
-									UI.DrawTextInWorldWithOffset(pos, 0f, (line++ * .02f), $"Volume:{volume:F2}");
+									// float volume = GetVolume(frontRight, backLeft);
 								}
 								break;
 						}
@@ -566,9 +549,9 @@ namespace Shiv {
 			});
 
 			Controls.Bind(Keys.J, () => {
+				var n = AimNode();
+				var p = Position(AimNode());
 				SetState(Self, (State)((state) => {
-					var n = AimNode();
-					var p = Position(AimNode());
 					if( p != Vector3.Zero ) {
 						DrawSphere(p, .1f, Color.Yellow);
 						MoveResult result;
@@ -603,9 +586,9 @@ namespace Shiv {
 			});
 
 			NodeHandle pathTarget = NodeHandle.Invalid;
-			int repathEvery = 0;
-			uint startPathAfter = GameTime + 20000;
+			int repathEvery = 5000;
 			Controls.Bind(Keys.L, () => {
+				uint startPathAfter = GameTime + 20000;
 				pathTarget = AimNode();
 				var pos = Position(pathTarget);
 				var req = new PathRequest(PlayerNode, pathTarget, 2000, false, true, true, 1, false);
@@ -640,9 +623,7 @@ namespace Shiv {
 
 						var step = path.NextStep(PlayerPosition);
 						MoveToward(step);
-						if( ! IsRunning(Self) ) {
-							ToggleSprint();
-						}
+						// if( !IsRunning(Self) ) { ToggleSprint(); }
 
 						return state;
 						/*
@@ -687,29 +668,21 @@ namespace Shiv {
 						var model = GetModel(veh);
 						var m = Matrix(veh);
 						GetModelDimensions(model, out var backLeft, out var frontRight);
-						GetNormals(m, backLeft, frontRight, out var corners, out var centers, out var normals);
 						int count = 0;
-						for(int i = 0; i < corners.Length; i++ ) {
-							if( i == 1 || i == 4 ) { // dont check the top
-								continue;
-							}
-							float dX = Abs(corners[i].X - centers[i].X);
-							float dY = Abs(corners[i].Y - centers[i].Y);
-							float dZ = Abs(corners[i].Z - centers[i].Z);
-
-							UI.DrawTextInWorldWithOffset(centers[i], 0f, .02f, $"i:{i}");
-							if( TryIntersectPlane(rayStart, rayEnd, centers[i], normals[i], new Vector3(dX,dY,dZ), out Vector3 point) ) {
-								DrawLine(centers[i], centers[i] + normals[i], Color.Yellow);
+						Vector3 rayDir = rayStart - rayEnd;
+						foreach( var plane in GetModelPlanes(m, backLeft, frontRight) ) {
+							if( TryIntersectPlane(rayStart, rayDir, plane, out Vector3 point) ) {
+								DrawLine(plane.Center, plane.Center + plane.Normal, Color.Yellow);
 								DrawSphere(point, .1f, Color.Blue);
-								DrawLine(point, centers[i], Color.Blue);
+								DrawLine(point, plane.Center, Color.Blue);
 								count += 1;
 							} else {
-								DrawLine(centers[i], centers[i] + normals[i], Color.Green);
+								DrawLine(plane.Center, plane.Center + plane.Normal, Color.Green);
 							}
 						}
 						UI.DrawHeadline(Self, $"Count: {count}");
 						// if( IntersectModel(rayStart, rayEnd, m, backLeft, frontRight) ) {
-							DrawBox(m, backLeft, frontRight);
+						DrawBox(m, backLeft, frontRight);
 						// }
 					}
 					return state;
