@@ -20,7 +20,7 @@ namespace Shiv {
 
 		public static void PressControl(int group, Control control, uint duration) => Controls.PressControl(group, control, duration);
 
-		private static float MoveActivation(float x, float deadZone=.01f) => (Sigmoid(x / (1f + deadZone)) * 2f) - 1f;
+		private static float MoveActivation(float x, float deadZone=.01f) => ((Sigmoid(x / (1f + deadZone)) * 2f) - 1f);
 
 		public enum MoveResult {
 			Continue,
@@ -31,10 +31,13 @@ namespace Shiv {
 			if( pos == Vector3.Zero ) { return MoveResult.Complete; }
 			ObstructionFlags result = CheckObstruction(PlayerPosition, (pos - PlayerPosition), debug);
 			if( ! IsWalkable(result ) ) {
-				if( IsClimbable(result) ) {
-					SetControlValue(0, Control.Jump, 1.0f); // Attempt to jump over a positive obstruction
-				} else if( Speed(Self) < .01f ) {
-					return MoveResult.Failed;
+				var speed = Speed(Self);
+				if( speed < .02f ) {
+					if( IsClimbable(result) ) {
+						SetControlValue(0, Control.Jump, 1.0f); // Attempt to jump over a positive obstruction
+					} else {
+						return MoveResult.Failed;
+					}
 				}
 			}
 
@@ -42,12 +45,12 @@ namespace Shiv {
 			float right = Vector3.Dot(delta, Right(CameraMatrix));
 			float up = Vector3.Dot(delta, Forward(CameraMatrix));
 			float dX, dY;
-			SetControlValue(1, Control.MoveLeftRight, dX = MoveActivation( right, deadZone:.05f ));
-			SetControlValue(1, Control.MoveUpDown, dY = MoveActivation( -up, deadZone:-.05f ));
+			SetControlValue(1, Control.MoveLeftRight, dX = MoveActivation( right, deadZone:-0.9f ));
+			SetControlValue(1, Control.MoveUpDown, dY = MoveActivation( -up, deadZone:-0.99f ));
 			var dist = DistanceToSelf(pos);
 			if( debug ) {
 				DrawLine(HeadPosition(Self), pos, Color.Orange);
-				UI.DrawTextInWorld(pos, $"dX:{dX:F2} dY:{dY:F2} dist:{DistanceToSelf(pos):F2}");
+				UI.DrawTextInWorld(pos, $"dX:{right:F2}->{dX:F2} dY:{up:F2}->{dY:F2} dist:{DistanceToSelf(pos):F2}");
 			}
 
 			return dist < stoppingRange ? MoveResult.Complete : MoveResult.Continue;
@@ -128,7 +131,7 @@ namespace Shiv {
 				deadZone = 4f;
 			}
 			ForcedAim(CurrentPlayer, IsFacing(CameraMatrix, Position(target)));
-			if( IsAimingAtEntity(target) || LookToward(target, deadZone) ) {
+			if( IsAimingAtEntity(target) || LookToward(target, deadZone) || GetEntityType(AimEntity()) == EntityType.Ped ) {
 				SetControlValue(0, Control.Attack, 1f);
 				return true;
 			}
