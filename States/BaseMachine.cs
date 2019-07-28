@@ -36,14 +36,12 @@ namespace Shiv {
 		}
 
 		public static State Series(params State[] states) {
-			if( states.Length == 0 ) {
-				return (State)((s) => null);
-			}
 			for(int i = 0; i < states.Length - 1; i++) {
 				states[i].Next = states[i + 1];
 			}
-			return states[0];
+			return states?[0];
 		}
+		public static State Parallel(PedHandle actor, params State[] states) => new StateMachine(actor, states);
 
 		public static implicit operator State(Func<State, State> func) => Runner(func);
 	}
@@ -86,7 +84,7 @@ namespace Shiv {
 			}
 		}
 
-		internal static bool HasState(PedHandle ped, Type stateType) => machines[ped]?.HasState(stateType) ?? false;
+		internal static bool HasState(PedHandle ped, Type stateType) => machines?[ped]?.HasState(stateType) ?? false;
 
 		internal static void ClearAllStates(PedHandle ped) {
 			if( machines.ContainsKey(ped) ) {
@@ -104,44 +102,17 @@ namespace Shiv {
 		public override void OnInit() { }
 		public override void OnAbort() => ClearAllStates();
 		public override void OnTick() => machines
-			.Where((kv, i) => !Exists(kv.Key) || kv.Value.OnTick() == null) // tick all the machines for all the peds
-			.Select(kv => kv.Key).ToArray() // select keys of dead machines and dead peds
-			.Each((k) => machines.Remove(k)); // and remove them
+				.ToArray() // read it all in advance so OnTick can modify machines dictionary
+				.Where((kv, i) => !Exists(kv.Key) || Tick(kv.Key, kv.Value) == null) // tick all the machines for all the peds
+				.Select(kv => kv.Key).ToArray() // select keys of dead machines and dead peds
+				.Each((k) => machines.Remove(k)); // and remove them
+		private static State Tick(PedHandle ped, StateMachine m) {
+			UI.DrawHeadline(ped, $"State: {m.ToString()}");
+			return m.OnTick();
+		}
 
 	}
 
-	class WaitForControl : State {
-		public bool Value = true;
-		public WaitForControl(bool value, State next = null) : base(next) => Value = value;
-		public WaitForControl(State next) : base(next) { }
-		public override State OnTick() => CanControlCharacter() == Value ? Next : (this);
-		public override string Name => $"WaitForControl({Value})";
-	}
-	class WaitForCutscene : State {
-		public WaitForCutscene(State next) : base(next) { }
-		public override State OnTick() => new WaitForControl(false, new WaitForControl(true, Next));
-	}
-	class Delay : State {
-		Stopwatch sw = new Stopwatch();
-		readonly uint ms;
-		public Delay(uint ms, State next = null) : base(next) {
-			this.ms = ms;
-			sw.Start();
-		}
-		public override State OnTick() => sw.ElapsedMilliseconds >= ms ? Next : (this);
-		public override string Name => $"Delay({ms})";
-	}
-	class WaitForBlip : State {
-		readonly BlipSprite Kind;
-		readonly BlipHUDColor Color;
-		public WaitForBlip(BlipHUDColor color, State next = null) : this(BlipSprite.Standard, color, next) { }
-		public WaitForBlip(BlipSprite kind, BlipHUDColor color, State next = null) : base(next) {
-			Kind = kind;
-			Color = color;
-		}
-		public override State OnTick() => GetAllBlips(Kind).Any(b => GetBlipHUDColor(b) == Color) ? Next : this;
-		public override string Name => $"WaitForBlip({Color})";
-	}
 
 	internal class StateMachine : State {
 
@@ -208,5 +179,38 @@ namespace Shiv {
 		}
 
 		internal bool HasState(Type stateType) => States.Any(s => s.GetType() == stateType);
+	}
+
+	class WaitForControl : State {
+		public bool Value = true;
+		public WaitForControl(bool value, State next = null) : base(next) => Value = value;
+		public WaitForControl(State next = null) : base(next) { }
+		public override State OnTick() => CanControlCharacter() == Value ? Next : (this);
+		public override string Name => $"WaitForControl({Value})";
+	}
+	class WaitForCutscene : State {
+		public WaitForCutscene(State next = null) : base(next) { }
+		public override State OnTick() => new WaitForControl(false, new WaitForControl(true, Next));
+	}
+	class Delay : State {
+		Stopwatch sw = new Stopwatch();
+		readonly uint ms;
+		public Delay(uint ms, State next = null) : base(next) {
+			this.ms = ms;
+			sw.Start();
+		}
+		public override State OnTick() => sw.ElapsedMilliseconds >= ms ? Next : (this);
+		public override string Name => $"Delay({ms})";
+	}
+	class WaitForBlip : State {
+		readonly BlipSprite Kind;
+		readonly BlipHUDColor Color;
+		public WaitForBlip(BlipHUDColor color, State next = null) : this(BlipSprite.Standard, color, next) { }
+		public WaitForBlip(BlipSprite kind, BlipHUDColor color, State next = null) : base(next) {
+			Kind = kind;
+			Color = color;
+		}
+		public override State OnTick() => GetAllBlips(Kind).Any(b => GetBlipHUDColor(b) == Color) ? Next : this;
+		public override string Name => $"WaitForBlip({Color})";
 	}
 }
