@@ -11,15 +11,14 @@ using System.Drawing;
 namespace Shiv {
 	class AimAt : LookAt {
 
-		public AimAt(Vector3 target, State next = null) : base(target, next) { }
-		public AimAt(Func<Vector3> target, State next = null) : base(target, next) { }
+		public AimAt(Vector3 target, State next = null) : base(target, next) => DeadZone = .05f;
+		public AimAt(Func<Vector3> target, State next = null) : base(target, next) => DeadZone = .05f;
 
 		public AimAt(PedHandle ped, State next = null) : this(() => GetAimPosition(ped), next) { }
 		public AimAt(Func<PedHandle> target, State next = null) : base(() => GetAimPosition(target()), next) { }
 
 		public static Vector3 GetAimPosition(PedHandle ped) {
 			var pos = HeadPosition(ped) + Velocity(ped) / CurrentFPS;
-			UI.DrawTextInWorld(pos, "X");
 			// DrawSphere(pos, .1f, Color.Yellow);
 			return pos;
 		}
@@ -38,9 +37,9 @@ namespace Shiv {
 
 		public override State OnTick() {
 			PedHandle target = GetPed();
-			base.OnTick();
 			if( Exists(target) && IsAlive(target) ) {
-				if( IsAimingAtEntity(target) ) {
+				base.OnTick();
+				if( IsAimingAtEntity(target) || AimEntity() == (EntHandle)target ) {
 					SetControlValue(0, Control.Attack, 1f);
 				}
 				return this;
@@ -82,11 +81,12 @@ namespace Shiv {
 	}
 
 	class LookAt : State {
+		protected readonly Func<Vector3> Target;
+		protected float DeadZone = 4f;
 
 		public LookAt(Vector3 target, State next = null) : this(() => target, next) { }
 		public LookAt(Func<Vector3> target, State next = null):base(next) => Target = target;
 
-		protected readonly Func<Vector3> Target;
 		public long Duration = long.MaxValue;
 		private Stopwatch timer = new Stopwatch();
 		public override State OnTick() {
@@ -104,7 +104,7 @@ namespace Shiv {
 				if( timer.ElapsedMilliseconds > Duration ) {
 					return Next;
 				}
-				LookToward(target, deadZone:4f);
+				LookToward(target, DeadZone);
 				return this;
 			}
 			timer.Stop();
