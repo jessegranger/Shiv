@@ -132,7 +132,7 @@ namespace Shiv {
 				// let path requests sit around for a few seconds so they can be seen
 				Queue.TryDequeue(out PathRequest done);
 			}
-			foreach( PathRequest req in Queue.Skip(Math.Max(0, Queue.Count - numLines)) ) {
+			foreach( PathRequest req in Queue.Skip(Max(0, Queue.Count - numLines)) ) {
 				UI.DrawText(padding + left, top + (++lineNum * lineHeight), req.ToString());
 				if( lineNum >= numLines - 1 ) {
 					break;
@@ -179,21 +179,46 @@ namespace Shiv {
 			}
 			return true;
 		}
+
+		private Func<EntHandle, float> DistanceTo(Vector3 pos) => (e) => (Position(e) - pos).Length();
+
 		// Culled does the real work of walking forward with a pair of pointers
 		// yielding only the nodes where a capsule clipped the direct path
 		private IEnumerable<Vector3> Culled(IEnumerable<Vector3> path) {
 			Vector3[] orig = path.ToArray();
 			if( orig.Length < 2 ) {
-				foreach( var v in orig ) {
-					yield return v;
+				foreach( var step in orig ) {
+					yield return step;
 				}
 			} else {
+				var seenEnts = new HashSet<EntHandle>();
 				int i = 0;
 				for( int j = 2; j < orig.Length - 1; j++ ) {
 					if( Raycast(orig[i], orig[j], CapsuleSize, IntersectOptions.Everything ^ IntersectOptions.Vegetation, Self).DidHit ) {
 						Log($"Culled() up to {j}");
 						yield return orig[j - 1];
 						i = j;
+					} else {
+						// as we move j forward, "light up" the closest ents it passes
+						// once that ent has been activated (added to the seenEnts set),
+						// we will keep checking it for collision as j advances
+						foreach(var ent in NearbyObjects().OrderBy(DistanceTo(orig[j])).Take(4).Concat(seenEnts) ) {
+							if( GetEntityType(ent) != EntityType.Invalid ) {
+								if( ! seenEnts.Contains(ent) ) {
+									seenEnts.Add(ent);
+								}
+								var model = GetModel(ent);
+								var m = Matrix(ent);
+								GetModelDimensions(model, out var backLeft, out var frontRight);
+								if( IntersectModel(orig[i], orig[j], m, backLeft, frontRight) ) {
+									Log($"Culled() up to {j} (using IntersectModel)");
+									yield return orig[j - 1];
+									i = j;
+									seenEnts.Clear();
+									break;
+								}
+							}
+						}
 					}
 				}
 				// always keep the last two steps untouched, as an anchor
@@ -254,6 +279,12 @@ namespace Shiv {
 		public void Draw() => this.Take(20).Select(Position)
 				.Each(DrawSphere(.03f, Color.Yellow));
 		public override string ToString() => $"({this.Count()} steps)";
+
+		public void FastForward(Vector3 pos) {
+			while( iter.Count() > 1 && (pos - Position(First(iter))).Length() > (pos - Position(First(iter.Skip(1)))).Length() ) {
+				iter = iter.Skip(1);
+			}
+		}
 
 	}
 
@@ -407,7 +438,7 @@ namespace Shiv {
 			431612653, 148963242, 213616483, 1021745343, 3180272150, 729253480,
 			3837338037, 1431982911, 1258634901, 4090487972, 1726633148, 3510238396,
 			3585126029, 2745551480, 326972916, 1392246133, 672606124, 1105091386,
-			4068091429, 2967538074, 3069248192, 1572003612
+			4068091429, 2967538074, 3069248192, 1572003612, 2491942629
 		};
 		internal static HashSet<ModelHash> checkDoorModels = new HashSet<ModelHash>() {
 			ModelHash.WoodenDoor, ModelHash.WoodenFireDoor, ModelHash.WoodenBathroomDoor
