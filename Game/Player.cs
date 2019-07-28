@@ -131,13 +131,17 @@ namespace Shiv {
 		private static Func<(Vector3, EntHandle, Materials, Vector3)> DoAimProbe = FrameThrottle(() => {
 			Vector3 start = Position(CameraMatrix);
 			Vector3 end = start + (Forward(CameraMatrix) * 400f);
-			var result = Raycast(start, end,
-				IntersectOptions.Everything ^ IntersectOptions.Vegetation, Self);
+			RaycastResult result = Raycast(start, end, IntersectOptions.Everything ^ IntersectOptions.Vegetation, Self);
 			if( result.DidHit ) {
 				aimPosition = result.HitPosition;
 				aimEntity = result.Entity;
 				aimMaterial = result.Material;
 				aimNormal = result.SurfaceNormal;
+				if( DebugAim ) {
+					DrawLine(HeadPosition(Self), aimPosition, Color.Red);
+					DrawLine(aimPosition, aimPosition + aimNormal, Color.Green);
+					UI.DrawTextInWorld(aimPosition, $"e:{aimEntity} m:{aimMaterial}");
+				}
 			} else {
 				aimPosition = end;
 				aimEntity = EntHandle.Invalid;
@@ -150,6 +154,11 @@ namespace Shiv {
 		public static EntHandle AimEntity() => DoAimProbe().Item2;
 		public static Materials AimMaterial() => DoAimProbe().Item3;
 		public static Vector3 AimNormal() => DoAimProbe().Item4;
+		public static bool DebugAim = false;
+		public class DebugAimMenuItem : MenuItem {
+			public DebugAimMenuItem() : base("[?] Debug Aim", () => DebugAim = !DebugAim) { }
+			public override string ToString() => DebugAim ? "[X] Debug Aim" : "[ ] Debug Aim";
+		}
 
 		private static Dictionary<PedHash, uint> CashKeys = new Dictionary<PedHash, uint>() {
 			{ PedHash.Michael, GenerateHash("SP0_TOTAL_CASH") },
