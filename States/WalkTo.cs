@@ -65,6 +65,10 @@ namespace Shiv {
 			if( GamePaused ) {
 				return this;
 			}
+			if( IsRagdoll(Self) || IsFalling(Self) || IsProne(Self) || IsClimbing(Self) ) {
+				UI.DrawHeadline("WalkTo: Waiting for handicap...");
+				return this;
+			}
 			if( Target == NodeHandle.Invalid ) {
 				return Fail;
 			}
@@ -74,10 +78,10 @@ namespace Shiv {
 				Restart();
 				// while we are pathing, also be exiting cover, or exiting vehicle
 				if( IsInCover(Self) ) {
-					AddStateOnce(Self, new ExitCover());
+					return new ExitCover() { Next = this };
 				} else if( PlayerVehicle != VehicleHandle.Invalid ) {
 					Origin = Handle(GetVehicleOffset(PlayerVehicle, VehicleOffsets.DriverDoor));
-					return new LeaveVehicle(this);
+					return new LeaveVehicle() { Next = this };
 				}
 
 				// if we dont need to take care of any prep, just idle for at least one frame
@@ -91,7 +95,7 @@ namespace Shiv {
 					request = null;
 				} else if( path == null ) {
 					return request.IsCanceled() ? null
-					: request.IsFailed() ? (State)new TaskWalk(Position(target)) { Fail = Fail } 
+					: request.IsFailed() ? (State)new TaskWalk(Position(target), this) { Fail = Fail } 
 					: this;
 				}
 			}
@@ -102,11 +106,16 @@ namespace Shiv {
 					return Next;
 				}
 				switch( MoveToward(step, debug:true) ) {
-					case MoveResult.Failed: // smooth path currently fails on chain link fences
-						smoothPath = null; // fall back to the full path
-						break;
+					case MoveResult.Failed:
+						return Stuck();
 					default:
-						UI.DrawHeadline(Actor, $"Walking a smooth path (speed={Speed(Actor)}.");
+						if( !sw.IsRunning ) {
+							sw.Start();
+						}
+						if( sw.ElapsedMilliseconds > 3000 && Speed(Self) < .02f ) {
+							return Stuck();
+						}
+						UI.DrawHeadline(Actor, $"Walking a smooth path (speed {Speed(Actor):F1})");
 						if( Run && !IsRunning(Self) ) {
 							ToggleSprint();
 						}
@@ -135,7 +144,7 @@ namespace Shiv {
 						// UI.DrawTextInWorld(step, $"Overlap: {overlap}");
 						if( sw.ElapsedMilliseconds > 3200 && overlap <= 0.01f && !IsClimbing(Self) && !IsJumping(Self) && !IsRagdoll(Self) && Speed(Self) < .02f ) {
 							Log($"STUCK at {sw.ElapsedMilliseconds} overlap {overlap}");
-							Stuck();
+							return Stuck();
 						}
 						*/
 						break;
@@ -145,30 +154,33 @@ namespace Shiv {
 						break;
 					case MoveResult.Failed:
 						Log("MoveResult.Failed");
-						Stuck();
+						BlockAround(PlayerPosition + Forward(PlayerMatrix));
 						return new TaskWalk(Position(target), this) { Fail = this };
 				}
 			}
 			return this;
 		}
-		protected void Stuck() {
-			if( path != null ) {
-				var stuck = path.Skip(1).FirstOrDefault();
-				var stuckPos = Position(stuck);
-				Flood(stuck, 30, 30, default, Edges)
+		protected void BlockAround(Vector3 pos) {
+			if( pos != Vector3.Zero ) {
+				var node = Handle(pos);
+				Flood(node, 30, 30, default, Edges)
 					.Without(PlayerNode)
-					.Where(n => (stuckPos - Position(n)).LengthSquared() < .75f )
+					.Where(n => (pos - Position(n)).LengthSquared() < .75f)
 					.ToArray() // read it all so the first block doesn't interrupt the Flood
 					.Each(Block);
-				path = null;
-				smoothPath = null;
 			}
-			Restart();
 		}
-		protected void Restart() {
+		protected State Stuck() {
+			BlockAround(PlayerPosition + Forward(PlayerMatrix));
+			return Restart();
+		}
+		protected State Restart() {
 			request?.Cancel();
-			request = new PathRequest(Origin, Target, Timeout, false, true, true, 1);
+			path = null;
+			smoothPath = null;
+			request = new PathRequest(PlayerNode, Target, Timeout, false, true, true, 1);
 			sw.Reset();
+			return this;
 		}
 	}
 }
