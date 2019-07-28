@@ -23,7 +23,10 @@ namespace Shiv {
 	public enum NodeHandle : ulong {
 		Invalid = 0,
 		DesertAirfield = 11147038923340768197,
-		GameStart = 15145120214786049134
+		GameStart = 15145120214786049134,
+		TrevorTrailerParking = 11437802712536523682,
+		SafehouseDriveway = 9180935273294775195,
+		SafehouseGarage = 9180935272221328283
 	};
 	public enum RegionHandle : uint { Invalid = 0 };
 
@@ -222,7 +225,7 @@ namespace Shiv {
 			} else if( GameTime - started < 100 || !CanControlCharacter() ) {
 				UI.DrawText(.45f, .65f, $"Cutscene...");
 			} else {
-				if( SaveEnabled && GameTime - saved > 60000 ) {
+				if( SaveEnabled && GameTime - saved > 33000 ) {
 					saved = GameTime;
 					Task.Run(SaveToFile);
 				}
