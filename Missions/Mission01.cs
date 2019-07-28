@@ -16,14 +16,14 @@ namespace Shiv {
 	class Mission01_Approach : State {
 		public override string Name => "Approach Hostages";
 		public override State OnTick() {
-			if( !CanControlCharacter() ) {
-				return new Mission01_Threaten();
-			}
 			PedHandle ped = NearbyHumans().Where(BlipHUDColor.Red).FirstOrDefault();
-			return new StateMachine(Self,
-				new AimAt(ped),
-				new WalkTo(Position(ped))
-			) { Next = this };
+			return ped == PedHandle.Invalid
+				? Fail
+				: Parallel(Self,
+					new AimAt(ped),
+					new WalkTo(Position(ped)),
+					new WaitForControl(false, new StateMachine.Clear(new Mission01_Threaten()))
+			);
 		}
 	}
 
@@ -34,7 +34,7 @@ namespace Shiv {
 		public override State OnTick() {
 			IEnumerable<PedHandle> targets = NearbyHumans().Where(BlipHUDColor.Red).Where(p => CanSee(Self, p, IntersectOptions.Map));
 			if( targets.Count() > 0 ) {
-				if( GameTime - LastShift > 3000 ) {
+				if( GameTime - LastShift > 2000 ) {
 					LastShift = GameTime;
 					Target = targets.ToArray().Random<PedHandle>();
 				}
@@ -52,15 +52,16 @@ namespace Shiv {
 	class Mission01_Detonate : State { // use the phone to detonate bomb
 		public override string Name => "Detonate";
 		public override State OnTick() {
-			return new PressKey(1, Control.Phone, 300,
-				new Delay(2000,
-				new PressKey(1, Control.PhoneSelect, 300,
-				new Delay(2000,
-				new PressKey(1, Control.PhoneSelect, 300,
-				new WaitForCutscene(
-				new WaitForBlip(BlipHUDColor.Yellow,
-				new Mission01_GotoVault())
-				))))));
+			return Series(
+				new PressKey(1, Control.Phone, 300),
+				new Delay(1200),
+				new PressKey(1, Control.PhoneSelect, 300),
+				new Delay(1200),
+				new PressKey(1, Control.PhoneSelect, 300),
+				new WaitForCutscene(),
+				new WaitForBlip(BlipHUDColor.Yellow),
+				new Mission01_GotoVault()
+			);
 		}
 	}
 
@@ -71,10 +72,8 @@ namespace Shiv {
 			return retryCount++ > 10
 				? new Mission01_GetMoney()
 				: vault == Vector3.Zero
-				? new Delay(500, this)
-				: (State)new WalkTo(vault, new Mission01_GetMoney()) {
-					Fail = new TaskWalk(vault, new Mission01_GetMoney())
-				};
+				? new Delay(500, this) // if we cant see the vault location yet, wait 500ms and try again
+				: (State)new WalkTo(vault, new Mission01_GetMoney());
 		}
 		private uint retryCount = 0;
 	}
@@ -101,29 +100,37 @@ namespace Shiv {
 
 	class Mission01_WalkOut : State {
 		public override string Name => "Walk Out";
+		public new State Next = new Mission01_SelectTrevor();
 		public override State OnTick() {
 			return CanControlCharacter()
-				? new WalkTo(Position(NearbyHumans().FirstOrDefault()), this)
-				: (State)new WaitForControl(true, new Mission01_SelectTrevor());
+				? new StateMachine(Self,
+						new WalkTo(Position(NearbyHumans().FirstOrDefault())),
+						new WaitForCutscene(new StateMachine.Clear(Next)))
+				: Next;
 		}
 	}
 
 	class Mission01_SelectTrevor : State {
 		public override string Name => "Select Trevor";
+		public new State Next = new Mission01_ShootGuard();
 		public override State OnTick() {
-			return GetModel(Self) != PedHash.Trevor
-				? new PressKey(1, Control.SelectCharacterTrevor, 300, new Delay(500, this))
-				: (State)new Mission01_ShootGuard();
+			if( GetModel(Self) == PedHash.Trevor ) {
+				SetState(Self, Next); // dont just return a new state because the value of "Self" just changed
+				return null;
+			} else {
+				return new PressKey(1, Control.SelectCharacterTrevor, 200, new Delay(900, this));
+			}
 		}
 	}
 
 	class Mission01_ShootGuard : State {
 		public override string Name => "Shoot Guard";
+		public new State Next = new Mission01_MoveToCover();
 		public override State OnTick() {
 			PedHandle ped = NearbyHumans().FirstOrDefault(p => GetModel(p) == PedHash.PrologueSec01Cutscene);
 			return Exists(ped) && IsAlive(ped)
-				? new ShootAt(ped, this)
-				: (State)new WaitForControl(new WaitForBlip(BlipHUDColor.Yellow, new Mission01_MoveToCover()));
+				? (State)new ShootAt(ped, this)
+				: new WaitForBlip(BlipHUDColor.Yellow) { Next = Next };
 		}
 	}
 
@@ -158,48 +165,34 @@ namespace Shiv {
 					return new WalkTo(pos, this);
 				}
 			}
-			return new WaitForControl(
-				new WaitForBlip(BlipHUDColor.Red,
+			return Series(
+				new WaitForControl(),
+				new WaitForBlip(BlipHUDColor.Red),
 				new Mission01_GetAway()
-			));
+			);
 		}
 	}
 
 	class Mission01_GetAway : State {
 		public override string Name => "Get away";
-		static readonly Blacklist blacklist = new Blacklist("Cops");
+
+		public new State Next = new Mission01_Complete();
+
 		public override State OnTick() {
 			if( CanControlCharacter() ) {
-				IEnumerable<PedHandle> hostile = NearbyHumans().Where(BlipHUDColor.Red);
-				if( hostile.Count() > 0 ) {
-					PedHandle target = hostile
-						.Without(p => IsInCover(p) && !IsAimingFromCover(p))
-						.OrderBy(DistanceToSelf)
-						.FirstOrDefault(p => CanSee(Self, p, IntersectOptions.Map | IntersectOptions.Vehicles));
-					if( target == PedHandle.Invalid ) {
-						ForcedAim(false);
-						// return this; // IsInCover(Self) ? this : (State)new FindCover(Position(hostile.FirstOrDefault()), this);
-					} else {
-						var pos = HeadPosition(target) + (Velocity(target) / CurrentFPS);
-						UI.DrawTextInWorld(pos, "X");
-						ForcedAim(IsFacing(CameraMatrix, pos));
-						LookToward(pos);
-						if( IsAimingAtEntity(target) ) {
-							SetControlValue(0, Control.Attack, 1f);
-						}
-						MoveToward(pos);
-						return this;
-						/*
-						return new MultiState(
-							new WalkToPed(target),
-							new ShootAt(target, new MultiState.Clear(null))
-						) { Next = this };
-						*/
-					}
+				if( TryGetHuman(BlipHUDColor.Red, out PedHandle enemy) ) {
+					return new Combat(this);
 				}
-				return new WalkToPed(NearbyHumans().Where(BlipHUDColor.Blue).FirstOrDefault(), this);
+				if( TryGetHuman(BlipHUDColor.Blue, out PedHandle friend) ) {
+					MoveToward(Position(friend));
+					return this;
+				}
+				if( TryGetVehicle(BlipHUDColor.Blue, out VehicleHandle car) ) {
+					MoveToward(Position(car));
+					return this;
+				}
 			}
-			return new Mission01_Complete();
+			return Next;
 		}
 	}
 
