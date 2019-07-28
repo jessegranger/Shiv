@@ -38,6 +38,10 @@ namespace Shiv {
 				.OrderBy(DistanceToSelf)
 				.ToArray()
 		);
+		public static bool TryGetHuman(BlipHUDColor color, out PedHandle ped) {
+			ped = NearbyHumans().FirstOrDefault(color);
+			return ped != default;
+		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool Exists(PedHandle ent) => Exists((EntHandle)ent);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static IntPtr Address(PedHandle p) => Address((EntHandle)p);

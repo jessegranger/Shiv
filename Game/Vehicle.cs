@@ -37,6 +37,10 @@ namespace Shiv {
 				.OrderBy(DistanceToSelf)
 				.ToArray()
 		);
+		public static bool TryGetVehicle(BlipHUDColor color, out VehicleHandle vehicle) {
+			vehicle = NearbyVehicles().FirstOrDefault(color);
+			return vehicle != default;
+		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool Exists(VehicleHandle ent) => Exists((EntHandle)ent);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static IntPtr Address(VehicleHandle v) => Address((EntHandle)v);
