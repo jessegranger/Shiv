@@ -57,17 +57,17 @@ namespace Shiv {
 
 	class ExitCover : State {
 		public uint Started = 0;
-		public Vector3 Target = Vector3.Zero;
 		public override State OnTick() {
 			if( !IsInCover(Actor) ) {
 				return Next;
 			}
 			if( Started == 0 ) {
 				Started = GameTime;
-				Call(TASK_EXIT_COVER, Actor, 200, Target);
+				Call(TASK_EXIT_COVER, Actor, 20, Position(Actor));
 			}
 			return this;
 		}
+		public override string ToString() => $"ExitCover({GetScriptTaskStatus(Self, TaskStatusHash.SCRIPT_TASK_EXIT_COVER)})";
 	}
 
 	class Combat : State {
@@ -144,8 +144,10 @@ namespace Shiv {
 		private PathRequest coverPathRequest;
 		private static Blacklist coverVehicleBlacklist = new Blacklist("CoverVehicles");
 		private SmoothPath coverPath;
+		private uint lastCoverChange = 0;
 		private void CheckCover() {
-			if( target != PedHandle.Invalid ) {
+			if( target != PedHandle.Invalid && (GameTime - lastCoverChange) > 15000 ) {
+				lastCoverChange = GameTime;
 				var danger = Position(target);
 				VehicleHandle newVehicle = CoverVehicle();
 				if( coverVehicle == VehicleHandle.Invalid || coverVehicle != newVehicle ) {
@@ -197,7 +199,7 @@ namespace Shiv {
 				var step = coverPath.NextStep(PlayerPosition);
 				if( !coverPath.IsComplete() ) {
 					if( cover ) {
-						AddStateOnce(Self, new ExitCover() { Target = step });
+						return new ExitCover() { Next = this };
 					} else if( aiming && !running ) {
 						ToggleSprint();
 					}
@@ -214,8 +216,12 @@ namespace Shiv {
 			}
 
 			if( target == PedHandle.Invalid || (GameTime - lastSwitch) > 3000 ) {
-				NearbyHumans().Where(IsShooting).Each(blacklist.Remove);
-				target = GetHostiles()
+				var hostiles = GetHostiles();
+				if( hostiles.Count() == 0 ) {
+					return Next;
+				}
+				hostiles.Where(IsShooting).Each(blacklist.Remove);
+				target = hostiles
 					.Without(blacklist.Contains)
 					.Where(ped => (!blacklist.Contains(ped)) && ped != Self && ped != target && Exists(ped) && IsAlive(ped))
 					.OrderBy(DistanceToSelf)
