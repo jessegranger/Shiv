@@ -5,10 +5,6 @@
       <Configuration>Release</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
-    <ProjectConfiguration Include="NativeGen|x64">
-      <Configuration>NativeGen</Configuration>
-      <Platform>x64</Platform>
-    </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{B2933D8F-F922-40BD-BB70-18622A81AB8F}</ProjectGuid>
@@ -33,9 +29,6 @@
   <PropertyGroup Label="Configuration" Condition="'$(Configuration)' == 'Release'">
     <UseDebugLibraries>false</UseDebugLibraries>
     <LinkIncremental>false</LinkIncremental>
-  </PropertyGroup>
-  <PropertyGroup Label="Configuration" Condition="'$(Configuration)' == 'NativeGen'">
-    <ConfigurationType>Utility</ConfigurationType>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <!-- Global compilation settings -->
@@ -62,11 +55,6 @@
     <PostBuildEvent>
       <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">copy $(OutputPath)$(TargetFileName) "C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V\"</Command>
     </PostBuildEvent>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)' == 'NativeGen'">
-    <PreBuildEvent>
-      <Command>tools\NativeGen.exe NativeHashes.cs</Command>
-    </PreBuildEvent>
   </ItemDefinitionGroup>
   <!-- Assembly references and source files -->
   <ItemGroup>
