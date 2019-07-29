@@ -3,12 +3,51 @@ using System;
 
 namespace Shiv {
 
+	public readonly struct EntHandle {
+		readonly int Value;
+		public static readonly EntHandle Invalid = default;
+		public static readonly EntHandle ModelInvalid = -1;
+		public static readonly EntHandle ModelLoading = -2;
+		public EntHandle(int h) => Value = h;
+		public static implicit operator int(EntHandle ent) => ent.Value;
+		public static implicit operator ulong(EntHandle ent) => (ulong)ent.Value;
+		public static implicit operator EntHandle(int i) => new EntHandle(i);
+		public static implicit operator PedHandle(EntHandle h) => h;
+		public static implicit operator VehicleHandle(EntHandle h) => h;
+	}
+
+	public readonly struct PedHandle {
+		readonly int Value;
+		public static readonly PedHandle Invalid = default;
+		public static readonly PedHandle ModelInvalid = -1;
+		public static readonly PedHandle ModelLoading = -2;
+		public PedHandle(int h) => Value = h;
+		public static implicit operator int(PedHandle ent) => ent.Value;
+		public static implicit operator ulong(PedHandle ent) => (ulong)ent.Value;
+		public static implicit operator PedHandle(int i) => new PedHandle(i);
+		public static implicit operator EntHandle(PedHandle h) => h;
+		public static implicit operator VehicleHandle(PedHandle h) => h;
+	}
+
+	public readonly struct VehicleHandle {
+		readonly int Value;
+		public static readonly VehicleHandle Invalid = default;
+		public static readonly VehicleHandle ModelInvalid = -1;
+		public static readonly VehicleHandle ModelLoading = -2;
+		public VehicleHandle(int h) => Value = h;
+		public static implicit operator int(VehicleHandle ent) => ent.Value;
+		public static implicit operator ulong(VehicleHandle ent) => (ulong)ent.Value;
+		public static implicit operator VehicleHandle(int i) => new VehicleHandle(i);
+		public static implicit operator PedHandle(VehicleHandle h) => h;
+		public static implicit operator EntHandle(VehicleHandle h) => h;
+	}
+
 	public static partial class Global {
 
-		public enum EntHandle : int { Invalid = 0, ModelInvalid = -1, ModelLoading = -2  }
-		public enum PedHandle : int { Invalid = 0, ModelInvalid = -1, ModelLoading = -2  }
-		public enum VehicleHandle : int { Invalid = 0, ModelInvalid = -1, ModelLoading = -2 }
-		public enum PlayerHandle : int { Invalid = -1 }
+		// public enum EntHandle : int { Invalid = 0, ModelInvalid = -1, ModelLoading = -2  }
+
+		public enum PlayerHandle : int { Invalid = 0 };
+
 		public enum ModelHash : uint {
 			Invalid = 0,
 			Planter = 0xF415B43E,
@@ -29,8 +68,6 @@ namespace Shiv {
 		public enum CheckpointHandle : int { Invalid = -1 }
 
 		public static bool IsValid(EntHandle ent) => ent != EntHandle.Invalid;
-		public static bool IsValid(PedHandle ent) => ent != PedHandle.Invalid;
-		public static bool IsValid(VehicleHandle ent) => ent != VehicleHandle.Invalid;
 		public static bool IsValid(PlayerHandle ent) => ent != PlayerHandle.Invalid;
 		// see Entities.cs: public static bool IsValid(ModelHash ent) => ent != ModelHash.Invalid;
 		public static bool IsValid(AssetStatus ent) => ent != AssetStatus.Invalid;
