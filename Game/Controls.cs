@@ -84,7 +84,6 @@ namespace Shiv {
 		public static MoveResult FollowPath(IEnumerable<NodeHandle> path, float steppingRange=0.2f) => FollowPath(path.Take(3).Select(NavMesh.Position));
 		public static MoveResult FollowPath(IEnumerable<Vector3> path, float steppingRange=0.2f) => path == null || path.Count() < 2 ? MoveResult.Complete : MoveToward(FirstStep(path), steppingRange);
 
-		public static float InstantFPS => (float)(1000f / Math.Max(1, GameTime - LastGameTime));
 		private static float LookActivation(float x, float deadZone=.01f) => (Sigmoid(x * InstantFPS / (1f + deadZone)) * 2f) - 1f;
 		public static bool LookToward(PedHandle ped, float deadZone=.01f, bool debug=false) {
 			double dist = Sqrt(DistanceToSelf(ped));
@@ -149,9 +148,9 @@ namespace Shiv {
 		}
 
 		public static MoveResult FlyToward(Vector3 pos, float maxSpeed, float minHeight=20f) {
-			var heli = PlayerVehicle;
+			VehicleHandle heli = PlayerVehicle;
 			if( heli != VehicleHandle.Invalid ) {
-				var model = GetModel(heli);
+				VehicleHash model = GetModel(heli);
 				if( IsHeli(model) ) {
 					var ground = GetGroundZ(PlayerPosition);
 					var elevation = PlayerPosition.Z - ground;
@@ -160,15 +159,15 @@ namespace Shiv {
 						return MoveResult.Continue;
 					}
 					// TODO: check a capsule ray around our velocity
-					var Vh = Velocity(heli);
-					var Mh = Matrix(heli);
-					var Ph = Position(Mh);
-					var Fh = Forward(Mh);
+					Vector3 Vh = Velocity(heli);
+					Matrix4x4 Mh = Matrix(heli);
+					Vector3 Ph = Position(Mh);
+					Vector3 Fh = Forward(Mh);
 					// the heli's current movement heading
-					var Hh = Heading(Vh); // Rad2Deg(Atan2(Vh.Y, Vh.X));
-					var Dv = pos - Ph;
+					float Hh = Heading(Vh); // Rad2Deg(Atan2(Vh.Y, Vh.X));
+					Vector3 Dv = pos - Ph;
 					// the heading to the target
-					var Hv = Heading(Dv); // Rad2Deg(Atan2(Dv.Y, Dv.X));
+					float Hv = Heading(Dv); // Rad2Deg(Atan2(Dv.Y, Dv.X));
 					YawToward(Mh, Hv);
 
 					float pitch = ((Speed(Self) / (maxSpeed * 3f)) - 1f) / 2f;
@@ -210,9 +209,9 @@ namespace Shiv {
 			float capsuleSize = .12f;
 			float stepSize = .25f;
 			heading = Vector3.Normalize(heading) * .5f;
-			var head = HeadPosition(Self) + (Up * 5 * stepSize);
+			Vector3 head = HeadPosition(Self) + (Up * 5 * stepSize);
 			for(int i = 1; i <= (int)ObstructionFlags.Knee; i*=2 ) { // do probes from top to bottom
-				var headRay = Raycast(head, head + heading, capsuleSize, opts, Self);
+				RaycastResult headRay = Raycast(head, head + heading, capsuleSize, opts, Self);
 				if( headRay.DidHit ) {
 					if( debug ) {
 						DrawSphere(headRay.HitPosition, .01f, Color.Red);
@@ -275,7 +274,7 @@ namespace Shiv {
 		public static void OnTick() {
 			// Process all the keys that we are artificially pressing
 			active.RemoveAll(e => e.expires < GameTime);
-			foreach( var e in active ) {
+			foreach( ControlCommand e in active ) {
 				SetControlValue(e.group, e.control, 1.0f);
 			}
 

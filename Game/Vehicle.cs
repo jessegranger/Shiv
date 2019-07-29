@@ -8,7 +8,7 @@ using static GTA.Native.Function;
 using static GTA.Native.Hash;
 using System.Collections;
 using static Shiv.Global;
-using static Shiv.Imports;
+using static Shiv.NativeMethods;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
@@ -38,17 +38,17 @@ namespace Shiv {
 				.ToArray()
 		);
 		public static bool TryGetVehicle(BlipHUDColor color, out VehicleHandle vehicle) {
-			vehicle = NearbyVehicles().FirstOrDefault(color);
-			return vehicle != default;
+			foreach(var p in NearbyVehicles() ) {
+				if( GetBlipHUDColor(GetBlip(p)) == color ) {
+					vehicle = p;
+					return true;
+				}
+			}
+			vehicle = default;
+			return false;
 		}
 
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool Exists(VehicleHandle ent) => Exists((EntHandle)ent);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static IntPtr Address(VehicleHandle v) => Address((EntHandle)v);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 Position(VehicleHandle ent) => Position(Matrix((EntHandle)ent));
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Matrix4x4 Matrix(VehicleHandle ent) => Matrix((EntHandle)ent);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static float DistanceToSelf(VehicleHandle ent) => DistanceToSelf(Position(ent));
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static float Heading(VehicleHandle ent) => Heading((EntHandle)ent);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static void Heading(VehicleHandle ent, float value) => Heading((EntHandle)ent, value);
+		public static float DistanceToSelf(VehicleHandle v) => DistanceToSelf(Position(Matrix(v)));
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static VehicleHash GetModel(VehicleHandle ent) => (VehicleHash)GetModel((EntHandle)ent);
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static void GetModelDimensions(VehicleHash model, out Vector3 backLeft, out Vector3 frontRight) => GetModelDimensions((ModelHash)model, out backLeft, out frontRight);
 
@@ -147,10 +147,6 @@ namespace Shiv {
 
 		public static VehicleHandle CurrentVehicle(PedHandle ped) => ped == PedHandle.Invalid ? VehicleHandle.Invalid :
 			Call<VehicleHandle>(GET_VEHICLE_PED_IS_IN, ped, false);
-
-		public static Vector3 Velocity(VehicleHandle ent) => Velocity((EntHandle)ent);
-		public static void Velocity(VehicleHandle ent, Vector3 value) => Velocity((EntHandle)ent, value);
-		public static float Speed(VehicleHandle ent) => ent == 0 ? 0f : Call<float>(GET_ENTITY_SPEED, ent);
 
 		public static bool IsBigVehicle(VehicleHandle v) => v == 0 ? false : Call<bool>(IS_BIG_VEHICLE, v);
 		public static void SetEngineRunning(VehicleHandle v, bool value) {

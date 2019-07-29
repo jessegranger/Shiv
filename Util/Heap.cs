@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using static Shiv.Global;
 
 namespace Shiv {
-	internal class Heap<T> {
+	internal class Heap<T> : IDisposable {
 
 		public uint Count { get; private set; } = 0;
 		public uint Capacity { get; private set; }
@@ -275,6 +275,42 @@ namespace Shiv {
 			sw.Stop();
 			Debug.Print($"{total} linear searches in {sw.ElapsedTicks} ticks {total * 1000 / sw.ElapsedMilliseconds} scan/s");
 		}
+
+		#region IDisposable Support
+		private bool disposed = false; // To detect redundant calls
+
+		protected virtual void Dispose(bool disposing) {
+			if( !disposed ) {
+				if( disposing ) {
+					// TODO: dispose managed state (managed objects).
+					mainLock.Dispose();
+				}
+
+				// TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
+				// TODO: set large fields to null.
+				heap = null;
+				scoreOf = null;
+				index.Clear();
+				index = null;
+
+				disposed = true;
+			}
+		}
+
+		// TODO: override a finalizer only if Dispose(bool disposing) above has code to free unmanaged resources.
+		// ~Heap() {
+		//   // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+		//   Dispose(false);
+		// }
+
+		// This code added to correctly implement the disposable pattern.
+		public void Dispose() {
+			// Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+			Dispose(true);
+			// TODO: uncomment the following line if the finalizer is overridden above.
+			// GC.SuppressFinalize(this);
+		}
+		#endregion
 
 	}
 }

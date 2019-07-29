@@ -29,7 +29,7 @@ namespace Shiv {
 			&& (from == PedHandle.Invalid || m.From == PedHandle.Invalid || from == m.From)
 			&& (to == PedHandle.Invalid || m.To == PedHandle.Invalid || to == m.To);
 
-		public static void SendMessage(string kind, PedHandle from, PedHandle to=PedHandle.Invalid, object data=null) {
+		public static void SendMessage(string kind, PedHandle from, PedHandle to=default, object data=null) {
 			var m = new Message() { Kind = kind, From = from, To = to, Data = data };
 			foreach( var wait in waiting.Keys.ToArray() ) {
 				if( Match(m, wait.Kind, wait.From, wait.To) ) {
@@ -50,7 +50,7 @@ namespace Shiv {
 		private readonly PedHandle From;
 		private uint Started = 0;
 		public uint Timeout = uint.MaxValue;
-		public WaitForMessage(string kind, PedHandle to=PedHandle.Invalid, PedHandle from=PedHandle.Invalid, State next=null):base(next) {
+		public WaitForMessage(string kind, PedHandle to=default, PedHandle from=default, State next=null):base(next) {
 			Kind = kind;
 			From = from;
 			To = to;

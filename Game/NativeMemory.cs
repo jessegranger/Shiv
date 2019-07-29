@@ -8,7 +8,7 @@ using System.Threading;
 using Shiv;
 using static System.Runtime.InteropServices.Marshal;
 using static System.Text.Encoding;
-using static Shiv.Imports;
+using static Shiv.NativeMethods;
 using System.Numerics;
 using static Shiv.Shiv;
 
@@ -30,12 +30,6 @@ namespace GTA {
 					}
 				}
 			}
-			public void Dispose() {
-				if( Value != IntPtr.Zero ) {
-					FreeCoTaskMem(Value);
-				}
-				Value = IntPtr.Zero;
-			}
 			public static implicit operator IntPtr(PinnedString s) => s.Value;
 			public static implicit operator ulong(PinnedString s) => (ulong)s.Value.ToInt64();
 			public static implicit operator long(PinnedString s) => s.Value.ToInt64();
@@ -43,6 +37,41 @@ namespace GTA {
 			public static readonly PinnedString STRING = new PinnedString("STRING");
 			public static readonly PinnedString CELL_EMAIL_BCON = new PinnedString("CELL_EMAIL_BCON");
 			public static readonly PinnedString EMPTY = new PinnedString("");
+
+			#region IDisposable Support
+			private bool disposed = false; // To detect redundant calls
+
+			protected virtual void Dispose(bool disposing) {
+				if( !disposed ) {
+					if( disposing ) {
+						// TODO: dispose managed state (managed objects).
+					}
+					if( Value != IntPtr.Zero ) {
+						FreeCoTaskMem(Value);
+					}
+					Value = IntPtr.Zero;
+
+					// TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
+					// TODO: set large fields to null.
+
+					disposed = true;
+				}
+			}
+
+			// TODO: override a finalizer only if Dispose(bool disposing) above has code to free unmanaged resources.
+			 ~PinnedString() {
+				// Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+				Dispose(false);
+			}
+
+			// This code added to correctly implement the disposable pattern.
+			public void Dispose() {
+				// Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+				Dispose(true);
+				// TODO: uncomment the following line if the finalizer is overridden above.
+				GC.SuppressFinalize(this);
+			}
+			#endregion
 		}
 
 		public static class Function {
@@ -199,7 +228,7 @@ namespace GTA {
 			internal delegate ulong GetLabelTextByHashFuncDelegate(ulong addr, int labelHash);
 			internal delegate ulong FuncUlongUlongDelegate(ulong T);
 
-			internal static GetHashKeyDelegate GetHashKeyFunc;
+			// internal static GetHashKeyDelegate GetHashKeyFunc;
 			internal static EntityAddressFuncDelegate EntityAddressFunc;
 			internal static PlayerAddressFuncDelegate PlayerAddressFunc;
 			internal static ParticleFxAddressFuncDelegate ParticleFxAddressFunc;
@@ -288,8 +317,8 @@ namespace GTA {
 				CheckpointHandleAddr = GetDelegateForFunctionPointer<CheckpointHandleAddrDelegate>(new IntPtr(*(int*)(addr - 9) + addr - 5));
 				addrCheckpointPool = (ulong*)(*(int*)(addr + 17) + addr + 21);
 
-				addr = FindPattern("\x48\x8B\x0B\x33\xD2\xE8\x00\x00\x00\x00\x89\x03", "xxxxxx????xx");
-				GetHashKeyFunc = GetDelegateForFunctionPointer<GetHashKeyDelegate>(new IntPtr(*(int*)(addr + 6) + addr + 10));
+				// addr = FindPattern("\x48\x8B\x0B\x33\xD2\xE8\x00\x00\x00\x00\x89\x03", "xxxxxx????xx");
+				// GetHashKeyFunc = GetDelegateForFunctionPointer<GetHashKeyDelegate>(new IntPtr(*(int*)(addr + 6) + addr + 10));
 
 				addr = FindPattern("\x48\x63\xC1\x48\x8D\x0D\x00\x00\x00\x00\xF3\x0F\x10\x04\x81\xF3\x0F\x11\x05\x00\x00\x00\x00", "xxxxxx????xxxxxxxxx????");
 				addrWriteWorldGravity = (float*)(*(int*)(addr + 6) + addr + 10);
@@ -384,7 +413,7 @@ namespace GTA {
 
 			public static uint GetHashKey(string toHash) {
 				using( var handle = new PinnedString(toHash) ) {
-					return handle == 0 ? 0 : GetHashKeyFunc(handle, 0);
+					return handle == 0 ? 0 : Function.Call<uint>(Hash.GET_HASH_KEY, handle);
 				}
 			}
 

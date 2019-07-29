@@ -34,7 +34,7 @@ namespace Shiv {
 			if( IsGrown(node) ) {
 				yield break;
 			}
-			var nodePos = Position(node);
+			Vector3 nodePos = Position(node);
 			if( DistanceToSelf(nodePos) > maxGrowRange * maxGrowRange) {
 				yield break;
 			}

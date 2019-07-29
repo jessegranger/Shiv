@@ -69,14 +69,13 @@ namespace Shiv {
 			}
 			if( TryCreatePed(Type, Model, Location, Heading, out PedHandle veh) ) {
 				UI.DrawHeadline($"TryCreatePed: {veh}");
-				switch( veh ) {
-					case PedHandle.Invalid: return Fail;
-					case PedHandle.ModelInvalid: return Fail;
-					case PedHandle.ModelLoading: return this;
-					default:
-						Created = veh;
-						return this;
+				if( veh == PedHandle.Invalid || veh == PedHandle.ModelInvalid ) {
+					return Fail;
 				}
+				if( veh != PedHandle.ModelLoading ) {
+					Created = veh;
+				}
+				return this;
 			}
 			UI.DrawHeadline("TryCreatePed: false");
 			return this;
@@ -107,14 +106,13 @@ namespace Shiv {
 			}
 			if( TryCreateVehicle(Model, Location, Heading, out VehicleHandle veh) ) {
 				UI.DrawHeadline($"TryCreateVehicle: {veh}");
-				switch( veh ) {
-					case VehicleHandle.Invalid: return Fail;
-					case VehicleHandle.ModelInvalid: return Fail;
-					case VehicleHandle.ModelLoading: return this;
-					default:
-						Created = veh;
-						return this;
+				if( veh == VehicleHandle.Invalid || veh == VehicleHandle.ModelInvalid ) {
+					return Fail;
 				}
+				if( veh != VehicleHandle.ModelLoading ) {
+					Created = veh;
+				}
+				return this;
 			}
 			UI.DrawHeadline("TryCreateVehicle: false");
 			return this;
@@ -250,7 +248,7 @@ namespace Shiv {
 				y += BorderWidth;
 				float itemWidth = MenuWidth - (2 * BorderWidth);
 				for( var i = ScrollOffset; i < ScrollOffset + itemCount; i++ ) {
-					var item = Items[i];
+					MenuItem item = Items[i];
 					Color c = i == HighlightIndex ?
 						item.IsActivating.IsRunning ?
 						ActivateColor : HighlightColor : ItemColor;
@@ -457,15 +455,15 @@ namespace Shiv {
 					queue.Enqueue(PlayerNode);
 					seen.Clear();
 					while( queue.Count > 0 ) {
-						var n = queue.Dequeue();
-						var pos = Position(n);
-						var end = pos - (Up * 2f);
+						NodeHandle n = queue.Dequeue();
+						Vector3 pos = Position(n);
+						Vector3 end = pos - (Up * 2f);
 						DrawLine(pos, end, Color.Orange);
-						var result = Raycast(pos, pos - (Up * 2f), IntersectOptions.Map, Self);
+						RaycastResult result = Raycast(pos, pos - (Up * 2f), IntersectOptions.Map, Self);
 						if( result.DidHit ) {
 							UI.DrawTextInWorld(result.HitPosition + (Up * .2f), $"Material: {result.Material}");
 						}
-						foreach( var e in Edges(n) ) {
+						foreach( NodeHandle e in Edges(n) ) {
 							if( seen.Count < limit && !seen.Contains(e) ) {
 								seen.Add(e);
 								queue.Enqueue(e);
@@ -477,9 +475,9 @@ namespace Shiv {
 			});
 			Controls.Bind(Keys.G, () => {
 				SetState(Self, State.Runner("Check Obstruction", (state) => {
-					var p = Position(PlayerNode);
+					Vector3 p = Position(PlayerNode);
 					foreach( NodeHandle e in Edges(PlayerNode) ) {
-						var pos = Position(e);
+						Vector3 pos = Position(e);
 						CheckObstruction(p, (pos - p), true);
 					}
 					return state;
@@ -492,7 +490,7 @@ namespace Shiv {
 				PathStatus.CancelAll();
 			});
 			Controls.Bind(Keys.X, () => {
-				var aim = AimNode();
+				NodeHandle aim = AimNode();
 				Sphere.Add(Position(aim), .06f, Color.Green, 1000);
 				Flood(aim, 200, 10, default, PossibleEdges)
 					.ToArray()
@@ -523,7 +521,7 @@ namespace Shiv {
 										foreach( FinitePlane plane in GetModelPlanes(m, backLeft, frontRight) ) {
 											DrawLine(plane.Center, plane.Center + plane.Normal, Color.Green);
 										}
-										var center = GetCenter(m, backLeft, frontRight);
+										Vector3 center = GetCenter(m, backLeft, frontRight);
 										int line = 0;
 										UI.DrawTextInWorldWithOffset(center, 0f, (line++ * .02f), $"ent:{ent} {GetEntityType(ent)} {model}");
 										UI.DrawTextInWorldWithOffset(center, 0f, (line++ * .02f), $"volume:{GetVolume(frontRight, backLeft)}");
@@ -539,8 +537,8 @@ namespace Shiv {
 			});
 
 			Controls.Bind(Keys.Z, () => {
-				var aim = AimNode();
-				var pos = Position(AimNode());
+				NodeHandle aim = AimNode();
+				Vector3 pos = Position(AimNode());
 				Flood(aim, 30, 30, default, Edges)
 					.Without(PlayerNode)
 					.Where(n => (pos - Position(n)).LengthSquared() < .75f)
@@ -549,19 +547,17 @@ namespace Shiv {
 			});
 
 			Controls.Bind(Keys.J, () => {
-				var n = AimNode();
-				var p = Position(AimNode());
+				NodeHandle n = AimNode();
+				Vector3 p = Position(AimNode());
 				SetState(Self, (State)((state) => {
 					if( p != Vector3.Zero ) {
 						DrawSphere(p, .1f, Color.Yellow);
 						MoveResult result;
 						if( PlayerVehicle != VehicleHandle.Invalid ) {
-							var model = GetModel(PlayerVehicle);
-							if( IsHeli(model) ) {
-								result = FlyToward(p, 10f, 20f);
-							} else {
-								result = SteerToward(p, 100f, 1f, false, debug: true);
-							}
+							VehicleHash model = GetModel(PlayerVehicle);
+							result = IsHeli(model) 
+								? FlyToward(p, 10f, 20f)
+								: SteerToward(p, 100f, 1f, false, debug: true);
 						} else {
 							result = MoveToward(p, debug: true);
 						}
@@ -590,9 +586,9 @@ namespace Shiv {
 			Controls.Bind(Keys.L, () => {
 				uint startPathAfter = GameTime + 20000;
 				pathTarget = AimNode();
-				var pos = Position(pathTarget);
+				Vector3 pos = Position(pathTarget);
 				var req = new PathRequest(PlayerNode, pathTarget, 2000, false, true, true, 1, false);
-				var started = GameTime;
+				uint started = GameTime;
 				NodeHandle[] nodePath = null;
 				SmoothPath path = null;
 				SetState(Self, State.Runner("Follow Path", (state) => {
@@ -617,11 +613,11 @@ namespace Shiv {
 							started = GameTime;
 						}
 						// foreach(var n in nodePath.Take(30) ) { DrawSphere(Position(n), .04f, Color.Yellow); }
-						var head = HeadPosition(Self);
+						Vector3 head = HeadPosition(Self);
 						DrawLine(head, path.NextStep(PlayerPosition), Color.Orange);
 						path.Draw();
 
-						var step = path.NextStep(PlayerPosition);
+						Vector3 step = path.NextStep(PlayerPosition);
 						MoveToward(step);
 						// if( !IsRunning(Self) ) { ToggleSprint(); }
 
@@ -664,13 +660,13 @@ namespace Shiv {
 					Vector3 rayStart = HeadPosition(Self);
 					Vector3 rayEnd = Position(CameraMatrix) + (Forward(CameraMatrix) * 10f);
 					DrawLine(rayStart, rayEnd, Color.Red);
-					foreach( var veh in NearbyVehicles().Take(1) ) {
-						var model = GetModel(veh);
-						var m = Matrix(veh);
-						GetModelDimensions(model, out var backLeft, out var frontRight);
+					foreach( VehicleHandle veh in NearbyVehicles().Take(1) ) {
+						VehicleHash model = GetModel(veh);
+						Matrix4x4 m = Matrix(veh);
+						GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
 						int count = 0;
 						Vector3 rayDir = rayStart - rayEnd;
-						foreach( var plane in GetModelPlanes(m, backLeft, frontRight) ) {
+						foreach( FinitePlane plane in GetModelPlanes(m, backLeft, frontRight) ) {
 							if( TryIntersectPlane(rayStart, rayDir, plane, out Vector3 point) ) {
 								DrawLine(plane.Center, plane.Center + plane.Normal, Color.Yellow);
 								DrawSphere(point, .1f, Color.Blue);

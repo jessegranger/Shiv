@@ -125,17 +125,11 @@ namespace Shiv {
 		}
 		public static bool HasEdge(NodeEdges e, NodeHandle a, NodeHandle b) {
 			long d = (long)((ulong)b & handleMask) - (long)((ulong)a & handleMask);
-			if( !whichEdgeBit.ContainsKey(d) ) {
-				return false;
-			}
-			return e.HasFlag((NodeEdges)(1ul << whichEdgeBit[d]));
+			return whichEdgeBit.ContainsKey(d) ? e.HasFlag((NodeEdges)(1ul << whichEdgeBit[d])) : false;
 		}
 		public static bool HasEdge(NodeHandle a, NodeHandle b) {
 			long d = (long)((ulong)b & handleMask) - (long)((ulong)a & handleMask);
-			if( !whichEdgeBit.ContainsKey(d) ) {
-				return false;
-			}
-			return HasFlag(a, (NodeEdges)(1ul << whichEdgeBit[d]));
+			return whichEdgeBit.ContainsKey(d) ? HasFlag(a, (NodeEdges)(1ul << whichEdgeBit[d])) : false;
 		}
 		public static bool SetEdge(NodeHandle a, NodeHandle b, bool value) {
 			long d = (long)((ulong)b & handleMask) - (long)((ulong)a & handleMask);
@@ -163,15 +157,11 @@ namespace Shiv {
 		public static bool IsGrown(NodeEdges e) => e.HasFlag(NodeEdges.IsGrown);
 		public static bool IsGrown(NodeHandle a) => HasFlag(a, NodeEdges.IsGrown);
 		public static NodeEdges IsGrown(NodeEdges e, bool value) => value ? e | NodeEdges.IsGrown : e & ~NodeEdges.IsGrown;
-		public static void IsGrown(NodeHandle a, bool value) {
-			AllNodes.AddOrUpdate(a, value ? NodeEdges.IsGrown : 0, (key, e) => IsGrown(e, value));
-		}
+		public static void IsGrown(NodeHandle a, bool value) => AllNodes.AddOrUpdate(a, value ? NodeEdges.IsGrown : 0, (key, e) => IsGrown(e, value));
 
 		public static bool IsCover(NodeHandle a) => HasFlag(a, NodeEdges.IsCover); // AllEdges.TryGetValue(a, out var flags) && (flags & NodeEdges.IsCover) > 0;
 		public static NodeEdges IsCover(NodeEdges e, bool value) => value ? e | NodeEdges.IsCover : e & ~NodeEdges.IsCover;
-		public static void IsCover(NodeHandle a, bool value) {
-			AllNodes.AddOrUpdate(a, value ? NodeEdges.IsCover : 0, (key, e) => IsCover(e, value));
-		}
+		public static void IsCover(NodeHandle a, bool value) => AllNodes.AddOrUpdate(a, value ? NodeEdges.IsCover : 0, (key, e) => IsCover(e, value));
 
 		public static uint Clearance(NodeEdges e) => (uint)((ulong)(e & NodeEdges.ClearanceMask) >> 32);
 		public static uint Clearance(NodeHandle a) => Clearance(AllNodes.Get(a));
@@ -198,10 +188,10 @@ namespace Shiv {
 
 		public static void PropagateClearance(Queue<NodeHandle> queue) {
 			while( queue.TryDequeue(out NodeHandle n) ) {
-				var nEdges = GetEdges(n);
-				var c = Clearance(nEdges);
-				foreach( var e in Edges(n, nEdges) ) {
-					var d = Clearance(e);
+				NodeEdges nEdges = GetEdges(n);
+				uint c = Clearance(nEdges);
+				foreach( NodeHandle e in Edges(n, nEdges) ) {
+					uint d = Clearance(e);
 					if( d == 0 || d > c + 1 ) {
 						Clearance(e, c + 1);
 						queue.Enqueue(e);

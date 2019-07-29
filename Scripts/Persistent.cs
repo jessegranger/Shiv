@@ -22,8 +22,23 @@ namespace Shiv {
 			Remaining = dur;
 			instances.TryAdd(this, this);
 		}
-		~Persistent() { Dispose(); }
-		public void Dispose() => instances.TryRemove(this, out Persistent ignore);
+
+		#region IDisposable Support
+		private bool disposed = false; // To detect redundant calls
+
+		protected virtual void Dispose(bool disposing) {
+			if( !disposed ) {
+				if( disposing ) {
+					if( instances != null ) {
+						instances.TryRemove(this, out Persistent _);
+					}
+				}
+				disposed = true;
+			}
+		}
+
+		public void Dispose() => Dispose(true);
+		#endregion
 	}
 	public class Sphere : Persistent {
 		public Vector3 Position;

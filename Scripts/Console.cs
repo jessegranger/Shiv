@@ -5,9 +5,8 @@ using static Shiv.Global;
 using System.Drawing;
 using Keys = System.Windows.Forms.Keys;
 using System.Collections.Concurrent;
-using System.Windows.Forms;
-using System.Runtime.InteropServices;
 using System.Text;
+using static Shiv.NativeMethods;
 
 namespace Shiv {
 	public class Console : Script {
@@ -75,12 +74,6 @@ namespace Shiv {
 
 		private bool shiftDown = false;
 		private bool ctrlDown = false;
-
-		[DllImport("user32.dll")]
-		private static extern int ToUnicode(uint virtualKeyCode, uint scanCode, byte[] keyboardState,
-		[Out, MarshalAs(UnmanagedType.LPWStr, SizeConst = 64)]
-		StringBuilder receivingBuffer,
-		int bufferSize, uint flags);
 
 		private string GetChar(Keys keys) {
 			var buf = new StringBuilder(256);

@@ -13,6 +13,7 @@ using static Shiv.Global;
 using static Shiv.NavMesh;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
+using System.Runtime.InteropServices;
 
 namespace Shiv {
 
@@ -23,6 +24,7 @@ namespace Shiv {
 		public Vector3 Front;
 		public Vector3 Back;
 	}
+	[ComVisible(false)]
 	public class PathRequest : Future<Path> {
 		public NodeHandle Start;
 		public NodeHandle Target;
@@ -55,14 +57,14 @@ namespace Shiv {
 			ThreadPool.QueueUserWorkItem((object arg) => {
 				if( Blocked.Contains(Target) ) {
 					Log($"[{Target}] target node is blocked, groping for nearest unblocked...");
-					var originalPosition = Position(Target);
+					Vector3 originalPosition = Position(Target);
 					Target = Flood(Target, 10000, 100, cancel.Token, PossibleEdges)
 						.Where(HasEdges)
 						.Without(Blocked.Contains)
 						.Min(n => (originalPosition - Position(n)).LengthSquared());
 				} else if( !HasEdges(Target) ) {
 					Log($"[{Target}] target node has no edges, groping for nearest graph...");
-					var originalPosition = Position(Target);
+					Vector3 originalPosition = Position(Target);
 					Target = Flood(Target, 10000, 100, cancel.Token, PossibleEdges)
 						.Where(HasEdges)
 						.Without(Blocked.Contains)
@@ -187,7 +189,7 @@ namespace Shiv {
 		private IEnumerable<Vector3> Culled(IEnumerable<Vector3> path) {
 			Vector3[] orig = path.ToArray();
 			if( orig.Length < 2 ) {
-				foreach( var step in orig ) {
+				foreach( Vector3 step in orig ) {
 					yield return step;
 				}
 			} else {
@@ -202,14 +204,14 @@ namespace Shiv {
 						// as we move j forward, "light up" the closest ents it passes
 						// once that ent has been activated (added to the seenEnts set),
 						// we will keep checking it for collision as j advances
-						foreach(var ent in NearbyObjects().OrderBy(DistanceTo(orig[j])).Take(4).Concat(seenEnts) ) {
+						foreach( EntHandle ent in NearbyObjects().OrderBy(DistanceTo(orig[j])).Take(4).Concat(seenEnts) ) {
 							if( GetEntityType(ent) != EntityType.Invalid ) {
 								if( ! seenEnts.Contains(ent) ) {
 									seenEnts.Add(ent);
 								}
-								var model = GetModel(ent);
-								var m = Matrix(ent);
-								GetModelDimensions(model, out var backLeft, out var frontRight);
+								ModelHash model = GetModel(ent);
+								Matrix4x4 m = Matrix(ent);
+								GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
 								if( IntersectModel(orig[i], orig[j], m, backLeft, frontRight) ) {
 									Log($"Culled() up to {j} (using IntersectModel)");
 									yield return orig[j - 1];
@@ -479,9 +481,9 @@ namespace Shiv {
 		public static IEnumerable<ModelBox> GetBlockingVehicles(int limit=20, bool debug=false) {
 			VehicleHandle ignore = VehicleHandle.Invalid;
 			if( IsOnVehicle(Self) ) {
-				var result = Raycast(PlayerPosition, PlayerPosition - (2 * Up), .3f, IntersectOptions.Vehicles, Self);
+				RaycastResult result = Raycast(PlayerPosition, PlayerPosition - (2 * Up), .3f, IntersectOptions.Vehicles, Self);
 				if( result.DidHit ) {
-					ignore = (VehicleHandle)result.Entity;
+					ignore = result.Entity;
 				}
 			}
 			foreach( VehicleHandle v in NearbyVehicles().Take(limit) ) {
@@ -496,7 +498,7 @@ namespace Shiv {
 				GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
 				Matrix4x4 m = Matrix(v);
 				if( debug ) { DrawBox(m, backLeft, frontRight); }
-				yield return new ModelBox() { Model = (ModelHash)model, Entity = (EntHandle)v, M = m, Front = frontRight, Back = backLeft };
+				yield return new ModelBox() { Model = (ModelHash)model, Entity = v, M = m, Front = frontRight, Back = backLeft };
 			}
 
 		}
@@ -507,7 +509,7 @@ namespace Shiv {
 				}
 				PedHash model = GetModel(p);
 				GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
-				yield return new ModelBox() { Model = (ModelHash)model, Entity = (EntHandle)p, M = Matrix(p), Front = frontRight, Back = backLeft };
+				yield return new ModelBox() { Model = (ModelHash)model, Entity = p, M = Matrix(p), Front = frontRight, Back = backLeft };
 			}
 		}
 		public static ConcurrentSet<NodeHandle> GetBlockedNodes(bool ents = true, bool vehicles = true, bool peds = true, bool debug = false) {

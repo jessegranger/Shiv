@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 using static GTA.Native.Function;
 using static GTA.Native.Hash;
 using static Shiv.Global;
-using static Shiv.Imports;
+using static Shiv.NativeMethods;
 using static Shiv.NavMesh;
 using Keys = System.Windows.Forms.Keys;
 

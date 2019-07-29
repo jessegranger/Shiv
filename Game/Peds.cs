@@ -10,7 +10,7 @@ using static GTA.Native.Hash;
 using static GTA.Native.Function;
 using System.Drawing;
 using System.Runtime.InteropServices;
-using static Shiv.Imports;
+using static Shiv.NativeMethods;
 using System.Linq;
 
 namespace Shiv {
@@ -39,19 +39,16 @@ namespace Shiv {
 				.ToArray()
 		);
 		public static bool TryGetHuman(BlipHUDColor color, out PedHandle ped) {
-			ped = NearbyHumans().FirstOrDefault(color);
-			return ped != default;
+			foreach(var p in NearbyHumans() ) {
+				if( GetBlipHUDColor(GetBlip(p)) == color ) {
+					ped = p;
+					return true;
+				}
+			}
+			ped = default;
+			return false;
 		}
 
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool Exists(PedHandle ent) => Exists((EntHandle)ent);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static IntPtr Address(PedHandle p) => Address((EntHandle)p);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Matrix4x4 Matrix(PedHandle ent) => Matrix((EntHandle)ent);
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 Position(PedHandle ent) => Position(Matrix(ent));
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static float DistanceToSelf(PedHandle ent) => DistanceToSelf(Position(ent));
-
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 Forward(PedHandle ent) => Forward(Matrix(ent));
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 Right(PedHandle ent) => Right(Matrix(ent));
-		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static Vector3 UpVector(PedHandle ent) => UpVector(Matrix(ent));
 
 		public static bool IsHuman(PedHandle ent) => ent == 0 ? false : Call<bool>(IS_PED_HUMAN, ent);
 		public static bool IsAlive(PedHandle ent) => IsAlive((EntHandle)ent);
@@ -120,10 +117,6 @@ namespace Shiv {
 			return ret;
 		}
 
-		public static Vector3 Velocity(PedHandle ent) => Velocity((EntHandle)ent);
-		public static void Velocity(PedHandle ent, Vector3 value) => Velocity((EntHandle)ent, value);
-		public static float Speed(PedHandle ent) => ent == 0 ? 0f : Call<float>(GET_ENTITY_SPEED, ent);
-
 		public static bool IsReloading(PedHandle ped) => ped == PedHandle.Invalid ? false : Call<bool>(IS_PED_RELOADING, ped);
 		public static bool IsWeaponReadyToShoot(PedHandle ped) => ped == PedHandle.Invalid ? false : Call<bool>(IS_PED_WEAPON_READY_TO_SHOOT, ped);
 		public static bool IsInCover(PedHandle ped) => ped == PedHandle.Invalid ? false : Call<bool>(IS_PED_IN_COVER, ped, false);
@@ -133,9 +126,7 @@ namespace Shiv {
 
 		public static Vector3 HeadPosition(PedHandle ped) => ped == PedHandle.Invalid ? Vector3.Zero : Call<Vector3>(GET_PED_BONE_COORDS, ped, Bone.SKEL_Head, 0.1f, 0.05f, 0.0f);
 
-		// TODO: proper caching here
-		public static bool CanSee(PedHandle self, VehicleHandle veh, IntersectOptions opts = IntersectOptions.Map | IntersectOptions.Objects) => CanSee(self, (PedHandle)veh, opts);
-		public static bool CanSee(PedHandle self, PedHandle ped, IntersectOptions opts = IntersectOptions.Map | IntersectOptions.Objects) => self == 0 || ped == PedHandle.Invalid ? false : Call<bool>(HAS_ENTITY_CLEAR_LOS_TO_ENTITY, self, ped, opts);
+		public static bool CanSee(PedHandle self, PedHandle ped, IntersectOptions opts = IntersectOptions.Map | IntersectOptions.Objects) => self == default || ped == default ? false : Call<bool>(HAS_ENTITY_CLEAR_LOS_TO_ENTITY, self, ped, opts);
 		public static bool CanSee(PedHandle ped, Vector3 pos, IntersectOptions opts = IntersectOptions.Map | IntersectOptions.Objects ) {
 			Vector3 start = HeadPosition(ped);
 			float len = (start - pos).Length();

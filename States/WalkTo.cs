@@ -17,12 +17,12 @@ namespace Shiv {
 		readonly Func<PedHandle> GetPed;
 
 		public override State OnTick() {
-			var ped = GetPed();
+			PedHandle ped = GetPed();
 			if( ped == PedHandle.Invalid ) {
 				return Next;
 			}
 			StoppingRange = 5f;
-			var node = Handle(Position(GetPed()));
+			NodeHandle node = Handle(Position(ped));
 			if( Target != node ) {
 				Target = node;
 			}
@@ -31,7 +31,7 @@ namespace Shiv {
 
 	}
 
-	class WalkTo : State {
+	class WalkTo : State, IDisposable {
 		public float StoppingRange = 1f;
 		public uint Timeout = 120000;
 		public bool Debug = true;
@@ -101,11 +101,10 @@ namespace Shiv {
 			}
 			
 			if( smoothPath != null ) {
-				var step = smoothPath.NextStep(PlayerPosition);
 				if( smoothPath.IsComplete() ) {
 					return Next;
 				}
-				switch( MoveToward(step, debug:true) ) {
+				switch( MoveToward(smoothPath.NextStep(PlayerPosition), debug:true) ) {
 					case MoveResult.Failed:
 						return Stuck();
 					default:
@@ -162,8 +161,7 @@ namespace Shiv {
 		}
 		protected void BlockAround(Vector3 pos) {
 			if( pos != Vector3.Zero ) {
-				var node = Handle(pos);
-				Flood(node, 30, 30, default, Edges)
+				Flood(Handle(pos), 30, 30, default, Edges)
 					.Without(PlayerNode)
 					.Where(n => (pos - Position(n)).LengthSquared() < .75f)
 					.ToArray() // read it all so the first block doesn't interrupt the Flood
@@ -182,5 +180,43 @@ namespace Shiv {
 			sw.Reset();
 			return this;
 		}
+
+		#region IDisposable Support
+		private bool disposed = false; // To detect redundant calls
+
+		protected virtual void Dispose(bool disposing) {
+			if( !disposed ) {
+				if( disposing ) {
+					// TODO: dispose managed state (managed objects).
+					if( request != null ) {
+						request.Dispose();
+					}
+				}
+
+				request = null;
+				path = null;
+				smoothPath = null;
+
+				// TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
+				// TODO: set large fields to null.
+
+				disposed = true;
+			}
+		}
+
+		// TODO: override a finalizer only if Dispose(bool disposing) above has code to free unmanaged resources.
+		// ~WalkTo() {
+		//   // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+		//   Dispose(false);
+		// }
+
+		// This code added to correctly implement the disposable pattern.
+		public void Dispose() {
+			// Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+			Dispose(true);
+			// TODO: uncomment the following line if the finalizer is overridden above.
+			// GC.SuppressFinalize(this);
+		}
+		#endregion
 	}
 }

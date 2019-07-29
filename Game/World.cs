@@ -144,15 +144,15 @@ namespace Shiv {
 
 		public static void PauseClock(bool value) => Call(PAUSE_CLOCK, value);
 
-		public static void Blackout(bool value) => Call(_SET_BLACKOUT, value);
+		public static void Blackout(bool value) => Call(SET_ARTIFICIAL_LIGHTS_STATE, value);
 
 		public static void ChangeWeather(Weather weather, float duration) => Call(_SET_WEATHER_TYPE_OVER_TIME, Enum.GetName(typeof(Weather), weather), duration);
 
 		public static float Gravity() => MemoryAccess.ReadWorldGravity();
 		public static void Gravity(float value) {
-			MemoryAccess.WriteWorldGravity(value);
-			Call(SET_GRAVITY_LEVEL, 0);
-			MemoryAccess.WriteWorldGravity(9.800000f);
+			MemoryAccess.WriteWorldGravity(value); // store value as gravity profile 0
+			Call(SET_GRAVITY_LEVEL, 0); // load gravity profile 0
+			MemoryAccess.WriteWorldGravity(9.800000f); // reset to default profile 0
 		}
 
 		public struct RaycastResult {

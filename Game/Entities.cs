@@ -11,7 +11,7 @@ using System.Numerics;
 using static GTA.Native.MemoryAccess;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
-using static Shiv.Imports;
+using static Shiv.NativeMethods;
 using System.Runtime.InteropServices;
 
 namespace Shiv {
@@ -56,7 +56,6 @@ namespace Shiv {
 		);
 
 
-		public static bool Exists(EntHandle ent) => ent == 0 ? false : Call<bool>(DOES_ENTITY_EXIST, ent);
 		public static bool IsAlive(EntHandle ent) => ent == 0 ? false : Exists(ent) && !Call<bool>(IS_ENTITY_DEAD, ent);
 		public static bool IsDead(EntHandle ent) => ent == 0 ? false : Exists(ent) && Call<bool>(IS_ENTITY_DEAD, ent);
 		public static void Delete(VehicleHandle ped) => Delete((EntHandle)ped);
@@ -72,6 +71,7 @@ namespace Shiv {
 
 		public static EntityType GetEntityType(EntHandle ent) => Call<EntityType>(GET_ENTITY_TYPE, ent);
 
+		public static bool Exists(EntHandle ent) => ent == 0 ? false : Call<bool>(DOES_ENTITY_EXIST, ent);
 		public static IntPtr Address(EntHandle ent) => GetEntityAddress((int)ent);
 		public static Vector3 Position(EntHandle ent) => Position(Matrix(ent)); // Read<Vector3>(Address(ent), 0x90);
 		
@@ -87,11 +87,10 @@ namespace Shiv {
 		public static void Pose(EntHandle ent, BoneIndex bone, Matrix4x4 value) => Write(GetEntityBonePoseAddress((int)ent, (uint)bone), 0x0, value);
 
 		public static float DistanceToSelf(EntHandle ent) => DistanceToSelf(Position(ent));
+		public static float DistanceToSelf(PedHandle ent) => DistanceToSelf(Position(ent));
 		public static float Heading(EntHandle ent) => ent == 0 ? 0 : Call<float>(GET_ENTITY_HEADING, ent);
 		public static void Heading(EntHandle ent, float value) => Call(SET_ENTITY_HEADING, ent, value);
 
-		public static bool IsFacing(PedHandle ent, Vector3 pos) => IsFacing((EntHandle)ent, pos);
-		public static bool IsFacing(VehicleHandle ent, Vector3 pos) => IsFacing((EntHandle)ent, pos);
 		public static bool IsFacing(EntHandle ent, Vector3 pos) => IsFacing(Matrix(ent), pos);
 		public static bool IsFacing(Matrix4x4 m, Vector3 pos) => Vector3.Dot(pos - Position(m), Forward(m)) > 0.0f;
 
@@ -158,14 +157,8 @@ namespace Shiv {
 
 		public static Vector3 Rotation(EntHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_ROTATION, ent, 0);
 		public static void Rotation(EntHandle ent, Vector3 rot) => Call<Vector3>(SET_ENTITY_ROTATION, ent, rot, 0, true);
-		public static Vector3 Rotation(PedHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_ROTATION, ent, 0);
-		public static void Rotation(PedHandle ent, Vector3 rot) => Call<Vector3>(SET_ENTITY_ROTATION, ent, rot, 0, true);
-		public static Vector3 Rotation(VehicleHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_ROTATION, ent, 0);
-		public static void Rotation(VehicleHandle ent, Vector3 rot) => Call<Vector3>(SET_ENTITY_ROTATION, ent, rot, 0, true);
 
 		public static Vector3 RotationVelocity(EntHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_ROTATION_VELOCITY, ent);
-		public static Vector3 RotationVelocity(PedHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_ROTATION_VELOCITY, ent);
-		public static Vector3 RotationVelocity(VehicleHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_ROTATION_VELOCITY, ent);
 
 		public static float Speed(EntHandle ent) => ent == 0 ? 0f : Call<float>(GET_ENTITY_SPEED, ent);
 
@@ -210,8 +203,6 @@ namespace Shiv {
 
 		public static bool Exists(BlipHandle blip) => Call<bool>(DOES_BLIP_EXIST, blip);
 		public static EntHandle GetEntity(BlipHandle blip) => Call<EntHandle>(GET_BLIP_INFO_ID_ENTITY_INDEX, blip);
-		public static BlipHandle GetBlip(VehicleHandle ent) => Call<BlipHandle>(GET_BLIP_FROM_ENTITY, ent);
-		public static BlipHandle GetBlip(PedHandle ent) => Call<BlipHandle>(GET_BLIP_FROM_ENTITY, ent);
 		public static BlipHandle GetBlip(EntHandle ent) => Call<BlipHandle>(GET_BLIP_FROM_ENTITY, ent);
 		public static void ShowRoute(BlipHandle blip, bool value) => Call(SET_BLIP_ROUTE, blip, value);
 		public static bool IsFlashing(BlipHandle blip) => Call<bool>(IS_BLIP_FLASHING, blip);
@@ -243,27 +234,15 @@ namespace Shiv {
 			}
 		}
 		public static IEnumerable<EntHandle> Where(this IEnumerable<EntHandle> list, Color blipColor) => list.Where(x => GetColor(GetBlip(x)) == blipColor);
-		public static IEnumerable<PedHandle> Where(this IEnumerable<PedHandle> list, Color blipColor) => list.Where(x => GetColor(GetBlip(x)) == blipColor);
-		public static IEnumerable<VehicleHandle> Where(this IEnumerable<VehicleHandle> list, Color blipColor) => list.Where(x => GetColor(GetBlip(x)) == blipColor);
 		public static IEnumerable<EntHandle> Where(this IEnumerable<EntHandle> list, BlipHUDColor blipColor) => list.Where(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
-		public static IEnumerable<PedHandle> Where(this IEnumerable<PedHandle> list, BlipHUDColor blipColor) => list.Where(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
-		public static IEnumerable<VehicleHandle> Where(this IEnumerable<VehicleHandle> list, BlipHUDColor blipColor) => list.Where(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
 		public static IEnumerable<BlipHandle> Where(this IEnumerable<BlipHandle> list, BlipHUDColor blipColor) => list.Where(x => GetBlipHUDColor(x) == blipColor);
 
 		public static bool Any(this IEnumerable<EntHandle> list, Color blipColor) => list.Any(x => GetColor(GetBlip(x)) == blipColor);
-		public static bool Any(this IEnumerable<PedHandle> list, Color blipColor) => list.Any(x => GetColor(GetBlip(x)) == blipColor);
-		public static bool Any(this IEnumerable<VehicleHandle> list, Color blipColor) => list.Any(x => GetColor(GetBlip(x)) == blipColor);
 		public static bool Any(this IEnumerable<EntHandle> list, BlipHUDColor blipColor) => list.Any(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
-		public static bool Any(this IEnumerable<PedHandle> list, BlipHUDColor blipColor) => list.Any(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
-		public static bool Any(this IEnumerable<VehicleHandle> list, BlipHUDColor blipColor) => list.Any(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
 		public static bool Any(this IEnumerable<BlipHandle> list, BlipHUDColor blipColor) => list.Any(x => GetBlipHUDColor(x) == blipColor);
 
 		public static EntHandle FirstOrDefault(this IEnumerable<EntHandle> list, Color blipColor) => list.FirstOrDefault(x => GetColor(GetBlip(x)) == blipColor);
-		public static PedHandle FirstOrDefault(this IEnumerable<PedHandle> list, Color blipColor) => list.FirstOrDefault(x => GetColor(GetBlip(x)) == blipColor);
-		public static VehicleHandle FirstOrDefault(this IEnumerable<VehicleHandle> list, Color blipColor) => list.FirstOrDefault(x => GetColor(GetBlip(x)) == blipColor);
 		public static EntHandle FirstOrDefault(this IEnumerable<EntHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
-		public static PedHandle FirstOrDefault(this IEnumerable<PedHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
-		public static VehicleHandle FirstOrDefault(this IEnumerable<VehicleHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
 		public static BlipHandle FirstOrDefault(this IEnumerable<BlipHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(x) == blipColor);
 		public static BlipHandle First(IEnumerable<BlipHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(x) == blipColor);
 
@@ -279,7 +258,6 @@ namespace Shiv {
 		public static bool TryGetBlip(BlipHUDColor color, out BlipHandle blip) => (blip = GetAllBlips(BlipSprite.Standard).Where(color).FirstOrDefault()) != default;
 
 		public static void AttachTo(EntHandle a, EntHandle b, BoneIndex bone = BoneIndex.Invalid, Vector3 offset = default, Vector3 rot = default) => Call(ATTACH_ENTITY_TO_ENTITY, a, b, bone, offset, rot, 0, 0, 0, 0, 2, 1);
-		public static bool IsAttached(PedHandle a) => Call<bool>(IS_ENTITY_ATTACHED, a);
 		public static bool IsAttached(EntHandle a) => Call<bool>(IS_ENTITY_ATTACHED, a);
 		public static bool IsAttachedTo(EntHandle a, EntHandle b) => Call<bool>(IS_ENTITY_ATTACHED_TO_ENTITY, a, b);
 		public static void Detach(EntHandle ent) => Call(DETACH_ENTITY, ent, true, true);

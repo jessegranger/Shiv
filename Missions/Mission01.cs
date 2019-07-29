@@ -16,7 +16,7 @@ namespace Shiv {
 	class Mission01_Approach : State {
 		public override string Name => "Approach Hostages";
 		public override State OnTick() {
-			PedHandle ped = NearbyHumans().Where(BlipHUDColor.Red).FirstOrDefault();
+			PedHandle ped = NearbyHumans().Cast<EntHandle>().FirstOrDefault(BlipHUDColor.Red);
 			return ped == PedHandle.Invalid
 				? Fail
 				: Parallel(Self,
@@ -32,7 +32,7 @@ namespace Shiv {
 		private uint LastShift = 0;
 		private PedHandle Target;
 		public override State OnTick() {
-			IEnumerable<PedHandle> targets = NearbyHumans().Where(BlipHUDColor.Red).Where(p => CanSee(Self, p, IntersectOptions.Map));
+			IEnumerable<PedHandle> targets = NearbyHumans().Cast<EntHandle>().Where(BlipHUDColor.Red).Cast<PedHandle>().Where(p => CanSee(Self, p, IntersectOptions.Map));
 			if( targets.Count() > 0 ) {
 				if( GameTime - LastShift > 2000 ) {
 					LastShift = GameTime;

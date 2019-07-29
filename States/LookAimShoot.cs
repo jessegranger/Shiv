@@ -11,17 +11,27 @@ using System.Drawing;
 namespace Shiv {
 	class AimAt : LookAt {
 
+		/// <summary> Aim at a single fixed position. </summary>
 		public AimAt(Vector3 target, State next = null) : base(target, next) => DeadZone = .05f;
+
+		/// <summary> Aim at a series of fixed positions. </summary>
 		public AimAt(Func<Vector3> target, State next = null) : base(target, next) => DeadZone = .05f;
 
+		/// <summary> Aim at a single Ped. </summary>
 		public AimAt(PedHandle ped, State next = null) : this(() => GetAimPosition(ped), next) { }
+
+		/// <summary> Aim at a series of Peds. </summary>
 		public AimAt(Func<PedHandle> target, State next = null) : base(() => GetAimPosition(target()), next) { }
 
 		public static Vector3 GetAimPosition(PedHandle ped) {
-			var pos = HeadPosition(ped) + Velocity(ped) / CurrentFPS;
-			// DrawSphere(pos, .1f, Color.Yellow);
+			double dist = Math.Sqrt(DistanceToSelf(ped));
+			Vector3 pos = HeadPosition(ped);
+			float leadFactor = Clamp((float)Math.Sqrt(dist), 1f, 8f);
+			pos = pos + (Velocity(ped) * leadFactor / InstantFPS);
+			pos.Z -= .02f; // closer to the neck, a cautious bias
 			return pos;
 		}
+
 		public override State OnTick() {
 			ForcedAim(CurrentPlayer, IsFacing(CameraMatrix, Target()));
 			return base.OnTick();

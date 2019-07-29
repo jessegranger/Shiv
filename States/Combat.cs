@@ -45,10 +45,9 @@ namespace Shiv {
 			if( ! sw.IsRunning ) {
 				sw.Start();
 			}
-			if( sw.ElapsedMilliseconds > Timeout ) {
-				return Fail;
-			}
-			return new StateMachine(Actor,
+			return sw.ElapsedMilliseconds > Timeout
+				? Fail
+				: new StateMachine(Actor,
 				new LookAt(Target, null) { Duration = 600 },
 				new PressKey(1, Control.Cover, 300, new Delay(300, new StateMachine.Clear(this)))
 			);
@@ -70,7 +69,7 @@ namespace Shiv {
 		public override string ToString() => $"ExitCover({GetScriptTaskStatus(Self, TaskStatusHash.SCRIPT_TASK_EXIT_COVER)})";
 	}
 
-	class Combat : State {
+	class Combat : State, IDisposable {
 		static readonly Blacklist blacklist = new Blacklist("Combat");
 		static readonly Blacklist vehicles = new Blacklist("Vehicles");
 		public readonly Func<IEnumerable<PedHandle>> GetHostiles = NearbyHumans;
@@ -256,6 +255,41 @@ namespace Shiv {
 			ShootToKill(target);
 			return this;
 		}
+
+		#region IDisposable
+		private bool disposed = false; // To detect redundant calls
+
+		protected virtual void Dispose(bool disposing) {
+			if( !disposed ) {
+				if( disposing ) {
+					// TODO: dispose managed state (managed objects).
+					if( coverPathRequest != null ) {
+						coverPathRequest.Dispose();
+						coverPathRequest = null;
+					}
+				}
+
+				// TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
+				// TODO: set large fields to null.
+
+				disposed = true;
+			}
+		}
+
+		// TODO: override a finalizer only if Dispose(bool disposing) above has code to free unmanaged resources.
+		// ~Combat() {
+		//   // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+		//   Dispose(false);
+		// }
+
+		// This code added to correctly implement the disposable pattern.
+		public void Dispose() {
+			// Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+			Dispose(true);
+			// TODO: uncomment the following line if the finalizer is overridden above.
+			// GC.SuppressFinalize(this);
+		}
+		#endregion
 
 	}
 	/*

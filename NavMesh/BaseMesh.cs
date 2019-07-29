@@ -142,7 +142,7 @@ namespace Shiv {
 		}
 
 
-		public class NodeSet {
+		public class NodeSet : IDisposable {
 
 			internal ConcurrentDictionary<RegionHandle, ConcurrentDictionary<NodeHandle, NodeEdges>> Regions = new ConcurrentDictionary<RegionHandle, ConcurrentDictionary<NodeHandle, NodeEdges>>();
 
@@ -158,7 +158,7 @@ namespace Shiv {
 			}
 			public NodeEdges Get(NodeHandle n) {
 				RegionHandle r = Region(n);
-				if( Regions.GetOrAdd(r, regionFactory).TryGetValue(n, out var edges) ) {
+				if( Regions.GetOrAdd(r, regionFactory).TryGetValue(n, out NodeEdges edges) ) {
 					recentRegions.AddOrUpdate(r, TotalTime.ElapsedMilliseconds);
 					return edges;
 				}
@@ -183,13 +183,12 @@ namespace Shiv {
 
 			internal void PageOut(int itemLimit, long timeLimit) {
 				if( Regions.Count > itemLimit && recentRegions.PeekScore() < timeLimit ) {
-					while( Regions.Count > itemLimit && recentRegions.PeekScore() < timeLimit && recentRegions.TryPop(out var r) ) {
+					while( Regions.Count > itemLimit && recentRegions.PeekScore() < timeLimit && recentRegions.TryPop(out RegionHandle r) ) {
 						if( dirtyRegions.Contains(r) ) {
 							dirtyRegions.Remove(r);
 							SaveToFile(r);
 						}
-						Regions.TryRemove(r, out var gone);
-						// Log($"Paged out region {r}, {gone.Count} nodes.");
+						Regions.TryRemove(r, out var _);
 					}
 				}
 			}
@@ -198,6 +197,44 @@ namespace Shiv {
 				dirtyRegions.Clear();
 				recentRegions.Clear();
 			}
+
+			#region IDisposable Support
+			private bool disposed = false; // To detect redundant calls
+
+			protected virtual void Dispose(bool disposing) {
+				if( !disposed ) {
+					if( disposing ) {
+						// TODO: dispose managed state (managed objects).
+						Regions.Clear();
+						dirtyRegions.Clear();
+						recentRegions.Clear();
+						recentRegions.Dispose();
+					}
+					Regions = null;
+					dirtyRegions = null;
+					recentRegions = null;
+
+					// TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
+					// TODO: set large fields to null.
+
+					disposed = true;
+				}
+			}
+
+			// TODO: override a finalizer only if Dispose(bool disposing) above has code to free unmanaged resources.
+			// ~NodeSet() {
+			//   // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+			//   Dispose(false);
+			// }
+
+			// This code added to correctly implement the disposable pattern.
+			public void Dispose() {
+				// Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+				Dispose(true);
+				// TODO: uncomment the following line if the finalizer is overridden above.
+				// GC.SuppressFinalize(this);
+			}
+			#endregion
 		}
 		public static NodeSet AllNodes = new NodeSet();
 		// public static ConcurrentDictionary<NodeHandle, NodeEdges> AllEdges = new ConcurrentDictionary<NodeHandle, NodeEdges>();
@@ -230,7 +267,7 @@ namespace Shiv {
 					Task.Run(SaveToFile);
 				}
 				// UI.DrawText($"NavMesh: {Ungrown.Count}/{AllEdges.Count}", color: IsGrown(PlayerNode) ? Color.White : Color.Orange);
-				int msPerFrame = (int)(1000 / CurrentFPS);
+				int msPerFrame = (int)(1000 / InstantFPS);
 				uint msPerGrow = (uint)Max(15, 35 - msPerFrame);
 				NodeHandle handle = AimNode();
 				if( !IsGrown(handle) ) {
@@ -239,7 +276,7 @@ namespace Shiv {
 				DrawEdges(handle, 100);
 				if( !IsGrown(PlayerNode) ) {
 					Grow(PlayerNode, msPerGrow);
-				} else if( Ungrown.TryDequeue(out var first) ) {
+				} else if( Ungrown.TryDequeue(out NodeHandle first) ) {
 					// DrawLine(HeadPosition(Self), Position(first), Color.Orange);
 					Grow(first, msPerGrow);
 				} else {
@@ -286,11 +323,11 @@ namespace Shiv {
 			seen.Add(node);
 			while( queue.Count > 0 && seen.Count < maxNodes ) {
 				NodeHandle cur = queue.Dequeue();
-				var pos = Position(cur);
-				var c = Clearance(cur);
+				Vector3 pos = Position(cur);
+				uint c = Clearance(cur);
 				UI.DrawTextInWorldWithOffset(pos, 0f, -.01f * c, $"{c}");
 				foreach( NodeHandle e in Edges(cur) ) {
-					var epos = Position(e);
+					Vector3 epos = Position(e);
 					DrawLine(pos, epos, clearanceColors[c]);
 					if( IsCover(e) ) {
 						DrawSphere(epos, .03f, Color.Blue);
@@ -322,7 +359,7 @@ namespace Shiv {
 			Text.Add(Position(n), "Blocked", 3000);
 		}
 
-		public static bool Remove(NodeHandle a) => AllNodes.Regions.TryGetValue(Region(a), out var nodes) && nodes.TryRemove(a, out var edges);
+		public static bool Remove(NodeHandle a) => AllNodes.Regions.TryGetValue(Region(a), out var nodes) && nodes.TryRemove(a, out NodeEdges edges);
 
 		public static void GetAllHandlesInBox(ModelBox box, ConcurrentSet<NodeHandle> output) => GetAllHandlesInBox(box.M, box.Back, box.Front, output);
 		public static void GetAllHandlesInBox(Matrix4x4 m, Vector3 backLeft, Vector3 frontRight, ConcurrentSet<NodeHandle> output) {

@@ -29,14 +29,6 @@ namespace Shiv {
 			}
 		}
 
-		internal bool disposed = false;
-		~Script() {
-			if( !disposed ) {
-				Dispose();
-			}
-		}
-		public virtual void Dispose() => disposed = true;
-
 		/// <summary>
 		/// Called for every Key event. Return true to prevent later Scripts from being called.
 		/// </summary>
@@ -57,6 +49,37 @@ namespace Shiv {
 		/// Called when this script should cleanup and exit.
 		/// </summary>
 		public virtual void OnAbort() { }
+
+		#region IDisposable Support
+		protected bool disposed = false; // To detect redundant calls
+
+		protected virtual void Dispose(bool disposing) {
+			if( !disposed ) {
+				if( disposing ) {
+					// TODO: dispose managed state (managed objects).
+				}
+
+				// TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
+				// TODO: set large fields to null.
+
+				disposed = true;
+			}
+		}
+
+		// TODO: override a finalizer only if Dispose(bool disposing) above has code to free unmanaged resources.
+		// ~Script() {
+		//   // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+		//   Dispose(false);
+		// }
+
+		// This code added to correctly implement the disposable pattern.
+		public void Dispose() {
+			// Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+			Dispose(true);
+			// TODO: uncomment the following line if the finalizer is overridden above.
+			// GC.SuppressFinalize(this);
+		}
+		#endregion
 
 	}
 
@@ -85,12 +108,14 @@ namespace Shiv {
 				Dispose();
 			}
 		}
-		public override void Dispose() {
+		protected override void Dispose(bool disposing) {
 			if( !disposed ) {
-				s.Stop();
+				if( disposing ) {
+					s.Stop();
+				}
 			}
 
-			base.Dispose();
+			base.Dispose(disposing);
 		}
 	}
 

@@ -138,7 +138,6 @@ namespace Shiv {
 					Log("Failed: " + err.ToString());
 					return;
 				}
-				w.Close();
 			}
 			try { File.Delete(filename); } catch( FileNotFoundException ) { }
 			try { File.Move(filename + ".tmp", filename); } catch( Exception e ) {

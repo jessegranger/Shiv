@@ -6,7 +6,7 @@ using static Shiv.Global;
 using static Shiv.NavMesh;
 
 namespace Shiv {
-	class DebugPath : State {
+	class DebugPath : State, IDisposable {
 
 		public bool AvoidObjects = true;
 		public bool AvoidPeds = false;
@@ -58,6 +58,38 @@ namespace Shiv {
 			}
 			return this;
 		}
+
+		#region IDisposable Support
+		private bool disposed = false; // To detect redundant calls
+
+		protected virtual void Dispose(bool disposing) {
+			if( !disposed ) {
+				if( disposing ) {
+					// TODO: dispose managed state (managed objects).
+					req.Dispose();
+				}
+
+				// TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
+				// TODO: set large fields to null.
+
+				disposed = true;
+			}
+		}
+
+		// TODO: override a finalizer only if Dispose(bool disposing) above has code to free unmanaged resources.
+		// ~DebugPath() {
+		//   // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+		//   Dispose(false);
+		// }
+
+		// This code added to correctly implement the disposable pattern.
+		public void Dispose() {
+			// Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+			Dispose(true);
+			// TODO: uncomment the following line if the finalizer is overridden above.
+			// GC.SuppressFinalize(this);
+		}
+		#endregion
 
 	}
 }

@@ -42,21 +42,7 @@ namespace Shiv {
 			}
 
 			public Future() { }
-			private bool disposed = false;
-			public void Dispose() {
-				if( !disposed ) {
-					disposed = true;
-					if( !cancel.IsCancellationRequested ) {
-						cancel.Cancel();
-					}
-					if( !ready.IsSet ) {
-						ready.Signal();
-					}
-				}
-			}
-			~Future() {
-				Dispose();
-			}
+
 			public Future(Func<T> func) : this() {
 				ThreadPool.QueueUserWorkItem((object arg) => {
 					try { Resolve(func()); } catch( Exception err ) { Reject(err); }
@@ -114,6 +100,43 @@ namespace Shiv {
 			}
 			public void Cancel() { try { cancel.Cancel(); } catch( Exception ) { } }
 			public bool IsCanceled() => cancel.IsCancellationRequested;
+
+			#region IDisposable Support
+			private bool disposed = false; // To detect redundant calls
+
+			protected virtual void Dispose(bool disposing) {
+				if( !disposed ) {
+					if( disposing ) {
+						// TODO: dispose managed state (managed objects).
+						if( !cancel.IsCancellationRequested ) {
+							cancel.Cancel();
+						}
+						if( !ready.IsSet ) {
+							ready.Signal();
+						}
+					}
+
+					// TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
+					// TODO: set large fields to null.
+
+					disposed = true;
+				}
+			}
+
+			// TODO: override a finalizer only if Dispose(bool disposing) above has code to free unmanaged resources.
+			// ~Future() {
+			//   // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+			//   Dispose(false);
+			// }
+
+			// This code added to correctly implement the disposable pattern.
+			public void Dispose() {
+				// Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+				Dispose(true);
+				// TODO: uncomment the following line if the finalizer is overridden above.
+				// GC.SuppressFinalize(this);
+			}
+			#endregion
 		}
 
 		public class Immediate<T> : IFuture<T> { // a dummy future with no locks
