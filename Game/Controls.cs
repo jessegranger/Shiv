@@ -27,11 +27,12 @@ namespace Shiv {
 			Failed,
 			Complete
 		}
-		public static MoveResult MoveToward(Vector3 pos, float stoppingRange=.25f, bool stopAtEnd=true, bool debug=false) {
+		public static MoveResult MoveToward(Vector3 pos, float stoppingRange=.25f, bool stopAtEnd=true, float maxSpeed=3f, bool debug=false) {
 			if( pos == Vector3.Zero ) { return MoveResult.Complete; }
-			ObstructionFlags result = CheckObstruction(PlayerPosition, (pos - PlayerPosition), debug);
+			var speed = Speed(Self);
+			var posDelta = (pos - PlayerPosition);
+			ObstructionFlags result = CheckObstruction(PlayerPosition, posDelta, debug);
 			if( ! IsWalkable(result ) ) {
-				var speed = Speed(Self);
 				if( speed < .02f ) {
 					if( IsClimbable(result) ) {
 						SetControlValue(0, Control.Jump, 1.0f); // Attempt to jump over a positive obstruction
@@ -41,12 +42,12 @@ namespace Shiv {
 				}
 			}
 
-			Vector3 delta = Vector3.Normalize(pos - PlayerPosition); // Position(PlayerMatrix);
+			Vector3 delta = Vector3.Normalize(posDelta); // Position(PlayerMatrix);
 			float right = Vector3.Dot(delta, Right(CameraMatrix));
 			float up = Vector3.Dot(delta, Forward(CameraMatrix));
 			float dX, dY;
 			SetControlValue(1, Control.MoveLeftRight, dX = MoveActivation( right, deadZone:-0.9f ));
-			SetControlValue(1, Control.MoveUpDown, dY = MoveActivation( -up, deadZone:-0.99f ));
+			SetControlValue(1, Control.MoveUpDown, dY = MoveActivation( -up, deadZone:-0.9f ));
 			var dist = DistanceToSelf(pos);
 			if( debug ) {
 				DrawLine(HeadPosition(Self), pos, Color.Orange);
@@ -130,7 +131,8 @@ namespace Shiv {
 				deadZone = 4f;
 			}
 			ForcedAim(CurrentPlayer, IsFacing(CameraMatrix, Position(target)));
-			if( IsAimingAtEntity(target) || LookToward(target, deadZone) || GetEntityType(AimEntity()) == EntityType.Ped ) {
+			LookToward(target, deadZone);
+			if( IsAimingAtEntity(target) || GetEntityType(AimEntity()) == EntityType.Ped ) {
 				SetControlValue(0, Control.Attack, 1f);
 				return true;
 			}
