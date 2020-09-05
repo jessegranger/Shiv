@@ -16,7 +16,7 @@ namespace Shiv {
 	class Mission01_Approach : State {
 		public override string Name => "Approach Hostages";
 		public override State OnTick() {
-			PedHandle ped = NearbyHumans().Cast<EntHandle>().FirstOrDefault(BlipHUDColor.Red);
+			PedHandle ped = NearbyHumans().FirstOrDefault(BlipHUDColor.Red);
 			return ped == PedHandle.Invalid
 				? Fail
 				: Parallel(Self,

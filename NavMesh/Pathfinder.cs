@@ -483,7 +483,7 @@ namespace Shiv {
 			if( IsOnVehicle(Self) ) {
 				RaycastResult result = Raycast(PlayerPosition, PlayerPosition - (2 * Up), .3f, IntersectOptions.Vehicles, Self);
 				if( result.DidHit ) {
-					ignore = result.Entity;
+					ignore = (VehicleHandle)result.Entity;
 				}
 			}
 			foreach( VehicleHandle v in NearbyVehicles().Take(limit) ) {
@@ -498,7 +498,7 @@ namespace Shiv {
 				GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
 				Matrix4x4 m = Matrix(v);
 				if( debug ) { DrawBox(m, backLeft, frontRight); }
-				yield return new ModelBox() { Model = (ModelHash)model, Entity = v, M = m, Front = frontRight, Back = backLeft };
+				yield return new ModelBox() { Model = (ModelHash)model, Entity = (EntHandle)v, M = m, Front = frontRight, Back = backLeft };
 			}
 
 		}
@@ -509,7 +509,7 @@ namespace Shiv {
 				}
 				PedHash model = GetModel(p);
 				GetModelDimensions(model, out Vector3 backLeft, out Vector3 frontRight);
-				yield return new ModelBox() { Model = (ModelHash)model, Entity = p, M = Matrix(p), Front = frontRight, Back = backLeft };
+				yield return new ModelBox() { Model = (ModelHash)model, Entity = (EntHandle)p, M = Matrix(p), Front = frontRight, Back = backLeft };
 			}
 		}
 		public static ConcurrentSet<NodeHandle> GetBlockedNodes(bool ents = true, bool vehicles = true, bool peds = true, bool debug = false) {

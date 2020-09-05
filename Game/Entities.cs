@@ -72,19 +72,24 @@ namespace Shiv {
 		public static EntityType GetEntityType(EntHandle ent) => Call<EntityType>(GET_ENTITY_TYPE, ent);
 
 		public static bool Exists(EntHandle ent) => ent == 0 ? false : Call<bool>(DOES_ENTITY_EXIST, ent);
+		public static bool Exists(PedHandle ent) => ent == 0 ? false : Call<bool>(DOES_ENTITY_EXIST, ent);
+		public static bool Exists(VehicleHandle ent) => ent == 0 ? false : Call<bool>(DOES_ENTITY_EXIST, ent);
+
 		public static IntPtr Address(EntHandle ent) => GetEntityAddress((int)ent);
+		public static IntPtr Address(PedHandle ent) => GetEntityAddress((int)ent);
+		public static IntPtr Address(VehicleHandle ent) => GetEntityAddress((int)ent);
+
 		public static Vector3 Position(EntHandle ent) => Position(Matrix(ent)); // Read<Vector3>(Address(ent), 0x90);
-		
+		public static Vector3 Position(PedHandle ent) => Position(Matrix(ent)); // Read<Vector3>(Address(ent), 0x90);
+		public static Vector3 Position(VehicleHandle ent) => Position(Matrix(ent)); // Read<Vector3>(Address(ent), 0x90);
 
-		// TODO: once we are putting some pressure on the engine, see if its worth caching the Matrix for the frame
 		public static Matrix4x4 Matrix(EntHandle ent) => Read<Matrix4x4>(Address(ent), 0x60);
+		public static Matrix4x4 Matrix(PedHandle ent) => Read<Matrix4x4>(Address(ent), 0x60);
+		public static Matrix4x4 Matrix(VehicleHandle ent) => Read<Matrix4x4>(Address(ent), 0x60);
 
-		public static Matrix4x4 Matrix(EntHandle ent, BoneIndex bone) => Read<Matrix4x4>(GetEntityBoneMatrixAddress((int)ent, (uint)bone), 0x0);
 		public static BoneIndex GetBoneIndex(EntHandle ent, string name) => Call<BoneIndex>(GET_ENTITY_BONE_INDEX_BY_NAME, ent, name);
 		public static BoneIndex GetBoneIndex(EntHandle ent, Bone bone) => Call<BoneIndex>(GET_PED_BONE_INDEX, ent, bone);
 		public static Vector3 Position(EntHandle ent, BoneIndex bone) => Call<Vector3>(GET_WORLD_POSITION_OF_ENTITY_BONE, ent, bone);
-		public static Matrix4x4 Pose(EntHandle ent, BoneIndex bone) => Read<Matrix4x4>(GetEntityBonePoseAddress((int)ent, (uint)bone), 0x0);
-		public static void Pose(EntHandle ent, BoneIndex bone, Matrix4x4 value) => Write(GetEntityBonePoseAddress((int)ent, (uint)bone), 0x0, value);
 
 		public static float DistanceToSelf(EntHandle ent) => DistanceToSelf(Position(ent));
 		public static float DistanceToSelf(PedHandle ent) => DistanceToSelf(Position(ent));
@@ -154,6 +159,10 @@ namespace Shiv {
 
 		public static Vector3 Velocity(EntHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_VELOCITY, ent);
 		public static void Velocity(EntHandle ent, Vector3 value) => Call(SET_ENTITY_VELOCITY, ent, value);
+		public static Vector3 Velocity(PedHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_VELOCITY, ent);
+		public static void Velocity(PedHandle ent, Vector3 value) => Call(SET_ENTITY_VELOCITY, ent, value);
+		public static Vector3 Velocity(VehicleHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_VELOCITY, ent);
+		public static void Velocity(VehicleHandle ent, Vector3 value) => Call(SET_ENTITY_VELOCITY, ent, value);
 
 		public static Vector3 Rotation(EntHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_ROTATION, ent, 0);
 		public static void Rotation(EntHandle ent, Vector3 rot) => Call<Vector3>(SET_ENTITY_ROTATION, ent, rot, 0, true);
@@ -161,6 +170,8 @@ namespace Shiv {
 		public static Vector3 RotationVelocity(EntHandle ent) => ent == 0 ? Vector3.Zero : Call<Vector3>(GET_ENTITY_ROTATION_VELOCITY, ent);
 
 		public static float Speed(EntHandle ent) => ent == 0 ? 0f : Call<float>(GET_ENTITY_SPEED, ent);
+		public static float Speed(PedHandle ent) => ent == 0 ? 0f : Call<float>(GET_ENTITY_SPEED, ent);
+		public static float Speed(VehicleHandle ent) => ent == 0 ? 0f : Call<float>(GET_ENTITY_SPEED, ent);
 
 		public static void MaxSpeed(EntHandle ent, float value) => Call(SET_ENTITY_MAX_SPEED, ent, value);
 
@@ -204,6 +215,8 @@ namespace Shiv {
 		public static bool Exists(BlipHandle blip) => Call<bool>(DOES_BLIP_EXIST, blip);
 		public static EntHandle GetEntity(BlipHandle blip) => Call<EntHandle>(GET_BLIP_INFO_ID_ENTITY_INDEX, blip);
 		public static BlipHandle GetBlip(EntHandle ent) => Call<BlipHandle>(GET_BLIP_FROM_ENTITY, ent);
+		public static BlipHandle GetBlip(PedHandle ent) => Call<BlipHandle>(GET_BLIP_FROM_ENTITY, ent);
+		public static BlipHandle GetBlip(VehicleHandle ent) => Call<BlipHandle>(GET_BLIP_FROM_ENTITY, ent);
 		public static void ShowRoute(BlipHandle blip, bool value) => Call(SET_BLIP_ROUTE, blip, value);
 		public static bool IsFlashing(BlipHandle blip) => Call<bool>(IS_BLIP_FLASHING, blip);
 		public static void IsFlashing(BlipHandle blip, bool value) => Call(SET_BLIP_FLASHES, blip, value);
@@ -233,8 +246,15 @@ namespace Shiv {
 				default: return Color.White;
 			}
 		}
+
 		public static IEnumerable<EntHandle> Where(this IEnumerable<EntHandle> list, Color blipColor) => list.Where(x => GetColor(GetBlip(x)) == blipColor);
+		public static IEnumerable<PedHandle> Where(this IEnumerable<PedHandle> list, Color blipColor) => list.Where(x => GetColor(GetBlip(x)) == blipColor);
+		public static IEnumerable<VehicleHandle> Where(this IEnumerable<VehicleHandle> list, Color blipColor) => list.Where(x => GetColor(GetBlip(x)) == blipColor);
+
 		public static IEnumerable<EntHandle> Where(this IEnumerable<EntHandle> list, BlipHUDColor blipColor) => list.Where(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
+		public static IEnumerable<PedHandle> Where(this IEnumerable<PedHandle> list, BlipHUDColor blipColor) => list.Where(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
+		public static IEnumerable<VehicleHandle> Where(this IEnumerable<VehicleHandle> list, BlipHUDColor blipColor) => list.Where(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
+
 		public static IEnumerable<BlipHandle> Where(this IEnumerable<BlipHandle> list, BlipHUDColor blipColor) => list.Where(x => GetBlipHUDColor(x) == blipColor);
 
 		public static bool Any(this IEnumerable<EntHandle> list, Color blipColor) => list.Any(x => GetColor(GetBlip(x)) == blipColor);
@@ -242,8 +262,15 @@ namespace Shiv {
 		public static bool Any(this IEnumerable<BlipHandle> list, BlipHUDColor blipColor) => list.Any(x => GetBlipHUDColor(x) == blipColor);
 
 		public static EntHandle FirstOrDefault(this IEnumerable<EntHandle> list, Color blipColor) => list.FirstOrDefault(x => GetColor(GetBlip(x)) == blipColor);
+		public static PedHandle FirstOrDefault(this IEnumerable<PedHandle> list, Color blipColor) => list.FirstOrDefault(x => GetColor(GetBlip(x)) == blipColor);
+		public static VehicleHandle FirstOrDefault(this IEnumerable<VehicleHandle> list, Color blipColor) => list.FirstOrDefault(x => GetColor(GetBlip(x)) == blipColor);
+		public static BlipHandle FirstOrDefault(this IEnumerable<BlipHandle> list, Color blipColor) => list.FirstOrDefault(x => GetColor(x) == blipColor);
+
 		public static EntHandle FirstOrDefault(this IEnumerable<EntHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
+		public static PedHandle FirstOrDefault(this IEnumerable<PedHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
+		public static VehicleHandle FirstOrDefault(this IEnumerable<VehicleHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(GetBlip(x)) == blipColor);
 		public static BlipHandle FirstOrDefault(this IEnumerable<BlipHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(x) == blipColor);
+
 		public static BlipHandle First(IEnumerable<BlipHandle> list, BlipHUDColor blipColor) => list.FirstOrDefault(x => GetBlipHUDColor(x) == blipColor);
 
 		public static IEnumerable<BlipHandle> GetAllBlips() => GetAllBlips(BlipSprite.Standard);
@@ -375,8 +402,7 @@ namespace Shiv {
 
 		public static string Label(WeaponHash weap) => weaponLabels.TryGetValue(weap, out string ret) ? ret : "";
 
-		private static IntPtr gpCamAddr = IntPtr.Zero;
-		public static IntPtr Address(GameplayCam cam) => gpCamAddr == IntPtr.Zero ? gpCamAddr = GetGameplayCameraAddress() : gpCamAddr;
+		public static IntPtr Address(GameplayCam cam) => GetGameplayCameraAddress();
 		public static Matrix4x4 Matrix(GameplayCam cam) => Read<Matrix4x4>(Address(cam), 0x1F0);
 
 		public static IntPtr Address(CheckpointHandle cp) => GetCheckpointAddress((int)cp);
