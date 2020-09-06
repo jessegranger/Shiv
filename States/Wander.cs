@@ -1,6 +1,7 @@
 ﻿using static Shiv.Global;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
+using StateMachine;
 
 namespace Shiv {
 	class Wander : State {

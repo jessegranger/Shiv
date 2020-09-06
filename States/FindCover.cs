@@ -3,6 +3,7 @@ using System.Linq;
 using System.Numerics;
 using static Shiv.Global;
 using static Shiv.NavMesh;
+using StateMachine;
 
 namespace Shiv {
 	public static partial class Global {
@@ -45,7 +46,7 @@ namespace Shiv {
 				}
 			} else {
 				var pos = Position(Target);
-				var fail = Runner("Fail", (state) => {
+				var fail = new State.Runner("Fail", (state) => {
 					blacklist.Add(Target, 10000);
 					Log($"FindCover: target {Target} failed, adding to blacklist ({blacklist.Count})");
 					Target = NodeHandle.Invalid;

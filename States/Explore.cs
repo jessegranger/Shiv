@@ -1,11 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Linq;
 using static Shiv.Global;
 using static Shiv.NavMesh;
 using System.Numerics;
+using StateMachine;
 
 namespace Shiv {
 	class Explore : State {

@@ -66,7 +66,6 @@ namespace Shiv {
 			foreach( T x in list ) {
 				func(x);
 			}
-
 			return list;
 		}
 

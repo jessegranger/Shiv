@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using static Shiv.Global;
 using static Shiv.NavMesh;
+using StateMachine;
 
 namespace Shiv {
 	class DebugPath : State, IDisposable {

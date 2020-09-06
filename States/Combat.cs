@@ -8,9 +8,10 @@ using System.Collections.Generic;
 using System;
 using System.Numerics;
 using System.Diagnostics;
+using StateMachine;
 
 namespace Shiv {
-	class ReloadWeapon : State {
+	class ReloadWeapon : PedState {
 		public override State OnTick() {
 			var weapon = CurrentWeapon(Actor);
 			var maxClip = MaxAmmoInClip(Actor, weapon);
@@ -25,7 +26,7 @@ namespace Shiv {
 		}
 	}
 
-	class EnterCover : State {
+	class EnterCover : PedState {
 		readonly Vector3 Target;
 		readonly uint Timeout;
 		Stopwatch sw = new Stopwatch();
@@ -47,14 +48,14 @@ namespace Shiv {
 			}
 			return sw.ElapsedMilliseconds > Timeout
 				? Fail
-				: new StateMachine(Actor,
+				: new Machine(
 				new LookAt(Target, null) { Duration = 600 },
-				new PressKey(1, Control.Cover, 300, new Delay(300, new StateMachine.Clear(this)))
+				new PressKey(1, Control.Cover, 300, new Delay(300, new Machine.Clear(this)))
 			);
 		}
 	}
 
-	class ExitCover : State {
+	class ExitCover : PedState {
 		public uint Started = 0;
 		public override State OnTick() {
 			if( !IsInCover(Actor) ) {
@@ -97,7 +98,7 @@ namespace Shiv {
 					var Mh = Matrix(veh);
 					var Ph = Position(Mh);
 					var Ps = Position(Self);
-					Ph.Z = 0;
+					Ph.Z = 0; // ignore any differences in height
 					Ps.Z = 0;
 					if( (Ph - Ps).Length() < 20f ) {
 						seats.Values.Each(ped => blacklist.Add(ped, 1000));
@@ -164,10 +165,12 @@ namespace Shiv {
 			}
 		}
 
-		private readonly float steppingRange = 0.2f;
 		public override State OnTick() {
 			if( GamePaused || !CanControlCharacter() ) {
 				return this;
+			}
+			if( !IsAlive(Self) ) {
+				return Next;
 			}
 			UI.DrawHeadline($"Kills: {killCount}");
 			var weapon = CurrentWeapon(Self);
@@ -183,10 +186,8 @@ namespace Shiv {
 					coverPath = new SmoothPath(coverPathRequest.GetResult());
 					coverPathRequest = null;
 				} else if( coverPathRequest.IsFailed() ) {
-					UI.DrawHeadline($"coverPath failed");
 					coverVehicleBlacklist.Add(coverVehicle, 15000);
 				} else if( coverPathRequest.IsCanceled() ) {
-					UI.DrawHeadline("coverPath canceled");
 					coverPathRequest = null;
 				}
 			}

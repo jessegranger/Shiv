@@ -4,7 +4,7 @@ using static Shiv.Global;
 using static System.Math;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
-using System.Linq;
+using StateMachine;
 
 namespace Shiv {
 	public static partial class Global {
@@ -112,9 +112,10 @@ namespace Shiv {
 		}
 	}
 
-	public class DriveTo : State {
+	public class DriveTo : PedState {
 		public Func<Vector3> Target;
 		private Vector3 target;
+
 		public VehicleDrivingFlags DrivingFlags = (VehicleDrivingFlags)DrivingStyle.Normal;
 		public float StoppingRange = 10f;
 		public float Speed = 1f;
@@ -165,7 +166,7 @@ namespace Shiv {
 		}
 	}
 
-	public class DriveWander : State {
+	public class DriveWander : PedState {
 		public VehicleDrivingFlags DrivingFlags = (VehicleDrivingFlags)DrivingStyle.Normal;
 		public float StoppingRange = 4f;
 		public float Speed = 1f;
@@ -202,7 +203,7 @@ namespace Shiv {
 		}
 	}
 
-	public class EnterVehicle : State {
+	public class EnterVehicle : PedState {
 		public Func<VehicleHandle> Target;
 		private VehicleHandle target = VehicleHandle.Invalid;
 		public uint Timeout = 10000;
@@ -262,7 +263,7 @@ namespace Shiv {
 		}
 	}
 
-	public class LeaveVehicle : State {
+	public class LeaveVehicle : PedState {
 		public LeaveVehicle(State next = null):base(next) { }
 		public override State OnTick() {
 			if( GamePaused ) {

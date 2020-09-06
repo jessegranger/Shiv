@@ -9,6 +9,7 @@ using static GTA.Native.Hash;
 using static GTA.Native.Function;
 using static System.Math;
 using System.Drawing;
+using StateMachine;
 
 namespace Shiv {
 
@@ -20,7 +21,7 @@ namespace Shiv {
 		LandNearPed = 20,
 		Crash = 21
 	}
-	class HeliMission : State {
+	class HeliMission : PedState {
 
 		public Func<VehicleHandle> Heli; // required
 		private VehicleHandle lastHeli;

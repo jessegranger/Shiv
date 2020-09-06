@@ -1,13 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Linq;
 using static Shiv.Global;
 using static System.Math;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
 using System.Numerics;
+using StateMachine;
 
 namespace Shiv {
 	class TestEnterVehicle : State {

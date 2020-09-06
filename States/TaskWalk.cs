@@ -6,13 +6,11 @@ using static GTA.Native.Hash;
 using static GTA.Native.Function;
 using static Shiv.Global;
 using static Shiv.NavMesh;
-using System.Threading.Tasks;
-using System.Collections.Generic;
-using static System.Math;
+using StateMachine;
 
 namespace Shiv {
 
-	class TaskWalk : State {
+	class TaskWalk : PedState {
 		public Vector3 Target;
 		public float StoppingRange = 2f;
 		public float Speed = 1f;

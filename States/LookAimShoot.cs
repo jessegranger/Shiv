@@ -7,6 +7,7 @@ using System.Numerics;
 using static Shiv.Global;
 using System.Diagnostics;
 using System.Drawing;
+using StateMachine;
 
 namespace Shiv {
 	class AimAt : LookAt {
@@ -59,7 +60,7 @@ namespace Shiv {
 		}
 	}
 
-	class LookAtPed : State {
+	class LookAtPed : PlayerState {
 		public LookAtPed(Func<PedHandle> ped, State next) : base(next) => GetPed = ped;
 		public LookAtPed(PedHandle ped, State next): this(() => ped, next) { }
 
@@ -90,7 +91,7 @@ namespace Shiv {
 		}
 	}
 
-	class LookAt : State {
+	class LookAt : PlayerState {
 		protected readonly Func<Vector3> Target;
 		protected float DeadZone = 4f;
 
