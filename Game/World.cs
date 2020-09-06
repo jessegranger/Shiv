@@ -19,7 +19,7 @@ namespace Shiv {
 		public static PointF ScreenCoords(Vector3 pos) {
 			float x, y;
 			unsafe {
-				Call<bool>(_GET_SCREEN_COORD_FROM_WORLD_COORD,
+				Call<bool>(GET_HUD_SCREEN_POSITION_FROM_WORLD_POSITION,
 					pos, new IntPtr(&x), new IntPtr(&y)); }
 			return new PointF(x, y);
 		} // TODO: measure the speed of this versus using CameraMatrix directly (Since we already pay to fetch it every frame)
