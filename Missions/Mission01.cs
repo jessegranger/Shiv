@@ -1,15 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Text;
-using System.Threading.Tasks;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
 using static Shiv.Global;
 using static Shiv.NavMesh;
 using System.Drawing;
-using System.Diagnostics;
+using StateMachine;
 
 namespace Shiv {
 
@@ -19,10 +16,11 @@ namespace Shiv {
 			PedHandle ped = NearbyHumans().FirstOrDefault(BlipHUDColor.Red);
 			return ped == PedHandle.Invalid
 				? Fail
-				: Parallel(Self,
+				: new Machine(
 					new AimAt(ped),
 					new WalkTo(Position(ped)),
-					new WaitForControl(false, new StateMachine.Clear(new Mission01_Threaten()))
+					new WaitForControl(false,
+						new Machine.Clear(next: new Mission01_Threaten()))
 			);
 		}
 	}
@@ -103,9 +101,9 @@ namespace Shiv {
 		public new State Next = new Mission01_SelectTrevor();
 		public override State OnTick() {
 			return CanControlCharacter()
-				? new StateMachine(Self,
+				? new Machine(
 						new WalkTo(Position(NearbyHumans().FirstOrDefault())),
-						new WaitForCutscene(new StateMachine.Clear(Next)))
+						new WaitForCutscene(new Machine.Clear(Next)))
 				: Next;
 		}
 	}
