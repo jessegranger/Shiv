@@ -37,7 +37,6 @@ namespace Shiv {
 			}
 			return z;
 		}
-		public static Vector3 StopAtWater(Vector3 pos, float delta) => new Vector3(pos.X, pos.Y, Math.Max(pos.Z, delta));
 
 		public static void DrawLine(Vector3 start, Vector3 end, Color color) => Call(DRAW_LINE, start, end, color);
 		public static Action<Vector3> DrawSphere(float radius, Color color) => (Vector3 v) => DrawSphere(v, radius, color);
@@ -148,19 +147,14 @@ namespace Shiv {
 
 		public static void ChangeWeather(Weather weather, float duration) => Call(_SET_WEATHER_TYPE_OVER_TIME, Enum.GetName(typeof(Weather), weather), duration);
 
-		public static float Gravity() => MemoryAccess.ReadWorldGravity();
-		public static void Gravity(float value) {
-			MemoryAccess.WriteWorldGravity(value); // store value as gravity profile 0
-			Call(SET_GRAVITY_LEVEL, 0); // load gravity profile 0
-			MemoryAccess.WriteWorldGravity(9.800000f); // reset to default profile 0
-		}
+		public static void Gravity(int level) => Call(SET_GRAVITY_LEVEL, level);
 
-		public struct RaycastResult {
-			public bool DidHit;
-			public Vector3 HitPosition;
-			public Vector3 SurfaceNormal;
-			public Materials Material;
-			public EntHandle Entity;
+		public readonly struct RaycastResult {
+			public readonly bool DidHit;
+			public readonly Vector3 HitPosition;
+			public readonly Vector3 SurfaceNormal;
+			public readonly Materials Material;
+			public readonly EntHandle Entity;
 			public RaycastResult(int result) {
 		    bool hit;
 		    NativeVector3 hitPos;
