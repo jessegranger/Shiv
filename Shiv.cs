@@ -13,6 +13,7 @@ using static Shiv.Global;
 using static Shiv.NativeMethods;
 using static Shiv.NavMesh;
 using Keys = System.Windows.Forms.Keys;
+using System.Collections.Concurrent;
 
 namespace Shiv {
 
@@ -29,9 +30,14 @@ namespace Shiv {
 	/// </remarks>
 	public static class Shiv {
 		private static TextWriter LogFile;
+		private static ConcurrentQueue<string> backLog = new ConcurrentQueue<string>();
 		public static void Log(string s) {
 			string msg = $"{TotalTime.Elapsed} " + s;
 			if( LogFile != null ) {
+				// replay all the too-early messages
+				while( backLog.TryDequeue(out string line) ) {
+					LogFile.WriteLine(line);
+				}
 				try {
 					LogFile.WriteLine(msg);
 					LogFile.Flush();
@@ -40,6 +46,8 @@ namespace Shiv {
 				} catch( IOException ) {
 					LogFile = null;
 				}
+			} else { // messages that arrive too early get queued
+				backLog.Enqueue(msg);
 			}
 			Console.Log(msg);
 		}
@@ -86,7 +94,7 @@ namespace Shiv {
 			Controls.OnInit();
 		}
 
-		private static MovingAverage fps = new MovingAverage(5);
+		private static readonly MovingAverage fps = new MovingAverage(5);
 
 		public static void OnTick() {
 			var w = new Stopwatch();
@@ -96,15 +104,15 @@ namespace Shiv {
 
 				GameTime = Call<uint>(GET_GAME_TIMER);
 
-				if( CurrentPlayer == PlayerHandle.Invalid ) {
-					CurrentPlayer = Call<PlayerHandle>(GET_PLAYER_INDEX);
-				}
+				CurrentPlayer = Call<PlayerHandle>(GET_PLAYER_INDEX);
 				Self = Call<PedHandle>(GET_PLAYER_PED, CurrentPlayer);
+				var sw = new Stopwatch();
+				sw.Start();
 				CameraMatrix = Matrix(GameplayCam.Handle);
 				PlayerMatrix = Matrix(Self);
 				PlayerPosition = Position(PlayerMatrix);
 				PlayerVehicle = CurrentVehicle(Self);
-
+				sw.Stop();
 				int dt = (int)GameTime - (int)LastGameTime;
 				if( dt != 0 ) {
 					fps.Add(1000 / dt);
