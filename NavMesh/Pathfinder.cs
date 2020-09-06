@@ -182,10 +182,10 @@ namespace Shiv {
 			return true;
 		}
 
-		private Func<EntHandle, float> DistanceTo(Vector3 pos) => (e) => (Position(e) - pos).Length();
+		private Func<EntHandle, float> DistanceTo(Vector3 pos) => (e) => (Position(e) - pos).LengthSquared();
 
 		// Culled does the real work of walking forward with a pair of pointers
-		// yielding only the nodes where a capsule clipped the direct path
+		// yielding only the nodes where a capsule clipped while attempting the direct path
 		private IEnumerable<Vector3> Culled(IEnumerable<Vector3> path) {
 			Vector3[] orig = path.ToArray();
 			if( orig.Length < 2 ) {
