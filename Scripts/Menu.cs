@@ -10,7 +10,7 @@ using static Shiv.Global;
 using static Shiv.NavMesh;
 using static System.Math;
 using System.Diagnostics;
-using System.Threading.Tasks;
+using StateMachine;
 
 namespace Shiv {
 
@@ -34,6 +34,21 @@ namespace Shiv {
 	public class InvincibleToggle : MenuItem {
 		public InvincibleToggle() : base("[?] Invincible", () => IsInvincible(Self, !IsInvincible(Self))) { }
 		public override string ToString() => AmInvincible() ? "[X] Invincible" : "[ ] Invincible";
+	}
+	public class IgnoredToggle : MenuItem {
+		public IgnoredToggle() : base("[?] Ignored", () => {
+			if( HasState(Self, typeof(Ignored)) ) RemoveState(Self, typeof(Ignored));
+			else AddState(Self, new Ignored());
+		}) { }
+		public override string ToString() => HasState(Self, typeof(Ignored)) ? "[X] Ignored" : "[ ] Ignored";
+	}
+	public class Ignored : State {
+		public override State OnTick() {
+			IgnoredByPolice(true);
+			IgnoredByEveryone(true);
+			WantedLevel(0);
+			return this;
+		}
 	}
 	public class CarRepair : MenuItem {
 		public CarRepair() : base("[?] Repair Vehicle", () => Call(SET_VEHICLE_FIXED, CurrentVehicle(Self))) { }
@@ -99,7 +114,6 @@ namespace Shiv {
 			}
 			if( Created != VehicleHandle.Invalid ) { // wait until really loaded to move to the next state
 				if( GetModel(Created) == Model ) {
-					Broadcast.SendMessage("Vehicle Spawned", Actor, data: Created);
 					return Next;
 				}
 				return this;
@@ -189,8 +203,8 @@ namespace Shiv {
 			return this;
 		}
 		public Menu Item(string label, Action click) => Item(new MenuItem(label, click));
-		public Menu Item(string label, Func<State> state) => Item(label, () => SetState(Self, state()));
-		public Menu Item(string label, State state) => Item(label, () => SetState(Self, state));
+		public Menu Item(string label, Func<State> state) => Item(label, () => AddState(Self, state()));
+		public Menu Item(string label, State state) => Item(label, () => AddState(Self, state));
 		public Menu Item(string label, Menu subMenu) => Item(label, () => ShowSubmenu(subMenu));
 		public void ShowSubmenu(Menu subMenu) {
 			subMenu.Parent = this;
@@ -337,7 +351,14 @@ namespace Shiv {
 			MenuScript.Show(new Menu()
 				.Item("Trainer", new Menu()
 					.Item(new InvincibleToggle()) // "Set Invincible", () => Call(SET_PLAYER_INVINCIBLE, true))
+					.Item(new IgnoredToggle())
 					.Item(new ClearWanted())
+					.Item("Respawn Here", () => {
+						Call(_SET_NEXT_RESPAWN_TO_CUSTOM);
+						Call(_SET_CUSTOM_RESPAWN_POSITION, PlayerPosition, Heading(Self));
+						Call(IGNORE_NEXT_RESTART, true);
+						Call(SET_FADE_OUT_AFTER_DEATH, false);
+					})
 					.Item("Give Weapons", () => GiveWeapons(Self,
 						(uint)WeaponHash.Pistol, 90,
 						(uint)WeaponHash.PumpShotgun, 200,
@@ -350,7 +371,7 @@ namespace Shiv {
 					)
 					.Item(new CarRepair())
 					.Item(new VehicleSpawnMenuItem())
-					.Item("Combat Mode", () => SetState(Self, new Combat(NearbyHumans, null)))
+					.Item("Combat Mode", () => AddState(Self, new Combat(NearbyHumans, null)))
 					)
 					.Item("Missions", new Menu()
 						.Item("Mission01", new Menu()
@@ -360,6 +381,7 @@ namespace Shiv {
 							.Item("MoveToButton", () => new Mission01_MoveToButton())
 							.Item("Get Away", () => new Mission01_GetAway())
 						)
+						.Item("Generic", () => AddState(Self, new GenericMission()))
 					)
 					.Item("Tests", new Menu()
 						.Item("All", () => SetState(Self, State.Series(
@@ -398,23 +420,23 @@ namespace Shiv {
 						)
 					)
 					.Item("Drive To", new Menu()
-						.Item("Wander", () => SetState(Self, 
+						.Item("Wander", () => AddState(Self, 
 								new DriveWander(null) { Speed = 10f, DrivingFlags = VehicleDrivingFlags.Human },
 								new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
 							)
 						)
-						.Item("Trevor's House", () => SetState(Self,
-								new DriveTo(new Vector3(1983f, 3829f, 32f), new StateMachine.Clear(null)) { Speed = 10f },
+						.Item("Trevor's House", () => AddState(Self,
+								new DriveTo(new Vector3(1983f, 3829f, 32f), new State.Machine.Clear(null)) { Speed = 10f },
 								new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
 							)
 						)
-						.Item("Safeouse", () => SetState(Self,
-								new DriveTo(Position(First(GetAllBlips(BlipSprite.Safehouse))), new StateMachine.Clear(null)) { Speed = 10f },
+						.Item("Safeouse", () => AddState(Self,
+								new DriveTo(Position(First(GetAllBlips(BlipSprite.Safehouse))), new State.Machine.Clear(null)) { Speed = 10f },
 								new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
 							)
 						)
-						.Item("Waypoint", () => SetState(Self,
-								new DriveTo(Position(First(GetAllBlips(BlipSprite.Waypoint))), new StateMachine.Clear(null)) { Speed = 10f },
+						.Item("Waypoint", () => AddState(Self,
+								new DriveTo(Position(First(GetAllBlips(BlipSprite.Waypoint))), new State.Machine.Clear(null)) { Speed = 10f },
 								new LookAtPed(Throttle(5000, () => NearbyHumans().Random(.3f).FirstOrDefault()), null)
 							)
 						)
@@ -451,7 +473,7 @@ namespace Shiv {
 				var queue = new Queue<NodeHandle>();
 				var seen = new HashSet<NodeHandle>();
 				var limit = 9;
-				AddState(Self, State.Runner("Show Materials", (state) => {
+				AddState(Self, new State.Runner("Show Materials", (state) => {
 					queue.Enqueue(PlayerNode);
 					seen.Clear();
 					while( queue.Count > 0 ) {
@@ -474,7 +496,7 @@ namespace Shiv {
 				}));
 			});
 			Controls.Bind(Keys.G, () => {
-				SetState(Self, State.Runner("Check Obstruction", (state) => {
+				SetState(Self, new State.Runner("Check Obstruction", (state) => {
 					Vector3 p = Position(PlayerNode);
 					foreach( NodeHandle e in Edges(PlayerNode) ) {
 						Vector3 pos = Position(e);
@@ -504,7 +526,7 @@ namespace Shiv {
 				NavMesh.ShowEdges = !NavMesh.ShowEdges;
 			});
 			Controls.Bind(Keys.N, () => {
-				SetState(Self, State.Runner("Show Blocked", (state) => {
+				SetState(Self, new State.Runner("Show Blocked", (state) => {
 					foreach( EntHandle ent in NearbyObjects().Take(10) ) {
 						switch( GetEntityType(ent) ) {
 							case EntityType.Ped:
@@ -578,67 +600,11 @@ namespace Shiv {
 			});
 
 			Controls.Bind(Keys.K, () => {
-				SetState(Self, new Combat(NearbyHumans, null));
+				AddState(Self, new Combat(NearbyHumans, null));
 			});
 
-			NodeHandle pathTarget = NodeHandle.Invalid;
-			int repathEvery = 5000;
 			Controls.Bind(Keys.L, () => {
-				uint startPathAfter = GameTime + 20000;
-				pathTarget = AimNode();
-				Vector3 pos = Position(pathTarget);
-				var req = new PathRequest(PlayerNode, pathTarget, 2000, false, true, true, 1, false);
-				uint started = GameTime;
-				NodeHandle[] nodePath = null;
-				SmoothPath path = null;
-				SetState(Self, State.Runner("Follow Path", (state) => {
-					if( GameTime < startPathAfter ) {
-						UI.DrawHeadline(Self, $"Will walk back in {(startPathAfter - GameTime) / 1000:F0}s");
-						return state;
-					}
-					if( req != null && req.IsReady() ) {
-						nodePath = req.GetResult().ToArray(); // for debugging
-						path = new SmoothPath(req.GetResult()) {
-							SteppingRange = .5f
-						}; // .Select(Position).ToArray();
-						req = null;
-					}
-					if( path != null ) {
-						if( path.IsComplete() ) {
-							path = null;
-							return state;
-						}
-						if( repathEvery > 0 && (GameTime - started) > repathEvery ) {
-							req = new PathRequest(PlayerNode, pathTarget, 3000, false, true, true, 1, false);
-							started = GameTime;
-						}
-						// foreach(var n in nodePath.Take(30) ) { DrawSphere(Position(n), .04f, Color.Yellow); }
-						Vector3 head = HeadPosition(Self);
-						DrawLine(head, path.NextStep(PlayerPosition), Color.Orange);
-						path.Draw();
-
-						Vector3 step = path.NextStep(PlayerPosition);
-						MoveToward(step);
-						// if( !IsRunning(Self) ) { ToggleSprint(); }
-
-						return state;
-						/*
-						switch( FollowPath(path, 0.3f) ) {
-							case MoveResult.Continue:
-								FirstStep(path);
-								UI.DrawText($"Walk");
-								return state;
-							case MoveResult.Complete:
-								Log($"MoveResult.Complete");
-								return null;
-							case MoveResult.Failed:
-								Log($"MoveResult.Failed");
-								return null;
-						}
-						*/
-					}
-					return state;
-				}));
+				AddState(Self, new Teleport(AimNode()) { KeepVehicle = PlayerVehicle != VehicleHandle.Invalid });
 			});
 
 			Controls.Bind(Keys.H, () => {
