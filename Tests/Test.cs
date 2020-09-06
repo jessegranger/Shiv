@@ -1,10 +1,7 @@
 ﻿using System.Linq;
+using System.Numerics;
 using static Shiv.Global;
 using static System.Math;
-using static GTA.Native.Hash;
-using static GTA.Native.Function;
-using System.Numerics;
-using StateMachine;
 
 namespace Shiv {
 	class TestEnterVehicle : State {
@@ -16,7 +13,7 @@ namespace Shiv {
 				Started = GameTime;
 				return new Teleport(NodeHandle.DesertAirfield,
 					new Delay(1000, (State)((s) => {
-						NearbyVehicles().Take(10).Cast<EntHandle>().Each(Delete);
+						NearbyVehicles().Take(10).Each(Delete);
 						return new SpawnVehicle(VehicleHash.Blade,
 							new Delay(1000, (State)((t) => {
 								return new EnterVehicle(NearbyVehicles().FirstOrDefault(), this);

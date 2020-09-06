@@ -2,7 +2,6 @@
 using static Shiv.Global;
 using static Shiv.NavMesh;
 using System.Numerics;
-using StateMachine;
 
 namespace Shiv {
 	class Explore : State {

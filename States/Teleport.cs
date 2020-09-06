@@ -2,7 +2,6 @@
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
 using System.Numerics;
-using StateMachine;
 
 namespace Shiv {
 	class Teleport : State {

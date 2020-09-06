@@ -1,13 +1,10 @@
-﻿using System.Linq;
+﻿using System;
+using System.Diagnostics;
+using System.Linq;
 using System.Numerics;
-using static GTA.Native.Hash;
-using static GTA.Native.Function;
 using static Shiv.Global;
 using static Shiv.NavMesh;
 using static System.Math;
-using System.Diagnostics;
-using System;
-using StateMachine;
 
 namespace Shiv {
 

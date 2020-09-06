@@ -6,7 +6,6 @@ using static GTA.Native.Function;
 using static Shiv.Global;
 using static Shiv.NavMesh;
 using System.Drawing;
-using StateMachine;
 
 namespace Shiv {
 

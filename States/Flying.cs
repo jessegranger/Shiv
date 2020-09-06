@@ -1,15 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using static Shiv.Global;
-using System.Numerics;
-using static GTA.Native.Hash;
-using static GTA.Native.Function;
-using static System.Math;
 using System.Drawing;
-using StateMachine;
+using System.Numerics;
+using static GTA.Native.Function;
+using static GTA.Native.Hash;
+using static Shiv.Global;
+using static System.Math;
 
 namespace Shiv {
 

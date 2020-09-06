@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System;
 using System.Numerics;
 using System.Diagnostics;
-using StateMachine;
 
 namespace Shiv {
 	class ReloadWeapon : PedState {

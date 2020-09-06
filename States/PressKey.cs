@@ -1,6 +1,5 @@
 ﻿using static Shiv.Global;
 using System.Diagnostics;
-using StateMachine;
 
 namespace Shiv {
 	class PressKey : State {

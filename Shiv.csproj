@@ -45,6 +45,7 @@
     <Compile Include="States\Explore.cs" />
     <Compile Include="States\Flying.cs" />
     <Compile Include="States\LookAimShoot.cs" />
+    <Compile Include="States\State.cs" />
     <Compile Include="States\Teleport.cs" />
     <Compile Include="States\Wander.cs" />
     <Compile Include="States\FindCover.cs" />
@@ -93,12 +94,6 @@
   <ItemGroup>
     <None Include="app.config" />
     <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\StateMachine\StateMachine.csproj">
-      <Project>{94813708-26fb-41b6-a84a-0a298737e3cc}</Project>
-      <Name>StateMachine</Name>
-    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

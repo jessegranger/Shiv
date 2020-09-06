@@ -10,7 +10,6 @@ using static Shiv.Global;
 using static Shiv.NavMesh;
 using static System.Math;
 using System.Diagnostics;
-using StateMachine;
 
 namespace Shiv {
 

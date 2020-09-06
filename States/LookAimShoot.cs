@@ -1,13 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Diagnostics;
 using System.Numerics;
 using static Shiv.Global;
-using System.Diagnostics;
-using System.Drawing;
-using StateMachine;
 
 namespace Shiv {
 	class AimAt : LookAt {

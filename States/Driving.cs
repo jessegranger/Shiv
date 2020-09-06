@@ -4,7 +4,6 @@ using static Shiv.Global;
 using static System.Math;
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
-using StateMachine;
 
 namespace Shiv {
 	public static partial class Global {

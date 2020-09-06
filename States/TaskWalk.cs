@@ -1,12 +1,9 @@
-﻿using System;
-using System.Drawing;
-using System.Linq;
+﻿using System.Drawing;
 using System.Numerics;
-using static GTA.Native.Hash;
 using static GTA.Native.Function;
+using static GTA.Native.Hash;
 using static Shiv.Global;
 using static Shiv.NavMesh;
-using StateMachine;
 
 namespace Shiv {
 
