@@ -7,11 +7,44 @@ using static Shiv.NavMesh;
 using static System.Math;
 using System.Diagnostics;
 using System;
+using StateMachine;
 
 namespace Shiv {
 
-	class WalkToPed : WalkTo {
+	class FollowPed : PedState {
+		public Func<PedHandle> Target;
 
+		public Func<bool> Until;
+		public Func<bool> While;
+
+		public FollowPed(PedHandle ped, State next = null) : base(next) => Target = () => ped;
+		public FollowPed(Func<PedHandle> func, State next = null) : base(next) => Target = func;
+
+		public override State OnTick() {
+			if( While == null || While() ) {
+				if( Until == null || !Until()) {
+					PedHandle target = Target();
+					Vector3 src = Position(Actor);
+					Vector3 end = Position(target);
+					float dist = Distance(src, end);
+					float speed = Speed(Actor);
+					UI.DrawHeadline(Actor, $"Speed: {speed}");
+					UI.DrawHeadline(target, $"Dist: {dist:F2} Speed: {Speed(target):F2}");
+					if( dist > 3f ) {
+						return new TaskWalk(end, this) { StoppingRange = 3f, Speed = dist / 3f };
+					}
+					MoveToward(end, maxSpeed:Max(1f, Speed(target)) );
+					if( IsRunning(target) && !IsRunning(Actor) ) {
+						ToggleSprint();
+					}
+					return this;
+				}
+			}
+			return Next;
+		}
+	}
+
+	class WalkToPed : WalkTo {
 		public WalkToPed(PedHandle ped, State next = null) : base(Position(ped), next) => GetPed = () => ped;
 		public WalkToPed(Func<PedHandle> ped, State next = null) : base(Position(ped()), next) => GetPed = ped;
 		readonly Func<PedHandle> GetPed;
@@ -31,7 +64,7 @@ namespace Shiv {
 
 	}
 
-	class WalkTo : State, IDisposable {
+	class WalkTo : PedState, IDisposable {
 		public float StoppingRange = 1f;
 		public uint Timeout = 120000;
 		public bool Debug = true;
@@ -134,18 +167,6 @@ namespace Shiv {
 						if( !sw.IsRunning ) {
 							sw.Start();
 						}
-						// if( Run && !IsRunning(Self) ) { ToggleSprint(); }
-						/* disable stuck detection until we are using SmoothPath
-						Vector3 step = Position(path.First());
-						var vel = Vector3.Normalize(Velocity(Self));
-						var expected = Vector3.Normalize(step - PlayerPosition);
-						var overlap = Vector3.Dot(vel, expected);
-						// UI.DrawTextInWorld(step, $"Overlap: {overlap}");
-						if( sw.ElapsedMilliseconds > 3200 && overlap <= 0.01f && !IsClimbing(Self) && !IsJumping(Self) && !IsRagdoll(Self) && Speed(Self) < .02f ) {
-							Log($"STUCK at {sw.ElapsedMilliseconds} overlap {overlap}");
-							return Stuck();
-						}
-						*/
 						break;
 					case MoveResult.Complete:
 						path.Pop();
