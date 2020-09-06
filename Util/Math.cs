@@ -38,6 +38,11 @@ namespace Shiv {
 			);
 		}
 
+		public static float Distance(Vector3 a, Vector3 b) => (a - b).Length();
+		public static float DistanceSq(Vector3 a, Vector3 b) => (a - b).LengthSquared();
+		public static Func<Vector3, float> DistanceTo(Vector3 a) => (b) => Distance(a, b);
+		public static Func<Vector3, float> DistanceSqTo(Vector3 a) => (b) => Distance(a, b);
+
 		public static float Rad2Deg(double rad) => (float)(rad * 180 / Math.PI);
 		public static float Deg2Rad(double deg) => (float)(deg * Math.PI / 180);
 
