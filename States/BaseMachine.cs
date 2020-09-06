@@ -6,66 +6,37 @@ using System.Text;
 using System.Threading.Tasks;
 using static Shiv.Global;
 using System.Numerics;
+using StateMachine;
 
 namespace Shiv {
 
-	public class State {
-		public State Next = null;
-		public State Fail = null;
-		public PedHandle Actor = Self; // should this be an EntHandle maybe?
-		public State() => Next = null;
-		public State(State next) => Next = next;
-
-		// OnTick gets called every frame and returns the next State
-		public virtual State OnTick() => this;
-		public virtual void OnAbort() { }
-
-		public virtual string Name => GetType().Name.Split('.').Last();
-		public override string ToString() => $"{Name}{(Next == null ? "" : " then " + Next.Name)}";
-
-		public static State Runner(string label, Func<State, State> func) => new Ticker(label, func);
-		public static State Runner(Func<State, State> func) => new Ticker(func);
-
-		private class Ticker : State {
-			readonly Func<State, State> F;
-			public override string Name => name;
-			private readonly string name = "...";
-			public Ticker(Func<State, State> func) => F = func;
-			public Ticker(string name, Func<State, State> func):this(func) => this.name = name;
-			public override State OnTick() => F(this);
-		}
-
-		public static State Series(params State[] states) {
-			for(int i = 0; i < states.Length - 1; i++) {
-				states[i].Next = states[i + 1];
-			}
-			return states?[0];
-		}
-		public static State Parallel(PedHandle actor, params State[] states) => new StateMachine(actor, states);
-
-		public static implicit operator State(Func<State, State> func) => Runner(func);
+	public class PedState : State {
+		public PedHandle Actor;
+		public PedState(State next = null) => Actor = PedHandle.Invalid;
+		public PedState(PedHandle actor, State next = null) : base(next) => Actor = actor;
+	}
+	public class PlayerState : PedState {
+		public PlayerState(State next = null) => Actor = Self;
 	}
 
 	public static partial class Global {
-		public static void AddState(PedHandle ped, params Func<State, State>[] states) => StateMachines.Add(ped, new StateMachine(ped, states));
-		public static void AddState(PedHandle ped, params State[] states) => StateMachines.Add(ped, new StateMachine(ped, states));
+		public static void AddState(PedHandle ped, params State[] states) => StateMachines.Add(ped, new State.Machine(states));
 		public static void AddStateOnce(PedHandle ped, State state) {
 			if( !StateMachines.HasState(ped, state.GetType()) ) {
-				StateMachines.Add(ped, new StateMachine(ped, state));
+				StateMachines.Add(ped, new State.Machine(state));
 			}
 		}
-		public static void SetState(PedHandle ped, params State[] states) => StateMachines.Set(ped, new StateMachine(ped, states));
-		public static void SetState(PedHandle ped, params Func<State, State>[] states) => StateMachines.Set(ped, new StateMachine(ped, states));
+		public static void SetState(PedHandle ped, params State[] states) => StateMachines.Set(ped, new State.Machine(states));
 		public static bool HasState(PedHandle ped, Type stateType) => StateMachines.HasState(ped, stateType);
+		public static void RemoveState(PedHandle ped, Type stateType) => StateMachines.RemoveState(ped, stateType);
 	}
 
 	public class StateMachines: Script {
 
-		private static Dictionary<PedHandle, StateMachine> machines = new Dictionary<PedHandle, StateMachine>();
+		private static Dictionary<PedHandle, State.Machine> machines = new Dictionary<PedHandle, State.Machine>();
 
-		internal static void Add(PedHandle ped, StateMachine state) {
+		internal static void Add(PedHandle ped, State.Machine state) {
 			Shiv.Log($"[StateScript] Add {state} to ped {ped}");
-			state.Actor = ped;
 			if( !machines.ContainsKey(ped) ) {
 				machines.Add(ped, state);
 			} else {
@@ -73,9 +44,8 @@ namespace Shiv {
 			}
 		}
 
-		internal static void Set(PedHandle ped, StateMachine state) {
+		internal static void Set(PedHandle ped, State.Machine state) {
 			Shiv.Log($"[StateScript] Interrupt {ped} with {state}");
-			state.Actor = ped;
 			if( !machines.ContainsKey(ped) ) {
 				machines.Add(ped, state);
 			} else {
@@ -84,7 +54,12 @@ namespace Shiv {
 			}
 		}
 
-		internal static bool HasState(PedHandle ped, Type stateType) => machines?[ped]?.HasState(stateType) ?? false;
+		internal static bool HasState(PedHandle ped, Type stateType) => machines.ContainsKey(ped) && machines[ped].HasState(stateType);
+		internal static void RemoveState(PedHandle ped, Type stateType) {
+			if( machines.ContainsKey(ped) ) {
+				machines[ped].Remove(stateType);
+			}
+		}
 
 		internal static void ClearAllStates(PedHandle ped) {
 			if( machines.ContainsKey(ped) ) {
@@ -106,79 +81,11 @@ namespace Shiv {
 				.Where((kv, i) => !Exists(kv.Key) || Tick(kv.Key, kv.Value) == null) // tick all the machines for all the peds
 				.Select(kv => kv.Key).ToArray() // select keys of dead machines and dead peds
 				.Each((k) => machines.Remove(k)); // and remove them
-		private static State Tick(PedHandle ped, StateMachine m) {
+		private static State Tick(PedHandle ped, State.Machine m) {
 			UI.DrawHeadline(ped, $"State: {m.ToString()}");
 			return m.OnTick();
 		}
 
-	}
-
-
-	internal class StateMachine : State {
-
-		// each machine runs any number of states at once
-		// when a machine is empty, it gets collected by the reaper
-		private LinkedList<State> States;
-
-		public State CurrentState => States.FirstOrDefault();
-
-		public StateMachine(PedHandle actor, params Func<State, State>[] states) : this(actor, states.Cast<State>().ToArray()) { }
-		public StateMachine(PedHandle actor, params State[] states) {
-			States = new LinkedList<State>(states);
-			Actor = actor;
-		}
-
-		public override string ToString() => string.Join(" while ", States.Select(s => $"({s})")) + (Next == null ? "" : $" then {Next.Name}");
-
-		/// <summary>
-		/// Clear is a special state that clears all running states from a MultiState.
-		/// </summary>
-		/// <example>new StateMachine(
-		///   new WalkTo(X),
-		///   new ShootAt(Y, // will walk and shoot at the same time, when shoot is finished, clear the whole machine (cancel the walk)
-		///     new StateMachine.Clear(this)) );
-		///  </example>
-		public class Clear : State {
-			public Clear(State next) : base(next) { }
-			public override State OnTick() => Next;
-		}
-
-		public override State OnTick() {
-			LinkedListNode<State> cur = States.First;
-			while( cur != null ) {
-				State next = cur.Value.OnTick();
-				if( next == null ) {
-					Log($"State {cur.Value.Name} finished.");
-					cur = States.RemoveAndContinue(cur);
-					continue;
-				}
-				if( next != cur.Value ) {
-					Log($"State Change {cur.Value.Name} to {next.Name}");
-					if( next.GetType() == typeof(Clear) ) {
-						Abort(except:cur.Value); // dont cancel cur.Value because it just ended (as far as it knows)
-						return next.Next ?? Next;
-					}
-					next.Actor = Actor;
-					cur.Value = next;
-				}
-				cur = cur.Next;
-			}
-			return States.Count == 0 ? Next : this;
-		}
-		public void Abort(State except=null) {
-			States.Without(except).Each(s => s.OnAbort());
-			States.Clear();
-		}
-		public void Add(State state) => States.AddLast(state);
-		public void Remove(State state) => States.Remove(state);
-		public void Remove(Type stateType) {
-			LinkedListNode<State> cur = States.First;
-			while( cur != null ) {
-				cur = cur.Value.GetType() == stateType ? States.RemoveAndContinue(cur) : cur.Next;
-			}
-		}
-
-		internal bool HasState(Type stateType) => States.Any(s => s.GetType() == stateType);
 	}
 
 	class WaitForControl : State {
@@ -191,16 +98,6 @@ namespace Shiv {
 	class WaitForCutscene : State {
 		public WaitForCutscene(State next = null) : base(next) { }
 		public override State OnTick() => new WaitForControl(false, new WaitForControl(true, Next));
-	}
-	class Delay : State {
-		Stopwatch sw = new Stopwatch();
-		readonly uint ms;
-		public Delay(uint ms, State next = null) : base(next) {
-			this.ms = ms;
-			sw.Start();
-		}
-		public override State OnTick() => sw.ElapsedMilliseconds >= ms ? Next : (this);
-		public override string Name => $"Delay({ms})";
 	}
 	class WaitForBlip : State {
 		readonly BlipSprite Kind;
