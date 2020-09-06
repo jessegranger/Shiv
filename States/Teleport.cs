@@ -2,11 +2,14 @@
 using static GTA.Native.Hash;
 using static GTA.Native.Function;
 using System.Numerics;
+using StateMachine;
 
 namespace Shiv {
 	class Teleport : State {
 		public Vector3 Target;
 		public float Heading = 0f;
+		public bool KeepVehicle = true;
+		public bool KeepVelocity = false;
 		public bool Started { get; private set; } = false;
 		public Teleport(NodeHandle node, State next=null) : base(next) => Target = NavMesh.Position(node);
 		public Teleport(Vector3 pos, State next=null) : base(next) => Target = pos;
@@ -16,7 +19,7 @@ namespace Shiv {
 			if( !Started ) {
 				Log($"Starting teleport to ${Target}");
 				Call(SET_ENTITY_HAS_GRAVITY, Self, false);
-				StartTeleport(CurrentPlayer, Target, Heading, false, false);
+				StartTeleport(CurrentPlayer, Target, Heading, KeepVehicle, KeepVelocity);
 				Started = true;
 			} else if( IsTeleportComplete(CurrentPlayer) ) {
 				Call(SET_ENTITY_HAS_GRAVITY, Self, true);
